@@ -68,7 +68,7 @@ class BatterySettings:
     time_disf2a: str = "06:00"
     time_dise2a: str = "10:00"
     bat_high_cap: str = "100"
-    
+
     # Weekend settings
     time_cha_fwe1a: str = "00:00"
     time_cha_ewe1a: str = "00:00"
@@ -78,31 +78,34 @@ class BatterySettings:
     time_dis_ewe1a: str = "00:00"
     time_dis_fwe2a: str = "00:00"
     time_dis_ewe2a: str = "00:00"
-    
+
     # Peak settings
     peak_s1a: str = "00:00"
     peak_e1a: str = "00:00"
     peak_s2a: str = "00:00"
     peak_e2a: str = "00:00"
-    
+
     # Fill settings
     fill_s1a: str = "00:00"
     fill_e1a: str = "00:00"
     fill_s2a: str = "00:00"
     fill_e2a: str = "00:00"
-    
+
     # Offset settings
     pm_offset_s1a: str = "00:00"
     pm_offset_e1a: str = "00:00"
     pm_offset_s2a: str = "00:00"
     pm_offset_e2a: str = "00:00"
-    
-    # Additional fields
+
+    enable_grid_charging: bool = False  # <--- NEW FIELD
+
     additional_fields: Dict[str, Any] = field(default_factory=dict)
-    
+
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> "BatterySettings":
         """Create a BatterySettings instance from the new API response."""
+        enable_grid_charging = bool(data.get("enableGridCharging", 0))
+
         settings = cls(
             grid_charge=data.get("gridCharge", 1),
             ctr_dis=data.get("ctrDis", 1),
@@ -116,6 +119,7 @@ class BatterySettings:
             time_disf2a=data.get("timeDisf2", "06:00"),
             time_dise2a=data.get("timeDise2", "10:00"),
             bat_high_cap=str(data.get("batHighCap", 100)),
+            enable_grid_charging=enable_grid_charging,
             time_cha_fwe1a=data.get("time_cha_fwe1a", "00:00"),
             time_cha_ewe1a=data.get("time_cha_ewe1a", "00:00"),
             time_cha_fwe2a=data.get("time_cha_fwe2a", "00:00"),
@@ -137,7 +141,7 @@ class BatterySettings:
             pm_offset_s2a=data.get("pm_offset_s2a", "00:00"),
             pm_offset_e2a=data.get("pm_offset_e2a", "00:00"),
         )
-        
+
         # Store additional fields
         additional_fields = {}
         for field in [
@@ -166,10 +170,10 @@ class BatterySettings:
         ]:
             if field in data:
                 additional_fields[field] = data[field]
-        
+
         settings.additional_fields = additional_fields
         return settings
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert settings to dictionary for API submissions using new API format."""
         result = {
@@ -189,6 +193,10 @@ class BatterySettings:
             "timeDise2": self.time_dise2a,
             "batHighCap": float(self.bat_high_cap) if isinstance(self.bat_high_cap, str) else self.bat_high_cap,
             "batUseCap": self.bat_use_cap,
+
+            # NEW FIELD TO SEND TO API
+            "enableGridCharging": int(self.enable_grid_charging),
+
             "batCapRange": [5, 100],  # Default range
             "isJapaneseDevice": False,
             "upsReserveEnable": True,
@@ -206,8 +214,8 @@ class BatterySettings:
             "isSiteDevice": None,
             "isSupportOffGridSocControl": True,
         }
-        
+
         # Add additional fields
         result.update(self.additional_fields)
-        
+
         return result

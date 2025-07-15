@@ -1,7 +1,9 @@
 """Sensor platform for Byte-Watt integration."""
 import logging
 from typing import Callable, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, time  # <-- Added time import here
+
+import homeassistant.util.dt as dt_util  # <-- Added for time parsing & localization
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -602,47 +604,53 @@ class ByteWattBatterySettingsSensor(ByteWattSensor):
             if hasattr(client.api_client, "_settings_cache") and client.api_client._settings_cache:
                 settings = client.api_client._settings_cache
                 
-                # Return the appropriate value based on the attribute
+                val = None
                 if self._attribute == "timeDisf1":
-                    return getattr(settings, "time_disf1a", None)
+                    val = getattr(settings, "time_disf1a", None)
                 elif self._attribute == "timeDise1":
-                    return getattr(settings, "time_dise1a", None)
+                    val = getattr(settings, "time_dise1a", None)
                 elif self._attribute == "timeChaf1":
-                    return getattr(settings, "time_chaf1a", None)
+                    val = getattr(settings, "time_chaf1a", None)
                 elif self._attribute == "timeChae1":
-                    return getattr(settings, "time_chae1a", None)
+                    val = getattr(settings, "time_chae1a", None)
                 elif self._attribute == "batUseCap":
-                    return getattr(settings, "bat_use_cap", None)
+                    val = getattr(settings, "batUseCap", None)
                 elif self._attribute == "batHighCap":
-                    return getattr(settings, "bat_high_cap", None)
-                    
-            return None
+                    val = getattr(settings, "batHighCap", None)
+                else:
+                    val = getattr(settings, self._attribute, None)
+                
+                if val is None:
+                    return None
+
+                # Special handling: if it's a time string like "07:00" convert to datetime
+                if isinstance(val, str) and ":" in val:
+                    # Convert string time like "07:00" to a localized datetime object for HA
+                    try:
+                        dt_obj = datetime.strptime(val, "%H:%M").time()
+                        # Return localized datetime, today with that time
+                        today = dt_util.now().date()
+                        dt_localized = dt_util.as_local(datetime.combine(today, dt_obj))
+                        return dt_localized.isoformat()
+                    except Exception as e:
+                        _LOGGER.error(f"Error parsing time string '{val}' for sensor {self._attr_name}: {e}")
+                        return val
+                
+                # If it's numeric or already a valid value, just return it
+                return val
+            else:
+                _LOGGER.debug(f"Settings cache not available for {self._attr_name}")
+                return None
         except Exception as ex:
-            _LOGGER.error(f"Error getting battery settings value for {self._attr_name}: {ex}")
+            _LOGGER.error(f"Error getting battery settings sensor value for {self._attr_name}: {ex}")
             return None
-    
+
     @property
     def available(self) -> bool:
         """Return if entity is available."""
         try:
             client = self.hass.data[DOMAIN][self._config_entry.entry_id]["client"]
-            return hasattr(client.api_client, "_settings_cache") and client.api_client._settings_cache is not None
-        except Exception:
+            return hasattr(client.api_client, "_settings_cache") and bool(client.api_client._settings_cache)
+        except Exception as ex:
+            _LOGGER.debug(f"Error checking availability for {self._attr_name}: {ex}")
             return False
-    
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return the state attributes."""
-        try:
-            client = self.hass.data[DOMAIN][self._config_entry.entry_id]["client"]
-            if hasattr(client.api_client, "_settings_cache") and client.api_client._settings_cache:
-                settings = client.api_client._settings_cache
-                return {
-                    "last_updated": getattr(settings, "last_updated", "Unknown"),
-                    "grid_charge": getattr(settings, "grid_charge", None),
-                    "ctr_dis": getattr(settings, "ctr_dis", None),
-                    "bat_high_cap": getattr(settings, "bat_high_cap", None)
-                }
-        except Exception:
-            pass
-        return {}
