@@ -118,3 +118,28 @@ For issues, feature requests, or questions, please open an issue on GitHub.
 ## Credits
 
 This integration was created with the help of the Home Assistant community and Claude AI.
+
+---
+
+## 🚧 This Fork — Custom Enhancements by icpiot
+
+This fork builds on the original ByteWatt Home Assistant integration with these key additions:
+
+- ✅ Added support for toggling **Enable Grid Charging** via API (`grid_charge` and `enableGridCharging` fields)
+- ✅ Full support for battery scheduling fields:
+  - Charge start/end times (`time_chaf1a`, `time_chae1a`)
+  - Discharge start/end times (`time_disf1a`, `time_dise1a`)
+  - Minimum and maximum State of Charge (`bat_use_cap`, `bat_high_cap`)
+- ✅ Added Home Assistant `input_boolean.bytewatt_enable_grid_charging` for dashboard toggle
+- ✅ Implemented sync helpers to keep HA toggle and ByteWatt API in harmony
+- ✅ Validated and sanitized all relevant time and SOC input parameters
+- 🔄 Upcoming: Full syncing of **Enable Grid Charging Battery** and **Enable Battery Discharge Time Control** with Home Assistant
+
+Special thanks to ChatGPT (OpenAI) for code brainstorming and assistance.
+
+⚠️ **Note:** This fork is actively developed and may differ from the official integration. Use responsibly.
+
+---
+
+For original project details, visit:  
+[candreacchio/neovoltBattery_HomeAssistantPlugin](https://github.com/candreacchio/neovoltBattery_HomeAssistantPlugin)
