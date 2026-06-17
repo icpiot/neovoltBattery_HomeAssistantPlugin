@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional, Set
 import voluptuous as vol
 from homeassistant.components.persistent_notification import async_create, async_dismiss
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.event import (
     async_call_later,
     async_track_time_change,
@@ -21,6 +22,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .bytewatt_client import ByteWattClient
+from .api.neovolt_client import ByteWattAuthError
 from .const import (
     DOMAIN,
     CONF_HEARTBEAT_INTERVAL,
@@ -225,6 +227,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             
             _LOGGER.debug(f"Coordinator data refreshed with keys: {list(data.keys())}")
             return data
+        except ByteWattAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except Exception as err:
             # Record the error in diagnostics
             self.diagnostic_service.log_diagnostic("update_error", {

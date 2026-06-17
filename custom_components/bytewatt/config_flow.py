@@ -71,6 +71,7 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._client: ByteWattClient | None = None
         self._inverters: list[dict[str, Any]] = []
         self._reconfigure_entry: config_entries.ConfigEntry | None = None
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
         errors = {}
@@ -146,6 +147,48 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=f"Byte-Watt ({self._user_input[CONF_USERNAME]})",
             data=self._user_input,
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]):
+        """Handle a reauth flow triggered by auth failures."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Confirm updated credentials for an existing account."""
+        entry = self._reauth_entry
+        assert entry is not None
+
+        errors = {}
+        if user_input is not None:
+            client = ByteWattClient(
+                self.hass,
+                entry.data[CONF_USERNAME],
+                user_input[CONF_PASSWORD],
+                host_system_id=entry.data.get(CONF_HOST_SYSTEM_ID, ""),
+                host_sys_sn=entry.data.get(CONF_HOST_SYS_SN, ""),
+            )
+            if not await client.initialize():
+                errors["base"] = "auth"
+            else:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({
+                vol.Required(CONF_PASSWORD): str,
+            }),
+            description_placeholders={
+                "username": entry.data[CONF_USERNAME],
+            },
+            errors=errors,
         )
 
     # ---------- Reconfigure (change Host inverter without losing entity history) ----------
