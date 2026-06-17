@@ -723,7 +723,34 @@ class SettingsManager:
                 raise SettingsValidationError("Cannot set discharge_power: no discharge slot")
             merged.discharge_slots[0].charge_power = int(pending["discharge_power"])
 
+        self._normalize_slot_powers_to_poinv(merged)
         return merged
+
+    @staticmethod
+    def _normalize_slot_powers_to_poinv(merged: CycleStrategy) -> None:
+        """Keep slot powers within the payload's effective rated-power ceiling.
+
+        HAR captures from parallel SPB5K systems show the server validating
+        the *entire* cycle-strategy payload against ``poinv``. Once the
+        backend decides the effective ceiling is 5000 W, leaving an unrelated
+        slot at 10000 W can cause even a simple SOC or enable-flag edit to be
+        rejected with "Power setting must not exceed rated power."
+
+        Clamp both charge and discharge slot powers to the current payload
+        ceiling before submit so stale slot values do not poison otherwise
+        valid writes.
+        """
+        try:
+            ceiling = int(merged.poinv or 0)
+        except (TypeError, ValueError):
+            return
+        if ceiling <= 0:
+            return
+
+        for slot in merged.charge_slots:
+            slot.charge_power = min(int(slot.charge_power), ceiling)
+        for slot in merged.discharge_slots:
+            slot.charge_power = min(int(slot.charge_power), ceiling)
 
     def _build_feedin_payload(
         self,

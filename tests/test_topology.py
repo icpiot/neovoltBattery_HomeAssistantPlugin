@@ -21,6 +21,8 @@ def _load_topology_module():
 topology = _load_topology_module()
 ByteWattScope = topology.ByteWattScope
 DiscoveredInverter = topology.DiscoveredInverter
+StrategyFieldScope = topology.StrategyFieldScope
+strategy_field_scope = topology.strategy_field_scope
 
 
 def test_aggregate_scope_uses_all_sys_sn():
@@ -70,3 +72,11 @@ def test_discovered_inverter_maps_to_settings_scope():
     assert scope.effective_sys_sn == "SN-1"
     assert scope.device_id == "device-1"
     assert scope.battery_id == "battery-1"
+
+
+def test_strategy_field_scope_matches_har_observations():
+    assert strategy_field_scope("charge_power") is StrategyFieldScope.SHARED
+    assert strategy_field_scope("grid_charging") is StrategyFieldScope.PER_BATTERY
+    assert strategy_field_scope("charge_cap") is StrategyFieldScope.PER_BATTERY
+    assert strategy_field_scope("poinv") is StrategyFieldScope.HYBRID
+    assert strategy_field_scope("unknown_field") is StrategyFieldScope.UNKNOWN

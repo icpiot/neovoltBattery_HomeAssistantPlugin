@@ -293,6 +293,29 @@ def test_build_battery_payload_does_not_mutate_cache(manager, populated_cache):
     assert manager._battery_cache.bat_use_cap == original_soc
 
 
+def test_build_battery_payload_clamps_slot_powers_to_poinv(manager, populated_cache):
+    """A stale 10 kW slot must not poison a submit once the API drops to 5 kW."""
+    populated_cache.poinv = 5000
+    manager._battery_cache = populated_cache
+
+    merged = manager._build_battery_payload({"minimum_soc": 30})
+
+    assert merged.charge_slots[0].charge_power == 5000
+    assert merged.discharge_slots[0].charge_power == 5000
+
+
+def test_build_battery_payload_preserves_lower_slot_powers(manager, populated_cache):
+    populated_cache.poinv = 5000
+    populated_cache.charge_slots[0].charge_power = 4000
+    populated_cache.discharge_slots[0].charge_power = 3000
+    manager._battery_cache = populated_cache
+
+    merged = manager._build_battery_payload({"grid_charging": False})
+
+    assert merged.charge_slots[0].charge_power == 4000
+    assert merged.discharge_slots[0].charge_power == 3000
+
+
 # ---------------------------------------------------------------------------
 # SubmitResult helpers
 # ---------------------------------------------------------------------------

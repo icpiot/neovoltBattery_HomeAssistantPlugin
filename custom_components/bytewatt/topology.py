@@ -12,7 +12,42 @@ migration, and future HAR-derived per-battery work can share one shape.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+class StrategyFieldScope(str, Enum):
+    """Observed backend scope for a cycle-strategy field.
+
+    The Byte-Watt cloud does not behave like a clean "all fields are shared"
+    or "all fields are per-battery" API. HAR captures from dual-inverter
+    systems show a hybrid model, so we keep the observed scope close to the
+    topology helpers for future entity/config work.
+    """
+
+    AGGREGATE = "aggregate"
+    PER_BATTERY = "per_battery"
+    SHARED = "shared"
+    HYBRID = "hybrid"
+    UNKNOWN = "unknown"
+
+
+FIELD_SCOPE_OVERRIDES: dict[str, StrategyFieldScope] = {
+    # Confirmed from HARs: changing chargePower on one inverter propagates
+    # into the shared/ALL strategy view even without an ALL save.
+    "charge_power": StrategyFieldScope.SHARED,
+    # Confirmed from HARs: these continue to differ by selected battery view.
+    "grid_charging": StrategyFieldScope.PER_BATTERY,
+    "charge_cap": StrategyFieldScope.PER_BATTERY,
+    # The backend-derived power ceiling flips between 10 kW and 5 kW and is
+    # used for whole-payload validation, so treat it as hybrid/unstable.
+    "poinv": StrategyFieldScope.HYBRID,
+}
+
+
+def strategy_field_scope(field_name: str) -> StrategyFieldScope:
+    """Return the best-known backend scope for a logical settings field."""
+    return FIELD_SCOPE_OVERRIDES.get(field_name, StrategyFieldScope.UNKNOWN)
 
 
 @dataclass(frozen=True)
