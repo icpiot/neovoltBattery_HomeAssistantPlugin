@@ -131,6 +131,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "client": client,
         "coordinator": coordinator,
         "manager": manager,
+        "aggregate_scope": client.aggregate_scope(),
+        "settings_scope": client.selected_settings_scope(),
     }
 
     # If host is now configured, clear any leftover repair issue from prior runs.
@@ -248,11 +250,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             try:
                 logged_in = await client.initialize()
                 if logged_in:
-                    inverters = await client.fetch_inverter_list()
+                    inverters = await client.fetch_inverter_inventory()
                     inverter_count = len(inverters)
                     if inverter_count == 1:
-                        new_data[CONF_HOST_SYSTEM_ID] = inverters[0].get("systemId", "")
-                        new_data[CONF_HOST_SYS_SN] = inverters[0].get("sysSn", "")
+                        new_data[CONF_HOST_SYSTEM_ID] = inverters[0].system_id
+                        new_data[CONF_HOST_SYS_SN] = inverters[0].sys_sn
                         _LOGGER.info(
                             "Auto-selected single inverter %s as Host",
                             new_data[CONF_HOST_SYS_SN],
@@ -339,7 +341,7 @@ def _check_host_inverter_repair_issue(
         try:
             if not await client.initialize():
                 return
-            inverters = await client.fetch_inverter_list()
+            inverters = await client.fetch_inverter_inventory()
             # >= 1 because async_setup_entry only called this when
             # host_system_id is empty — any inverter at all is enough to
             # justify prompting the user to pick one.
