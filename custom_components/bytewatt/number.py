@@ -90,10 +90,11 @@ class _BatteryNumberBase(CoordinatorEntity, NumberEntity):
         return float(value) if value is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        try:
-            self._manager.stage_battery(self._field, value)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_battery_one_shot({self._field: value})
+        if not result.battery_ok:
+            detail = result.battery_error or "see logs for details"
+            raise HomeAssistantError(f"Battery settings update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 

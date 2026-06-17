@@ -89,10 +89,11 @@ class ByteWattGridFeedInSwitch(_FeedInBase, SwitchEntity):
         await self._stage(False)
 
     async def _stage(self, state: bool) -> None:
-        try:
-            self._manager.stage_feedin("enabled", state)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_feedin_one_shot(top={"enabled": state})
+        if not result.feedin_ok:
+            detail = result.feedin_error or "see logs for details"
+            raise HomeAssistantError(f"Grid feed-in update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -114,10 +115,13 @@ class ByteWattGridFeedInCutoffSOC(_FeedInBase, NumberEntity):
         return float(val) if val is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        try:
-            self._manager.stage_feedin("cutoff_soc", value)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_feedin_one_shot(
+            top={"cutoff_soc": value}
+        )
+        if not result.feedin_ok:
+            detail = result.feedin_error or "see logs for details"
+            raise HomeAssistantError(f"Grid feed-in update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -147,10 +151,13 @@ class ByteWattGridFeedInSlotPower(_FeedInSlotBase, NumberEntity):
         return float(val) if val is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        try:
-            self._manager.stage_feedin_slot(TIME_PERIOD_1, "power", value)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_feedin_one_shot(
+            slots={TIME_PERIOD_1: {"power": value}}
+        )
+        if not result.feedin_ok:
+            detail = result.feedin_error or "see logs for details"
+            raise HomeAssistantError(f"Grid feed-in slot update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -167,10 +174,13 @@ class ByteWattGridFeedInSlotStartTime(_FeedInSlotBase, TimeEntity):
         return _parse_time(val) if val else None
 
     async def async_set_value(self, value: time) -> None:
-        try:
-            self._manager.stage_feedin_slot(TIME_PERIOD_1, "start", _fmt_time(value))
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_feedin_one_shot(
+            slots={TIME_PERIOD_1: {"start": _fmt_time(value)}}
+        )
+        if not result.feedin_ok:
+            detail = result.feedin_error or "see logs for details"
+            raise HomeAssistantError(f"Grid feed-in slot update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -187,10 +197,13 @@ class ByteWattGridFeedInSlotEndTime(_FeedInSlotBase, TimeEntity):
         return _parse_time(val) if val else None
 
     async def async_set_value(self, value: time) -> None:
-        try:
-            self._manager.stage_feedin_slot(TIME_PERIOD_1, "end", _fmt_time(value))
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_feedin_one_shot(
+            slots={TIME_PERIOD_1: {"end": _fmt_time(value)}}
+        )
+        if not result.feedin_ok:
+            detail = result.feedin_error or "see logs for details"
+            raise HomeAssistantError(f"Grid feed-in slot update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 

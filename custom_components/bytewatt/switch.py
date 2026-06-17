@@ -85,10 +85,11 @@ class _BatterySwitchBase(CoordinatorEntity, SwitchEntity):
         await self._stage(False)
 
     async def _stage(self, state: bool) -> None:
-        try:
-            self._manager.stage_battery(self._field, state)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_battery_one_shot({self._field: state})
+        if not result.battery_ok:
+            detail = result.battery_error or "see logs for details"
+            raise HomeAssistantError(f"Battery settings update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
