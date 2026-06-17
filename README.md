@@ -187,6 +187,17 @@ logger:
 
 Open an issue at https://github.com/candreacchio/neovoltBattery_HomeAssistantPlugin/issues.
 
+## UI Examples
+
+This branch also includes example dashboard assets under [examples](examples):
+
+- `examples/lovelace/bytewatt_policy_cards.yaml`
+- `examples/www/bytewatt-policy-card.js`
+
+The YAML view is usable immediately with your current entities. The custom card
+is a closer replica of the mobile app screen and leaves unsupported controls
+marked as HAR-pending until the remaining API fields are wired.
+
 ## Credits
 
 Originally built with the Home Assistant community and Claude AI. Subsequent

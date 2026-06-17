@@ -1,0 +1,85 @@
+# Replace all example entity ids with your own.
+#
+# This view intentionally separates:
+# - live controls already backed by the current integration
+# - HAR-pending placeholders for fields not yet modeled
+
+title: ByteWatt Policy
+path: bytewatt-policy
+icon: mdi:battery-cog
+cards:
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Charging / Discharging Setting
+          App-style policy view for the current ByteWatt integration state.
+          Rows marked **HAR pending** are placeholders for fields not yet backed
+          by entities.
+
+      - type: entities
+        title: Charging / Discharging
+        show_header_toggle: false
+        entities:
+          - entity: number.REPLACE_ME_charge_cap
+            name: Charging stops at SOC
+          - entity: button.REPLACE_ME_submit_settings
+            name: Submit
+          - type: divider
+          - entity: switch.REPLACE_ME_grid_charging
+            name: Charge
+          - entity: switch.REPLACE_ME_discharge_time_control
+            name: Discharge
+          - entity: number.REPLACE_ME_minimum_soc
+            name: Discharging cut off SOC
+
+      - type: entities
+        title: Charge Window
+        show_header_toggle: false
+        entities:
+          - entity: time.REPLACE_ME_charge_start_time
+            name: Charge Start
+          - entity: time.REPLACE_ME_charge_end_time
+            name: Charge End
+
+      - type: entities
+        title: Discharge Window
+        show_header_toggle: false
+        entities:
+          - entity: time.REPLACE_ME_discharge_start_time
+            name: Discharge Start
+          - entity: time.REPLACE_ME_discharge_end_time
+            name: Discharge End
+
+      - type: markdown
+        content: |
+          ### HAR Pending
+          - Execution Cycle
+          - UPS reserve enable
+          - Off-grid SOC Control
+          - Any separate Start / Stop master action, if the app uses one
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Feed-in Control
+          Mirrors the feed-in screen with only the currently modeled controls.
+
+      - type: entities
+        title: Feed-in
+        show_header_toggle: false
+        entities:
+          - entity: switch.REPLACE_ME_grid_feedin_enabled
+            name: Feed-in Function
+          - entity: number.REPLACE_ME_grid_feedin_cutoff_soc
+            name: Discharging cut off SOC
+          - type: divider
+          - entity: time.REPLACE_ME_grid_feedin_slot_1_start
+            name: Feed-in Time1 Start
+          - entity: time.REPLACE_ME_grid_feedin_slot_1_end
+            name: Feed-in Time1 End
+          - entity: number.REPLACE_ME_grid_feedin_slot_1_power
+            name: Feed-in Power
+          - entity: button.REPLACE_ME_submit_settings
+            name: Submit
