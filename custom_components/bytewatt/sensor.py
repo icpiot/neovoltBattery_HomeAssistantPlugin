@@ -235,7 +235,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "PV_Generated_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:solar-power"
+            "mdi:solar-power",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattGridSensor(
             coordinator, 
@@ -245,7 +246,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "Consumed_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:home-lightning-bolt"
+            "mdi:home-lightning-bolt",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattGridSensor(
             coordinator, 
@@ -255,7 +257,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "Feed_In_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:transmission-tower-export"
+            "mdi:transmission-tower-export",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattGridSensor(
             coordinator, 
@@ -265,7 +268,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "Grid_Import_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:transmission-tower-import"
+            "mdi:transmission-tower-import",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattGridSensor(
             coordinator, 
@@ -275,7 +279,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "Battery_Charged_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:battery-plus"
+            "mdi:battery-plus",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattGridSensor(
             coordinator, 
@@ -285,7 +290,8 @@ async def async_setup_entry(
             SensorDeviceClass.ENERGY,
             "Battery_Discharged_Today", 
             UnitOfEnergy.KILO_WATT_HOUR,
-            "mdi:battery-minus"
+            "mdi:battery-minus",
+            state_class=SensorStateClass.TOTAL,
         ),
         ByteWattSensor(
             coordinator, 
