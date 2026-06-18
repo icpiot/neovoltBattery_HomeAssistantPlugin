@@ -8,6 +8,7 @@ class ByteWattPolicyCard extends HTMLElement {
       throw new Error("variant must be battery_policy or feedin_policy");
     }
     this._config = this._withDefaults({ ...config, variant });
+    this._status = null;
   }
 
   set hass(hass) {
@@ -77,6 +78,7 @@ class ByteWattPolicyCard extends HTMLElement {
 
     const batteryRows = [
       this._selectRow("Battery", this._config.settings_target),
+      this._mockForceChargeRow(),
       this._numberInputRow("Charging stops at SOC", this._config.charge_cap),
       this._selectRow("Execution Cycle", this._config.execution_cycle),
       this._switchRow("Charge", this._config.charge_switch),
@@ -192,6 +194,12 @@ class ByteWattPolicyCard extends HTMLElement {
           background: linear-gradient(90deg, #2f68be 0%, #3c8cff 100%);
           color: #fff;
         }
+        .button.ghost {
+          background: rgba(255,255,255,0.08);
+          color: rgba(255,255,255,0.82);
+          width: auto;
+          min-width: 96px;
+        }
         .button.disabled {
           background: rgba(255,255,255,0.08);
           color: rgba(255,255,255,0.45);
@@ -226,10 +234,31 @@ class ByteWattPolicyCard extends HTMLElement {
           font-size: 0.83rem;
           line-height: 1.45;
         }
+        .status {
+          margin-top: 12px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          font-size: 0.9rem;
+          line-height: 1.4;
+        }
+        .status.success {
+          background: rgba(62, 142, 92, 0.22);
+          border: 1px solid rgba(89, 189, 124, 0.35);
+          color: #c6f5d2;
+        }
+        .status.error {
+          background: rgba(163, 52, 52, 0.24);
+          border: 1px solid rgba(218, 87, 87, 0.35);
+          color: #ffd3d3;
+        }
         .button-row {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 10px;
+        }
+        .button-row.triple {
+          grid-template-columns: 1fr auto auto;
+          align-items: end;
         }
         .select-wrap {
           display: flex;
@@ -280,6 +309,10 @@ class ByteWattPolicyCard extends HTMLElement {
           font-size: 0.95rem;
           text-align: right;
         }
+        .mock-note {
+          color: rgba(255,255,255,0.58);
+          font-size: 0.82rem;
+        }
       </style>
       <ha-card>
         <div class="wrap">
@@ -287,6 +320,7 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="section">
             ${rows.join("")}
           </div>
+          ${this._status ? `<div class="status ${this._status.type}">${this._escapeHtml(this._status.message)}</div>` : ""}
           <div class="meta">
             Do not use the web portal All selector for settings changes; use an individual battery selection instead.
           </div>
@@ -321,41 +355,84 @@ class ByteWattPolicyCard extends HTMLElement {
     }));
   }
 
+  _setStatus(type, message) {
+    this._status = { type, message };
+    this.render();
+  }
+
+  _errorMessage(error) {
+    if (error?.body?.message) {
+      return error.body.message;
+    }
+    if (error?.error?.message) {
+      return error.error.message;
+    }
+    if (error?.message) {
+      return error.message;
+    }
+    return String(error || "Unknown error");
+  }
+
+  async _runAction(action, successMessage, failurePrefix) {
+    try {
+      await action();
+      this._setStatus("success", successMessage);
+    } catch (error) {
+      this._setStatus("error", `${failurePrefix}: ${this._errorMessage(error)}`);
+    }
+  }
+
   async _toggle(entityId) {
     if (!entityId) {
       return;
     }
-    await this._hass.callService("homeassistant", "toggle", { entity_id: entityId });
+    await this._runAction(
+      () => this._hass.callService("homeassistant", "toggle", { entity_id: entityId }),
+      "Setting updated",
+      "Toggle failed"
+    );
   }
 
   async _selectOption(entityId, option) {
     if (!entityId || !option) {
       return;
     }
-    await this._hass.callService("select", "select_option", {
-      entity_id: entityId,
-      option,
-    });
+    await this._runAction(
+      () => this._hass.callService("select", "select_option", {
+        entity_id: entityId,
+        option,
+      }),
+      "Selection updated",
+      "Selection failed"
+    );
   }
 
   async _setNumberValue(entityId, value) {
     if (!entityId || value === "" || value === null || value === undefined) {
       return;
     }
-    await this._hass.callService("number", "set_value", {
-      entity_id: entityId,
-      value: Number(value),
-    });
+    await this._runAction(
+      () => this._hass.callService("number", "set_value", {
+        entity_id: entityId,
+        value: Number(value),
+      }),
+      "Value saved",
+      "Save failed"
+    );
   }
 
   async _setTimeValue(entityId, value) {
     if (!entityId || !value) {
       return;
     }
-    await this._hass.callService("time", "set_value", {
-      entity_id: entityId,
-      time: value,
-    });
+    await this._runAction(
+      () => this._hass.callService("time", "set_value", {
+        entity_id: entityId,
+        time: value,
+      }),
+      "Time saved",
+      "Time update failed"
+    );
   }
 
   async _pressButton(entityId) {
@@ -364,7 +441,12 @@ class ByteWattPolicyCard extends HTMLElement {
     }
     const [domain] = entityId.split(".");
     if (domain === "button") {
-      await this._hass.callService("button", "press", { entity_id: entityId });
+      const label = entityId.includes("discard") ? "Pending changes discarded" : "Submit sent";
+      await this._runAction(
+        () => this._hass.callService("button", "press", { entity_id: entityId }),
+        label,
+        "Button action failed"
+      );
       return;
     }
     this._fireMoreInfo(entityId);
