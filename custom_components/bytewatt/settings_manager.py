@@ -141,6 +141,24 @@ def _v_cutoff_soc(name: str, value: Any) -> float:
     return fv
 
 
+def _v_execution_cycle(name: str, value: Any) -> int:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "daily":
+            return 0
+        if normalized == "weekly":
+            return 1
+    try:
+        iv = int(value)
+    except (TypeError, ValueError) as ex:
+        raise SettingsValidationError(
+            f"{name} must be daily/weekly or 0/1, got {value!r}"
+        ) from ex
+    if iv not in (0, 1):
+        raise SettingsValidationError(f"{name} must be 0 or 1, got {iv}")
+    return iv
+
+
 BATTERY_VALIDATORS = {
     "minimum_soc":            _v_soc,
     "charge_cap":             _v_soc,
@@ -150,8 +168,11 @@ BATTERY_VALIDATORS = {
     "discharge_end_time":     _v_time,
     "grid_charging":          _v_bool,
     "discharge_time_control": _v_bool,
+    "ups_reserve_enable":     _v_bool,
+    "offgrid_soc_control":    _v_bool,
     "charge_power":           _v_battery_power,
     "discharge_power":        _v_battery_power,
+    "execution_cycle_type":   _v_execution_cycle,
 }
 
 FEEDIN_VALIDATORS = {
@@ -292,6 +313,12 @@ class SettingsManager:
             return bool(c.grid_charge_cycle)
         if field == "discharge_time_control":
             return bool(c.ctr_dis_cycle)
+        if field == "ups_reserve_enable":
+            return bool(c.ups_reserve_enable)
+        if field == "offgrid_soc_control":
+            return bool(c.loadcutout_en)
+        if field == "execution_cycle_type":
+            return c.execute_cycle_type
         if field == "charge_power":
             return c.charge_slots[0].charge_power if c.charge_slots else default
         if field == "discharge_power":
@@ -699,6 +726,12 @@ class SettingsManager:
             merged.grid_charge_cycle = 1 if pending["grid_charging"] else 0
         if "discharge_time_control" in pending:
             merged.ctr_dis_cycle = 1 if pending["discharge_time_control"] else 0
+        if "ups_reserve_enable" in pending:
+            merged.ups_reserve_enable = 1 if pending["ups_reserve_enable"] else 0
+        if "offgrid_soc_control" in pending:
+            merged.loadcutout_en = 1 if pending["offgrid_soc_control"] else 0
+        if "execution_cycle_type" in pending:
+            merged.execute_cycle_type = int(pending["execution_cycle_type"])
 
         for field_name, slot_attr, slot_list_attr in (
             ("charge_start_time",    "begin_time", "charge_slots"),

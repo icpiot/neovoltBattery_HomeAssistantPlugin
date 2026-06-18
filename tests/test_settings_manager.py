@@ -134,6 +134,13 @@ def test_bool_validator_coerces():
     assert BATTERY_VALIDATORS["grid_charging"]("grid_charging", "false") is False
 
 
+def test_execution_cycle_validator_accepts_daily_and_weekly():
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", "daily") == 0
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", "weekly") == 1
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", 0) == 0
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", 1) == 1
+
+
 def test_battery_power_validator_range():
     assert BATTERY_VALIDATORS["charge_power"]("charge_power", 5000) == 5000
     with pytest.raises(SettingsValidationError):
@@ -222,6 +229,9 @@ def test_effective_battery_reads_from_cache(manager, populated_cache):
     manager._battery_cache = populated_cache
     assert manager.effective_battery("minimum_soc") == 10.0
     assert manager.effective_battery("grid_charging") is True
+    assert manager.effective_battery("execution_cycle_type") == 0
+    assert manager.effective_battery("ups_reserve_enable") is False
+    assert manager.effective_battery("offgrid_soc_control") is False
     assert manager.effective_battery("charge_start_time") == "01:00"
     assert manager.effective_battery("discharge_end_time") == "22:00"
 
@@ -277,6 +287,18 @@ def test_build_battery_payload_applies_slot_times(manager, populated_cache):
     })
     assert merged.charge_slots[0].begin_time == "02:00"
     assert merged.discharge_slots[0].end_time == "23:00"
+
+
+def test_build_battery_payload_applies_strategy_toggles(manager, populated_cache):
+    manager._battery_cache = populated_cache
+    merged = manager._build_battery_payload({
+        "execution_cycle_type": 1,
+        "ups_reserve_enable": True,
+        "offgrid_soc_control": True,
+    })
+    assert merged.execute_cycle_type == 1
+    assert merged.ups_reserve_enable == 1
+    assert merged.loadcutout_en == 1
 
 
 def test_build_battery_payload_raises_when_no_cache(manager):

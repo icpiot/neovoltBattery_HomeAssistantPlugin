@@ -216,9 +216,11 @@ class CycleStrategy:
     bat_use_cap: float = 10.0       # batUseCap        (global discharging cutoff SOC)
     execute_cycle_type: int = 0     # 0=every day, 1=every week
     ups_reserve: int = 0
+    ups_reserve_enable: int = 0
     loadcutout_en: int = 0
     cutoff_soc: int = 0
     wakeup_soc: int = 0
+    is_support_offgrid_soc_control: bool = False
     is_support_discharge_soc: bool = True
     is_support_charger_power: bool = True
     poinv: int = 10000
@@ -248,9 +250,11 @@ class CycleStrategy:
             bat_use_cap=_safe_float(data, "batUseCap", 10.0),
             execute_cycle_type=_safe_int(data, "executeCycleType", 0),
             ups_reserve=_safe_int(data, "upsReserve", 0),
+            ups_reserve_enable=_safe_int(data, "upsReserveEnable", 0),
             loadcutout_en=_safe_int(data, "loadcutoutEn", 0),
             cutoff_soc=_safe_int(data, "cutoffSoc", 0),
             wakeup_soc=_safe_int(data, "wakeupSoc", 0),
+            is_support_offgrid_soc_control=_safe_bool(data, "isSupportOffGridSocControl", False),
             is_support_discharge_soc=_safe_bool(data, "isSupportDischargeSoc", True),
             is_support_charger_power=_safe_bool(data, "isSupportChargerPower", True),
             poinv=_safe_int(data, "poinv", 10000),
@@ -275,6 +279,7 @@ class CycleStrategy:
             "id": self.host_system_id,
             "batUseCap": self.bat_use_cap,
             "upsReserve": self.ups_reserve,
+            "upsReserveEnable": self.ups_reserve_enable,
             "executeCycleType": self.execute_cycle_type,
             "loadcutoutEn": self.loadcutout_en,
             "wakeupSoc": self.wakeup_soc,

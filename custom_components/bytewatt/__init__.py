@@ -78,7 +78,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS = ["sensor", "number", "time", "switch", "button"]
+PLATFORMS = ["sensor", "number", "time", "switch", "button", "select"]
 
 # Services are domain-level; registered once via hass.services.has_service() guard.
 

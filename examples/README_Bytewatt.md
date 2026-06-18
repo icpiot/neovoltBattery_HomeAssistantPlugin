@@ -17,6 +17,9 @@ already exposed by the integration can be wired now:
 - Discharge enable
 - Charge cap
 - Discharge cutoff SOC
+- Execution cycle
+- UPS reserve enable
+- Off-grid SOC control
 - Charge/discharge times
 - Feed-in controls
 - Submit / discard buttons
@@ -24,13 +27,22 @@ already exposed by the integration can be wired now:
 The following app controls still need HAR-backed API work before they become
 real entities:
 
-- Execution cycle
-- UPS reserve enable
-- Off-grid SOC control
 - Any separate Start / Stop master action, if the app uses one
 
 The YAML view gives you a usable interface now. The custom card gives you a
 closer replica of the app screen without pretending the missing controls work.
+
+## Recommended Setup
+
+For settings changes, do not use the Byte-Watt web portal's `All` selection.
+In parallel-battery systems that path can overwrite shared strategy data in
+unpredictable ways.
+
+Recommended approach:
+
+- use `All` only for merged monitoring
+- configure settings from an individual battery selection
+- prefer a per-battery/host-target setup for charge, discharge, and policy changes
 
 ## Installing The Custom Card
 
@@ -72,6 +84,9 @@ At a minimum, these battery-policy fields can be overridden:
 - `discharge_cutoff`
 - `charge_power`
 - `discharge_power`
+- `execution_cycle`
+- `ups_reserve`
+- `offgrid_soc_control`
 - `charge_start_time`
 - `charge_end_time`
 - `discharge_start_time`
@@ -91,7 +106,4 @@ Feed-in fields:
 
 Optional not-yet-enabled fields:
 
-- `execution_cycle`
-- `ups_reserve`
-- `offgrid_soc_control`
 - `master_action`

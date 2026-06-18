@@ -8,6 +8,10 @@ cards:
         content: |
           ## Charging / Discharging Setting
           Wired to the current `house_bytewatt_battery_system` entities.
+          
+          Do not use the web portal `All` selector for settings changes.
+          For parallel systems, configure policy settings from an individual
+          battery selection.
 
       - type: entities
         title: Charging / Discharging
@@ -25,6 +29,12 @@ cards:
             name: Charge Power
           - entity: number.house_bytewatt_battery_system_battery_discharge_power
             name: Discharge Power
+          - entity: select.house_bytewatt_battery_system_execution_cycle
+            name: Execution Cycle
+          - entity: switch.house_bytewatt_battery_system_ups_reserve_enable
+            name: UPS reserve enable
+          - entity: switch.house_bytewatt_battery_system_offgrid_soc_control
+            name: Off-grid SOC Control
 
       - type: entities
         title: Charge Window
@@ -55,10 +65,7 @@ cards:
 
       - type: markdown
         content: |
-          ### Not Enabled In This Integration Yet
-          - Execution Cycle
-          - UPS reserve enable
-          - Off-grid SOC Control
+          ### Still Not Modeled
           - Any separate Start / Stop master action, if the app uses one
 
   - type: vertical-stack
@@ -67,6 +74,8 @@ cards:
         content: |
           ## Feed-in Control
           Wired to the currently exposed feed-in entities.
+          
+          Use an individual battery selection for feed-in settings.
 
       - type: entities
         title: Feed-in

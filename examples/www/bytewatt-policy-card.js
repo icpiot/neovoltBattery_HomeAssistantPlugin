@@ -30,6 +30,9 @@ class ByteWattPolicyCard extends HTMLElement {
         discharge_cutoff: `number.${prefix}_minimum_soc`,
         charge_power: `number.${prefix}_battery_charge_power`,
         discharge_power: `number.${prefix}_battery_discharge_power`,
+        execution_cycle: `select.${prefix}_execution_cycle`,
+        ups_reserve: `switch.${prefix}_ups_reserve_enable`,
+        offgrid_soc_control: `switch.${prefix}_offgrid_soc_control`,
         charge_start_time: `time.${prefix}_charge_start_time`,
         charge_end_time: `time.${prefix}_charge_end_time`,
         discharge_start_time: `time.${prefix}_discharge_start_time`,
@@ -79,9 +82,9 @@ class ByteWattPolicyCard extends HTMLElement {
       this._numberRow("Discharge Power", this._config.discharge_power, "W"),
       this._timeGroup("Charge Window", this._config.charge_start_time, this._config.charge_end_time),
       this._timeGroup("Discharge Window", this._config.discharge_start_time, this._config.discharge_end_time),
-      this._placeholderRow("Execution Cycle", this._config.execution_cycle),
-      this._placeholderRow("UPS reserve enable", this._config.ups_reserve),
-      this._placeholderRow("Off-grid SOC Control", this._config.offgrid_soc_control),
+      this._numberRow("Execution Cycle", this._config.execution_cycle),
+      this._switchRow("UPS reserve enable", this._config.ups_reserve),
+      this._switchRow("Off-grid SOC Control", this._config.offgrid_soc_control),
       this._actionButtons([
         { entityId: this._config.discard_button, label: "Discard", kind: "secondary" },
         { entityId: this._config.submit_button, label: "Submit", kind: "primary" },
@@ -232,7 +235,8 @@ class ByteWattPolicyCard extends HTMLElement {
             ${rows.join("")}
           </div>
           <div class="meta">
-            Rows marked Not enabled are app controls that are still not backed by the current integration.
+            Controls shown as Not configured are not yet available from the current integration data.
+            Do not use the web portal All selector for settings changes; use an individual battery selection instead.
           </div>
         </div>
       </ha-card>
@@ -306,21 +310,6 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="value">${this._friendlyState(entityId, suffix)}</div>
         </div>
         <div class="pill">${entityId ? "Edit" : "Configure"}</div>
-      </div>
-    `;
-  }
-
-  _placeholderRow(label, entityId) {
-    if (entityId) {
-      return this._numberRow(label, entityId);
-    }
-    return `
-      <div class="row">
-        <div>
-          <div class="label">${label}</div>
-          <div class="value">Not enabled in this integration yet</div>
-        </div>
-        <div class="pill disabled">Not enabled</div>
       </div>
     `;
   }
