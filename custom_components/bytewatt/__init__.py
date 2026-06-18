@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import entity_registry as er
 
 from .bytewatt_client import ByteWattClient
 from .coordinator import ByteWattDataUpdateCoordinator
@@ -70,6 +71,7 @@ from .const import (
     CURRENT_ENTRY_VERSION,
     FEEDIN_MAX_SLOTS,
     FEEDIN_MAX_POWER_W,
+    SENSOR_TOTAL_BATTERY_DISCHARGE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -159,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await _cleanup_legacy_entity_ids(hass, entry)
 
     # Reload the entry whenever the user changes options (currently just
     # scan_interval). Without this, edits via the Configure dialog would
@@ -166,6 +169,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
+
+
+async def _cleanup_legacy_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Rename known legacy entity IDs to the cleaner current form.
+
+    Older Byte-Watt builds could leave the total battery discharge sensor with
+    an entity_id derived from the device name and account username, even
+    though the unique_id already points at the stable modern sensor object.
+    Keep the cleanup narrow so we don't unexpectedly rename unrelated entities.
+    """
+    entity_registry = er.async_get(hass)
+    unique_id = f"{entry.entry_id}_{SENSOR_TOTAL_BATTERY_DISCHARGE}"
+    current_entity_id = entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+    desired_entity_id = "sensor.total_battery_discharge"
+
+    if not current_entity_id or current_entity_id == desired_entity_id:
+        return
+
+    existing = entity_registry.async_get(desired_entity_id)
+    if existing is not None:
+        _LOGGER.debug(
+            "Skipping Byte-Watt legacy entity rename because %s already exists",
+            desired_entity_id,
+        )
+        return
+
+    if "total_battery_discharge" not in current_entity_id:
+        return
+
+    _LOGGER.info(
+        "Renaming legacy Byte-Watt entity %s -> %s",
+        current_entity_id,
+        desired_entity_id,
+    )
+    entity_registry.async_update_entity(
+        current_entity_id,
+        new_entity_id=desired_entity_id,
+    )
 
 
 def _stop_heartbeat_factory(coordinator):
