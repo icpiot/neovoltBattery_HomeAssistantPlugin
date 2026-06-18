@@ -1,9 +1,13 @@
 class ByteWattPolicyCard extends HTMLElement {
   setConfig(config) {
-    if (!config || !config.variant) {
-      throw new Error("variant is required: battery_policy or feedin_policy");
+    if (!config) {
+      throw new Error("Card configuration is required");
     }
-    this._config = config;
+    const variant = config.variant || "battery_policy";
+    if (!["battery_policy", "feedin_policy"].includes(variant)) {
+      throw new Error("variant must be battery_policy or feedin_policy");
+    }
+    this._config = { ...config, variant };
   }
 
   set hass(hass) {
