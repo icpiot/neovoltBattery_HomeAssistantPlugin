@@ -163,6 +163,10 @@ class ByteWattPolicyCard extends HTMLElement {
           background: rgba(203, 146, 44, 0.2);
           color: #ffd38b;
         }
+        .pill.disabled {
+          background: rgba(120, 120, 120, 0.22);
+          color: rgba(255,255,255,0.72);
+        }
         .button {
           margin-top: 8px;
           padding: 15px 16px;
@@ -228,7 +232,7 @@ class ByteWattPolicyCard extends HTMLElement {
             ${rows.join("")}
           </div>
           <div class="meta">
-            Rows marked HAR pending are placeholders for app controls not yet modeled in the integration.
+            Rows marked Not enabled are app controls that are still not backed by the current integration.
           </div>
         </div>
       </ha-card>
@@ -314,9 +318,9 @@ class ByteWattPolicyCard extends HTMLElement {
       <div class="row">
         <div>
           <div class="label">${label}</div>
-          <div class="value">Waiting for HAR-backed entity</div>
+          <div class="value">Not enabled in this integration yet</div>
         </div>
-        <div class="pill pending">HAR pending</div>
+        <div class="pill disabled">Not enabled</div>
       </div>
     `;
   }

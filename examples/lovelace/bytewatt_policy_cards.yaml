@@ -55,7 +55,7 @@ cards:
 
       - type: markdown
         content: |
-          ### Still HAR Pending
+          ### Not Enabled In This Integration Yet
           - Execution Cycle
           - UPS reserve enable
           - Off-grid SOC Control

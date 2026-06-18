@@ -6,7 +6,7 @@ This folder contains two UI artifacts linked to the current branch work:
   Immediate-use Lovelace YAML using built-in cards.
 - `www/bytewatt-policy-card.js`
   A custom card scaffold that mirrors the Byte-Watt mobile app layout more
-  closely while keeping unsupported controls visibly marked as HAR-pending.
+  closely while keeping unsupported controls visibly marked as not enabled.
 
 ## Why Both Exist
 
@@ -89,7 +89,7 @@ Feed-in fields:
 - `feedin_submit_button`
 - `discard_button`
 
-Optional HAR-pending fields:
+Optional not-yet-enabled fields:
 
 - `execution_cycle`
 - `ups_reserve`
