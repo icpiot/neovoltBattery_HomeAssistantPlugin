@@ -42,6 +42,7 @@ class ByteWattPolicyCard extends HTMLElement {
         discard_button: `button.${prefix}_discard_pending_settings`,
       },
       feedin_policy: {
+        settings_target: `select.${prefix}_settings_target`,
         feedin_enabled: `switch.${prefix}_grid_feed_in_function`,
         feedin_cutoff: `number.${prefix}_grid_feed_in_discharging_cutoff_soc`,
         feedin_time_start: `time.${prefix}_grid_feed_in_time1_start`,
@@ -75,7 +76,7 @@ class ByteWattPolicyCard extends HTMLElement {
     );
 
     const batteryRows = [
-      this._numberRow("Battery", this._config.settings_target),
+      this._selectRow("Battery", this._config.settings_target),
       this._numberRow("Charging stops at SOC", this._config.charge_cap),
       this._switchRow("Charge", this._config.charge_switch),
       this._switchRow("Discharge", this._config.discharge_switch),
@@ -94,6 +95,7 @@ class ByteWattPolicyCard extends HTMLElement {
     ];
 
     const feedinRows = [
+      this._selectRow("Battery", this._config.settings_target),
       this._switchRow("Feed-in Function", this._config.feedin_enabled),
       this._numberRow("Discharging cut off SOC", this._config.feedin_cutoff),
       this._timeGroup("Feed-in Time1", this._config.feedin_time_start, this._config.feedin_time_end),
@@ -229,6 +231,29 @@ class ByteWattPolicyCard extends HTMLElement {
           grid-template-columns: 1fr 1fr;
           gap: 10px;
         }
+        .select-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          min-width: 180px;
+          gap: 6px;
+        }
+        .select-control {
+          width: 100%;
+          min-width: 180px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.08);
+          color: #fff;
+          font-size: 0.95rem;
+        }
+        .select-control:disabled {
+          color: rgba(255,255,255,0.45);
+        }
+        .select-control option {
+          color: #111;
+        }
       </style>
       <ha-card>
         <div class="wrap">
@@ -277,6 +302,16 @@ class ByteWattPolicyCard extends HTMLElement {
     await this._hass.callService("homeassistant", "toggle", { entity_id: entityId });
   }
 
+  async _selectOption(entityId, option) {
+    if (!entityId || !option) {
+      return;
+    }
+    await this._hass.callService("select", "select_option", {
+      entity_id: entityId,
+      option,
+    });
+  }
+
   async _pressButton(entityId) {
     if (!entityId) {
       return;
@@ -311,6 +346,30 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="value">${this._friendlyState(entityId, suffix)}</div>
         </div>
         <div class="pill">${entityId ? "Edit" : "Configure"}</div>
+      </div>
+    `;
+  }
+
+  _selectRow(label, entityId) {
+    const stateObj = this._stateObj(entityId);
+    const options = stateObj?.attributes?.options || [];
+    const current = stateObj?.state || "";
+    const disabled = !entityId || !options.length;
+    return `
+      <div class="row">
+        <div>
+          <div class="label">${label}</div>
+          <div class="value">${stateObj ? current : "Not configured"}</div>
+        </div>
+        <div class="select-wrap">
+          <select class="select-control" data-select="${entityId || ""}" ${disabled ? "disabled" : ""}>
+            ${options.length ? options.map((option) => `
+              <option value="${this._escapeHtml(option)}" ${option === current ? "selected" : ""}>
+                ${this._escapeHtml(option)}
+              </option>
+            `).join("") : `<option>${stateObj ? this._escapeHtml(current) : "Not configured"}</option>`}
+          </select>
+        </div>
       </div>
     `;
   }
@@ -352,6 +411,15 @@ class ByteWattPolicyCard extends HTMLElement {
     `;
   }
 
+  _escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
   _bindEvents() {
     this.shadowRoot.querySelectorAll("[data-more-info]").forEach((node) => {
       const entityId = node.getAttribute("data-more-info");
@@ -372,6 +440,16 @@ class ByteWattPolicyCard extends HTMLElement {
         return;
       }
       node.addEventListener("change", () => this._toggle(entityId));
+    });
+
+    this.shadowRoot.querySelectorAll("[data-select]").forEach((node) => {
+      const entityId = node.getAttribute("data-select");
+      if (!entityId) {
+        return;
+      }
+      node.addEventListener("change", (event) => {
+        this._selectOption(entityId, event.target.value);
+      });
     });
   }
 }
