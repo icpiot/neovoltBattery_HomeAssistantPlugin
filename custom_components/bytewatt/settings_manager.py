@@ -42,6 +42,7 @@ from homeassistant.util import dt as dt_util
 from .api.settings import BatterySettingsAPI, GridFeedInSettingsAPI
 from .const import signal_pending_changed
 from .models import CycleStrategy, GridFeedInSettings, GridFeedInSlot
+from .topology import ByteWattScope
 from .utilities.time_utils import sanitize_time_format
 
 _LOGGER = logging.getLogger(__name__)
@@ -252,6 +253,14 @@ class SettingsManager:
             + sum(len(s) for s in self._pending_feedin_slots.values())
         )
 
+    @property
+    def current_settings_target_id(self) -> str:
+        return getattr(self._client, "host_system_id", "") or ""
+
+    @property
+    def current_settings_target_sys_sn(self) -> str:
+        return getattr(self._client, "host_sys_sn", "") or ""
+
     def effective_battery(self, field: str, default: Any = None) -> Any:
         if field in self._pending_battery:
             return self._pending_battery[field]
@@ -367,6 +376,22 @@ class SettingsManager:
         self._pending_feedin_slots.clear()
         self._notify_pending_changed()
         return count
+
+    async def async_select_settings_target(self, scope: ByteWattScope) -> int:
+        """Switch the active settings target and refresh caches for it.
+
+        Returns the number of pending changes discarded during the switch.
+        """
+        discarded = self.discard()
+        async with self._lock:
+            self._client.host_system_id = scope.effective_system_id
+            self._client.host_sys_sn = scope.settings_sys_sn or scope.sys_sn
+            self._battery_cache = None
+            self._feedin_cache = None
+            self._battery_submitted_at = None
+            self._feedin_submitted_at = None
+            await self._refresh_locked()
+        return discarded
 
     # ------------------------------------------------------------------
     # Refresh — pulls latest server state into cache, never touches pending

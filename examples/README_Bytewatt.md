@@ -13,6 +13,7 @@ This folder contains two UI artifacts linked to the current branch work:
 The integration backend is only partially modeled today. The confirmed controls
 already exposed by the integration can be wired now:
 
+- Settings target selector
 - Charge enable
 - Discharge enable
 - Charge cap
@@ -41,7 +42,7 @@ unpredictable ways.
 Recommended approach:
 
 - use `All` only for merged monitoring
-- configure settings from an individual battery selection
+- configure settings from the integration's individual battery selector
 - prefer a per-battery/host-target setup for charge, discharge, and policy changes
 
 ## Installing The Custom Card
@@ -78,6 +79,7 @@ If your entity IDs differ, you can still override them in the custom card.
 At a minimum, these battery-policy fields can be overridden:
 
 - `entity_prefix`
+- `settings_target`
 - `charge_switch`
 - `discharge_switch`
 - `charge_cap`

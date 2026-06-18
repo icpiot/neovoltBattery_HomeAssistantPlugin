@@ -17,6 +17,8 @@ cards:
         title: Charging / Discharging
         show_header_toggle: false
         entities:
+          - entity: select.house_bytewatt_battery_system_settings_target
+            name: Battery
           - entity: number.house_bytewatt_battery_system_battery_charge_cap
             name: Charging stops at SOC
           - entity: switch.house_bytewatt_battery_system_grid_charging_battery

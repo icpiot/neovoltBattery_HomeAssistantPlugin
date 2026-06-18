@@ -26,6 +26,7 @@ from custom_components.bytewatt.settings_manager import (  # noqa: E402
     SettingsManager,
     SubmitResult,
 )
+from custom_components.bytewatt.topology import ByteWattScope  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -455,3 +456,41 @@ async def test_submit_preserves_pending_after_all_retries_fail(
     # Pending preserved so the user can fix + retry without re-entering.
     assert manager.has_pending() is True
     assert manager.effective_battery("minimum_soc") == 25
+
+
+class _StubApiClient:
+    def __init__(self):
+        self.host_system_id = "system-a"
+        self.host_sys_sn = "sn-a"
+
+
+async def test_select_settings_target_switches_client_and_clears_state(stub_hass):
+    client = _StubApiClient()
+    manager = SettingsManager(stub_hass, client=client, entry_id="test_entry")
+    manager._battery_cache = object()
+    manager._feedin_cache = object()
+    manager._battery_submitted_at = object()
+    manager._feedin_submitted_at = object()
+    manager.stage_battery("minimum_soc", 25)
+    manager.stage_feedin("enabled", True)
+
+    async def fake_refresh_locked():
+        manager._battery_cache = "battery-cache"
+        manager._feedin_cache = "feedin-cache"
+
+    manager._refresh_locked = fake_refresh_locked
+
+    discarded = await manager.async_select_settings_target(
+        ByteWattScope(system_id="system-b", sys_sn="sn-b")
+    )
+
+    assert discarded == 2
+    assert client.host_system_id == "system-b"
+    assert client.host_sys_sn == "sn-b"
+    assert manager.current_settings_target_id == "system-b"
+    assert manager.current_settings_target_sys_sn == "sn-b"
+    assert manager.has_pending() is False
+    assert manager._battery_cache == "battery-cache"
+    assert manager._feedin_cache == "feedin-cache"
+    assert manager._battery_submitted_at is None
+    assert manager._feedin_submitted_at is None

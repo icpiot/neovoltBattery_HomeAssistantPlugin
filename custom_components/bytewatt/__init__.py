@@ -133,6 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "client": client,
         "coordinator": coordinator,
         "manager": manager,
+        "inverters": [],
         "aggregate_scope": client.aggregate_scope(),
         "settings_scope": client.selected_settings_scope(),
     }
@@ -145,6 +146,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _check_host_inverter_repair_issue(hass, entry, client)
 
     await coordinator.async_config_entry_first_refresh()
+
+    try:
+        inverters = await client.fetch_inverter_inventory()
+    except Exception as ex:  # noqa: BLE001
+        _LOGGER.debug("Could not refresh ByteWatt inverter inventory after setup: %s", ex)
+        inverters = []
+    hass.data[DOMAIN][entry.entry_id]["inverters"] = inverters
+    if host_system_id:
+        matched = next((inv for inv in inverters if inv.system_id == host_system_id), None)
+        if matched is not None:
+            hass.data[DOMAIN][entry.entry_id]["settings_scope"] = matched.to_settings_scope()
 
     if recovery_options[CONF_RECOVERY_ENABLED]:
         await coordinator.start_heartbeat()

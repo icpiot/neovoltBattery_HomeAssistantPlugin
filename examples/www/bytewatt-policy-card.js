@@ -24,6 +24,7 @@ class ByteWattPolicyCard extends HTMLElement {
     const variant = config.variant || "battery_policy";
     const defaults = {
       battery_policy: {
+        settings_target: `select.${prefix}_settings_target`,
         charge_cap: `number.${prefix}_battery_charge_cap`,
         charge_switch: `switch.${prefix}_grid_charging_battery`,
         discharge_switch: `switch.${prefix}_battery_discharge_time_control`,
@@ -74,6 +75,7 @@ class ByteWattPolicyCard extends HTMLElement {
     );
 
     const batteryRows = [
+      this._numberRow("Battery", this._config.settings_target),
       this._numberRow("Charging stops at SOC", this._config.charge_cap),
       this._switchRow("Charge", this._config.charge_switch),
       this._switchRow("Discharge", this._config.discharge_switch),
@@ -235,7 +237,6 @@ class ByteWattPolicyCard extends HTMLElement {
             ${rows.join("")}
           </div>
           <div class="meta">
-            Controls shown as Not configured are not yet available from the current integration data.
             Do not use the web portal All selector for settings changes; use an individual battery selection instead.
           </div>
         </div>
