@@ -1,9 +1,3 @@
-# Replace all example entity ids with your own.
-#
-# This view intentionally separates:
-# - live controls already backed by the current integration
-# - HAR-pending placeholders for fields not yet modeled
-
 title: ByteWatt Policy
 path: bytewatt-policy
 icon: mdi:battery-cog
@@ -13,47 +7,55 @@ cards:
       - type: markdown
         content: |
           ## Charging / Discharging Setting
-          App-style policy view for the current ByteWatt integration state.
-          Rows marked **HAR pending** are placeholders for fields not yet backed
-          by entities.
+          Wired to the current `house_bytewatt_battery_system` entities.
 
       - type: entities
         title: Charging / Discharging
         show_header_toggle: false
         entities:
-          - entity: number.REPLACE_ME_charge_cap
+          - entity: number.house_bytewatt_battery_system_battery_charge_cap
             name: Charging stops at SOC
-          - entity: button.REPLACE_ME_submit_settings
-            name: Submit
-          - type: divider
-          - entity: switch.REPLACE_ME_grid_charging
+          - entity: switch.house_bytewatt_battery_system_grid_charging_battery
             name: Charge
-          - entity: switch.REPLACE_ME_discharge_time_control
+          - entity: switch.house_bytewatt_battery_system_battery_discharge_time_control
             name: Discharge
-          - entity: number.REPLACE_ME_minimum_soc
+          - entity: number.house_bytewatt_battery_system_minimum_soc
             name: Discharging cut off SOC
+          - entity: number.house_bytewatt_battery_system_battery_charge_power
+            name: Charge Power
+          - entity: number.house_bytewatt_battery_system_battery_discharge_power
+            name: Discharge Power
 
       - type: entities
         title: Charge Window
         show_header_toggle: false
         entities:
-          - entity: time.REPLACE_ME_charge_start_time
+          - entity: time.house_bytewatt_battery_system_charge_start_time
             name: Charge Start
-          - entity: time.REPLACE_ME_charge_end_time
+          - entity: time.house_bytewatt_battery_system_charge_end_time
             name: Charge End
 
       - type: entities
         title: Discharge Window
         show_header_toggle: false
         entities:
-          - entity: time.REPLACE_ME_discharge_start_time
+          - entity: time.house_bytewatt_battery_system_discharge_start_time
             name: Discharge Start
-          - entity: time.REPLACE_ME_discharge_end_time
+          - entity: time.house_bytewatt_battery_system_discharge_end_time
             name: Discharge End
+
+      - type: entities
+        title: Pending Changes
+        show_header_toggle: false
+        entities:
+          - entity: button.house_bytewatt_battery_system_discard_pending_settings
+            name: Discard
+          - entity: button.house_bytewatt_battery_system_submit_settings
+            name: Submit
 
       - type: markdown
         content: |
-          ### HAR Pending
+          ### Still HAR Pending
           - Execution Cycle
           - UPS reserve enable
           - Off-grid SOC Control
@@ -64,22 +66,23 @@ cards:
       - type: markdown
         content: |
           ## Feed-in Control
-          Mirrors the feed-in screen with only the currently modeled controls.
+          Wired to the currently exposed feed-in entities.
 
       - type: entities
         title: Feed-in
         show_header_toggle: false
         entities:
-          - entity: switch.REPLACE_ME_grid_feedin_enabled
+          - entity: switch.house_bytewatt_battery_system_grid_feed_in_function
             name: Feed-in Function
-          - entity: number.REPLACE_ME_grid_feedin_cutoff_soc
+          - entity: number.house_bytewatt_battery_system_grid_feed_in_discharging_cutoff_soc
             name: Discharging cut off SOC
-          - type: divider
-          - entity: time.REPLACE_ME_grid_feedin_slot_1_start
+          - entity: time.house_bytewatt_battery_system_grid_feed_in_time1_start
             name: Feed-in Time1 Start
-          - entity: time.REPLACE_ME_grid_feedin_slot_1_end
+          - entity: time.house_bytewatt_battery_system_grid_feed_in_time1_end
             name: Feed-in Time1 End
-          - entity: number.REPLACE_ME_grid_feedin_slot_1_power
+          - entity: number.house_bytewatt_battery_system_grid_feed_in_time1_power
             name: Feed-in Power
-          - entity: button.REPLACE_ME_submit_settings
+          - entity: button.house_bytewatt_battery_system_discard_pending_settings
+            name: Discard
+          - entity: button.house_bytewatt_battery_system_submit_settings
             name: Submit

@@ -46,24 +46,40 @@ url: /local/bytewatt-policy-card.js
 type: module
 ```
 
-## Entity Mapping
+## Defaults
 
-You must replace the example entity ids with your actual ones. The examples use
-placeholders because entity ids depend on your device name and HA slugging.
+The examples now default to the current entity set used in this branch:
 
-At a minimum, map these:
+- prefix: `house_bytewatt_battery_system`
+- submit button: `button.house_bytewatt_battery_system_submit_settings`
+- discard button: `button.house_bytewatt_battery_system_discard_pending_settings`
 
+The custom card will use those entities automatically if you do not override
+them.
+
+The Lovelace YAML example is also pre-wired to the same entity IDs.
+
+## Optional Overrides
+
+If your entity IDs differ, you can still override them in the custom card.
+
+At a minimum, these battery-policy fields can be overridden:
+
+- `entity_prefix`
 - `charge_switch`
 - `discharge_switch`
 - `charge_cap`
 - `discharge_cutoff`
+- `charge_power`
+- `discharge_power`
 - `charge_start_time`
 - `charge_end_time`
 - `discharge_start_time`
 - `discharge_end_time`
 - `submit_button`
+- `discard_button`
 
-Feed-in card fields:
+Feed-in fields:
 
 - `feedin_enabled`
 - `feedin_cutoff`
@@ -71,8 +87,9 @@ Feed-in card fields:
 - `feedin_time_end`
 - `feedin_power`
 - `feedin_submit_button`
+- `discard_button`
 
-Optional HAR-pending placeholders:
+Optional HAR-pending fields:
 
 - `execution_cycle`
 - `ups_reserve`

@@ -7,7 +7,7 @@ class ByteWattPolicyCard extends HTMLElement {
     if (!["battery_policy", "feedin_policy"].includes(variant)) {
       throw new Error("variant must be battery_policy or feedin_policy");
     }
-    this._config = { ...config, variant };
+    this._config = this._withDefaults({ ...config, variant });
   }
 
   set hass(hass) {
@@ -17,6 +17,43 @@ class ByteWattPolicyCard extends HTMLElement {
 
   getCardSize() {
     return this._config?.variant === "feedin_policy" ? 7 : 10;
+  }
+
+  _withDefaults(config) {
+    const prefix = config.entity_prefix || "house_bytewatt_battery_system";
+    const variant = config.variant || "battery_policy";
+    const defaults = {
+      battery_policy: {
+        charge_cap: `number.${prefix}_battery_charge_cap`,
+        charge_switch: `switch.${prefix}_grid_charging_battery`,
+        discharge_switch: `switch.${prefix}_battery_discharge_time_control`,
+        discharge_cutoff: `number.${prefix}_minimum_soc`,
+        charge_power: `number.${prefix}_battery_charge_power`,
+        discharge_power: `number.${prefix}_battery_discharge_power`,
+        charge_start_time: `time.${prefix}_charge_start_time`,
+        charge_end_time: `time.${prefix}_charge_end_time`,
+        discharge_start_time: `time.${prefix}_discharge_start_time`,
+        discharge_end_time: `time.${prefix}_discharge_end_time`,
+        submit_button: `button.${prefix}_submit_settings`,
+        discard_button: `button.${prefix}_discard_pending_settings`,
+      },
+      feedin_policy: {
+        feedin_enabled: `switch.${prefix}_grid_feed_in_function`,
+        feedin_cutoff: `number.${prefix}_grid_feed_in_discharging_cutoff_soc`,
+        feedin_time_start: `time.${prefix}_grid_feed_in_time1_start`,
+        feedin_time_end: `time.${prefix}_grid_feed_in_time1_end`,
+        feedin_power: `number.${prefix}_grid_feed_in_time1_power`,
+        submit_button: `button.${prefix}_submit_settings`,
+        discard_button: `button.${prefix}_discard_pending_settings`,
+      },
+    };
+
+    return {
+      ...defaults[variant],
+      ...config,
+      variant,
+      entity_prefix: prefix,
+    };
   }
 
   render() {
@@ -35,16 +72,20 @@ class ByteWattPolicyCard extends HTMLElement {
 
     const batteryRows = [
       this._numberRow("Charging stops at SOC", this._config.charge_cap),
-      this._actionButton(this._config.master_action, "Stop", "secondary"),
-      this._placeholderRow("Execution Cycle", this._config.execution_cycle),
       this._switchRow("Charge", this._config.charge_switch),
       this._switchRow("Discharge", this._config.discharge_switch),
       this._numberRow("Discharging cut off SOC", this._config.discharge_cutoff),
-      this._placeholderRow("UPS reserve enable", this._config.ups_reserve),
-      this._placeholderRow("Off-grid SOC Control", this._config.offgrid_soc_control),
+      this._numberRow("Charge Power", this._config.charge_power, "W"),
+      this._numberRow("Discharge Power", this._config.discharge_power, "W"),
       this._timeGroup("Charge Window", this._config.charge_start_time, this._config.charge_end_time),
       this._timeGroup("Discharge Window", this._config.discharge_start_time, this._config.discharge_end_time),
-      this._actionButton(this._config.submit_button, "Submit", "primary"),
+      this._placeholderRow("Execution Cycle", this._config.execution_cycle),
+      this._placeholderRow("UPS reserve enable", this._config.ups_reserve),
+      this._placeholderRow("Off-grid SOC Control", this._config.offgrid_soc_control),
+      this._actionButtons([
+        { entityId: this._config.discard_button, label: "Discard", kind: "secondary" },
+        { entityId: this._config.submit_button, label: "Submit", kind: "primary" },
+      ]),
     ];
 
     const feedinRows = [
@@ -52,7 +93,10 @@ class ByteWattPolicyCard extends HTMLElement {
       this._numberRow("Discharging cut off SOC", this._config.feedin_cutoff),
       this._timeGroup("Feed-in Time1", this._config.feedin_time_start, this._config.feedin_time_end),
       this._numberRow("Feed-in Power", this._config.feedin_power, "W"),
-      this._actionButton(this._config.feedin_submit_button || this._config.submit_button, "Submit", "primary"),
+      this._actionButtons([
+        { entityId: this._config.discard_button, label: "Discard", kind: "secondary" },
+        { entityId: this._config.feedin_submit_button || this._config.submit_button, label: "Submit", kind: "primary" },
+      ]),
     ];
 
     const rows = variant === "feedin_policy" ? feedinRows : batteryRows;
@@ -120,7 +164,6 @@ class ByteWattPolicyCard extends HTMLElement {
           color: #ffd38b;
         }
         .button {
-          width: 100%;
           margin-top: 8px;
           padding: 15px 16px;
           border: 0;
@@ -128,6 +171,7 @@ class ByteWattPolicyCard extends HTMLElement {
           font-size: 1rem;
           font-weight: 700;
           cursor: pointer;
+          width: 100%;
         }
         .button.primary {
           background: linear-gradient(90deg, #2d68c8 0%, #3d8cff 100%);
@@ -170,6 +214,11 @@ class ByteWattPolicyCard extends HTMLElement {
           color: rgba(255,255,255,0.58);
           font-size: 0.83rem;
           line-height: 1.45;
+        }
+        .button-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
         }
       </style>
       <ha-card>
@@ -268,6 +317,14 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="value">Waiting for HAR-backed entity</div>
         </div>
         <div class="pill pending">HAR pending</div>
+      </div>
+    `;
+  }
+
+  _actionButtons(items) {
+    return `
+      <div class="button-row">
+        ${items.map(({ entityId, label, kind }) => this._actionButton(entityId, label, kind)).join("")}
       </div>
     `;
   }
