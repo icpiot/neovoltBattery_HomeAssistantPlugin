@@ -77,15 +77,15 @@ class ByteWattPolicyCard extends HTMLElement {
 
     const batteryRows = [
       this._selectRow("Battery", this._config.settings_target),
-      this._numberRow("Charging stops at SOC", this._config.charge_cap),
+      this._numberInputRow("Charging stops at SOC", this._config.charge_cap),
+      this._selectRow("Execution Cycle", this._config.execution_cycle),
       this._switchRow("Charge", this._config.charge_switch),
+      this._numberInputRow("Charge Power", this._config.charge_power, "W"),
+      this._timeInputGroup("Charge Window", this._config.charge_start_time, this._config.charge_end_time),
       this._switchRow("Discharge", this._config.discharge_switch),
-      this._numberRow("Discharging cut off SOC", this._config.discharge_cutoff),
-      this._numberRow("Charge Power", this._config.charge_power, "W"),
-      this._numberRow("Discharge Power", this._config.discharge_power, "W"),
-      this._timeGroup("Charge Window", this._config.charge_start_time, this._config.charge_end_time),
-      this._timeGroup("Discharge Window", this._config.discharge_start_time, this._config.discharge_end_time),
-      this._numberRow("Execution Cycle", this._config.execution_cycle),
+      this._numberInputRow("Discharging cut off SOC", this._config.discharge_cutoff),
+      this._numberInputRow("Discharge Power", this._config.discharge_power, "W"),
+      this._timeInputGroup("Discharge Window", this._config.discharge_start_time, this._config.discharge_end_time),
       this._switchRow("UPS reserve enable", this._config.ups_reserve),
       this._switchRow("Off-grid SOC Control", this._config.offgrid_soc_control),
       this._actionButtons([
@@ -97,9 +97,9 @@ class ByteWattPolicyCard extends HTMLElement {
     const feedinRows = [
       this._selectRow("Battery", this._config.settings_target),
       this._switchRow("Feed-in Function", this._config.feedin_enabled),
-      this._numberRow("Discharging cut off SOC", this._config.feedin_cutoff),
-      this._timeGroup("Feed-in Time1", this._config.feedin_time_start, this._config.feedin_time_end),
-      this._numberRow("Feed-in Power", this._config.feedin_power, "W"),
+      this._numberInputRow("Discharging cut off SOC", this._config.feedin_cutoff),
+      this._timeInputGroup("Feed-in Time1", this._config.feedin_time_start, this._config.feedin_time_end),
+      this._numberInputRow("Feed-in Power", this._config.feedin_power, "W"),
       this._actionButtons([
         { entityId: this._config.discard_button, label: "Discard", kind: "secondary" },
         { entityId: this._config.feedin_submit_button || this._config.submit_button, label: "Submit", kind: "primary" },
@@ -238,6 +238,13 @@ class ByteWattPolicyCard extends HTMLElement {
           min-width: 180px;
           gap: 6px;
         }
+        .input-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          min-width: 180px;
+          gap: 10px;
+        }
         .select-control {
           width: 100%;
           min-width: 180px;
@@ -253,6 +260,25 @@ class ByteWattPolicyCard extends HTMLElement {
         }
         .select-control option {
           color: #111;
+        }
+        .value-input {
+          width: 120px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.08);
+          color: #fff;
+          font-size: 0.95rem;
+          text-align: center;
+        }
+        .value-input:disabled {
+          color: rgba(255,255,255,0.45);
+        }
+        .value-suffix {
+          min-width: 20px;
+          color: rgba(255,255,255,0.68);
+          font-size: 0.95rem;
+          text-align: right;
         }
       </style>
       <ha-card>
@@ -312,6 +338,26 @@ class ByteWattPolicyCard extends HTMLElement {
     });
   }
 
+  async _setNumberValue(entityId, value) {
+    if (!entityId || value === "" || value === null || value === undefined) {
+      return;
+    }
+    await this._hass.callService("number", "set_value", {
+      entity_id: entityId,
+      value: Number(value),
+    });
+  }
+
+  async _setTimeValue(entityId, value) {
+    if (!entityId || !value) {
+      return;
+    }
+    await this._hass.callService("time", "set_value", {
+      entity_id: entityId,
+      time: value,
+    });
+  }
+
   async _pressButton(entityId) {
     if (!entityId) {
       return;
@@ -346,6 +392,37 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="value">${this._friendlyState(entityId, suffix)}</div>
         </div>
         <div class="pill">${entityId ? "Edit" : "Configure"}</div>
+      </div>
+    `;
+  }
+
+  _numberInputRow(label, entityId, suffix = "") {
+    const stateObj = this._stateObj(entityId);
+    const disabled = !entityId || !stateObj || stateObj.state === "unavailable" || stateObj.state === "unknown";
+    const step = stateObj?.attributes?.step ?? "1";
+    const min = stateObj?.attributes?.min;
+    const max = stateObj?.attributes?.max;
+    const unit = suffix || stateObj?.attributes?.unit_of_measurement || "";
+    const value = !disabled ? this._escapeHtml(stateObj.state) : "";
+    return `
+      <div class="row">
+        <div>
+          <div class="label">${label}</div>
+          <div class="value">${disabled ? "Not configured" : "Press Enter to apply"}</div>
+        </div>
+        <div class="input-wrap">
+          <input
+            class="value-input"
+            type="number"
+            data-number="${entityId || ""}"
+            value="${value}"
+            step="${this._escapeHtml(step)}"
+            ${min !== undefined ? `min="${this._escapeHtml(min)}"` : ""}
+            ${max !== undefined ? `max="${this._escapeHtml(max)}"` : ""}
+            ${disabled ? "disabled" : ""}
+          />
+          <div class="value-suffix">${this._escapeHtml(unit)}</div>
+        </div>
       </div>
     `;
   }
@@ -400,6 +477,35 @@ class ByteWattPolicyCard extends HTMLElement {
     `;
   }
 
+  _timeInputGroup(title, startEntity, endEntity) {
+    return `
+      <div class="time-group">
+        <div class="time-header">${title}</div>
+        <div class="time-pair">
+          ${this._timeInputBox("Start", startEntity)}
+          ${this._timeInputBox("End", endEntity)}
+        </div>
+      </div>
+    `;
+  }
+
+  _timeInputBox(label, entityId) {
+    const stateObj = this._stateObj(entityId);
+    const disabled = !entityId || !stateObj || stateObj.state === "unavailable" || stateObj.state === "unknown";
+    return `
+      <div class="time-box">
+        <div class="label">${label}</div>
+        <input
+          class="value-input"
+          type="time"
+          data-time="${entityId || ""}"
+          value="${this._escapeHtml(this._timeInputValue(entityId))}"
+          ${disabled ? "disabled" : ""}
+        />
+      </div>
+    `;
+  }
+
   _actionButton(entityId, label, kind) {
     const disabled = !entityId;
     return `
@@ -418,6 +524,14 @@ class ByteWattPolicyCard extends HTMLElement {
       .replaceAll(">", "&gt;")
       .replaceAll("\"", "&quot;")
       .replaceAll("'", "&#39;");
+  }
+
+  _timeInputValue(entityId) {
+    const stateObj = this._stateObj(entityId);
+    if (!stateObj || !stateObj.state || stateObj.state === "unavailable" || stateObj.state === "unknown") {
+      return "";
+    }
+    return String(stateObj.state).slice(0, 5);
   }
 
   _bindEvents() {
@@ -449,6 +563,31 @@ class ByteWattPolicyCard extends HTMLElement {
       }
       node.addEventListener("change", (event) => {
         this._selectOption(entityId, event.target.value);
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("[data-number]").forEach((node) => {
+      const entityId = node.getAttribute("data-number");
+      if (!entityId) {
+        return;
+      }
+      node.addEventListener("change", (event) => {
+        this._setNumberValue(entityId, event.target.value);
+      });
+      node.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          this._setNumberValue(entityId, event.target.value);
+        }
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("[data-time]").forEach((node) => {
+      const entityId = node.getAttribute("data-time");
+      if (!entityId) {
+        return;
+      }
+      node.addEventListener("change", (event) => {
+        this._setTimeValue(entityId, event.target.value);
       });
     });
   }
