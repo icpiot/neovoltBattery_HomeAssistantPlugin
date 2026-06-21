@@ -509,6 +509,38 @@ class NeovoltClient:
                                         battery_data["Battery_Discharged_Today"] = max(
                                             total_used - total_gained, 0
                                         )
+
+                                    time_points = stats_data.get("time") or []
+                                    battery_curve = stats_data.get("cbat") or []
+                                    if not battery_curve and time_points:
+                                        battery_curve = [stats_data.get("soc")] * len(time_points)
+
+                                    battery_data["Power_Diagram"] = {
+                                        "date": today_stats_date,
+                                        "time": time_points,
+                                        "series": {
+                                            "bat": battery_curve,
+                                            "load": stats_data.get("usePower") or stats_data.get("homePower") or [],
+                                            "solar": stats_data.get("ppv") or [],
+                                            "feed_in": stats_data.get("feedIn") or [],
+                                            "consumed": stats_data.get("gridCharge") or [],
+                                        },
+                                        "summary": {
+                                            "soc": stats_data.get("soc"),
+                                            "solar_generation": stats_data.get("epvtoday"),
+                                            "load_consumption": stats_data.get("eload"),
+                                            "feed_in": stats_data.get("efeedIn"),
+                                            "grid_consumption": stats_data.get("egridCharge"),
+                                            "battery_charge": stats_data.get("echarge"),
+                                            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
+                                        },
+                                        "meta": {
+                                            "power_source": stats_data.get("powerSource"),
+                                            "system_time": stats_data.get("systemTime"),
+                                            "maximum_power": stats_data.get("maximumPower"),
+                                            "inverter_mode": stats_data.get("inverterMode"),
+                                        },
+                                    }
                             elif today_stats_result.get("code") == 6069:
                                 _LOGGER.warning("Session expired (code 6069) during today's detailed stats fetch")
                                 if _retry_count < MAX_RELOGIN_RETRIES and await self.async_login():

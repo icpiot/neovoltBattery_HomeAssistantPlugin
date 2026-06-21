@@ -4,9 +4,13 @@ This folder contains two UI artifacts linked to the current branch work:
 
 - `lovelace/bytewatt_policy_cards.yaml`
   Immediate-use Lovelace YAML using built-in cards.
+- `lovelace/bytewatt_report_card.yaml`
+  Minimal view config for the custom reporting card.
 - `www/bytewatt-policy-card.js`
   A custom card scaffold that mirrors the Byte-Watt mobile app layout more
   closely while keeping unsupported controls visibly marked as not enabled.
+- `www/bytewatt-report-card.js`
+  A separate reporting card for power-flow, daily summaries, and chart data.
 
 ## Why Both Exist
 
@@ -50,11 +54,19 @@ Recommended approach:
 Copy the working file from `examples/www/` to your Home Assistant `www` folder:
 
 - `/config/www/community/bytewatt-card/bytewatt-policy-card.js`
+- `/config/www/community/bytewatt-card/bytewatt-report-card.js`
 
 Then add it as a dashboard resource using a fixed filename and a cache-buster:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=037
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=048
+type: module
+```
+
+Reporting card:
+
+```yaml
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=002
 type: module
 ```
 
@@ -70,13 +82,21 @@ To force Home Assistant and the browser to load a fresh custom-card build:
 Example next iteration:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=038
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=049
+type: module
+```
+
+Reporting card next iteration:
+
+```yaml
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=003
 type: module
 ```
 
 Current build stamp in this repo:
 
-- `037`
+- Policy card: `048`
+- Reporting card: `002`
 
 ## Defaults
 
