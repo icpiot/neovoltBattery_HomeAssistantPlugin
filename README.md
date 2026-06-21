@@ -132,6 +132,10 @@ The optional custom cards are not auto-installed by HACS with the integration.
 If you want them, copy the files above into Home Assistant's `www` folder and
 add them as Lovelace resources.
 
+A future standalone frontend-package scaffold for these cards now lives under:
+
+- `frontend/bytewatt-card/`
+
 Current resource URLs used by this branch:
 
 ```yaml
