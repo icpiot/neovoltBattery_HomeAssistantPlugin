@@ -1,0 +1,6 @@
+title: ByteWatt Report
+path: bytewatt-report
+icon: mdi:chart-timeline-variant
+cards:
+  - type: custom:bytewatt-report-card
+    entity_prefix: house_bytewatt_battery_system

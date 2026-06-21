@@ -1,0 +1,3 @@
+bytewatt-policy-card.js
+/local/community/bytewatt-card/bytewatt-policy-card.js?v=048
+
