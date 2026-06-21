@@ -11,6 +11,11 @@ It packages:
 The suite module imports both cards, so a future standalone HACS frontend repo
 would only need a single Lovelace resource.
 
+To prepare that future repo, use:
+
+- `scripts/export_frontend_package.ps1`
+- `frontend/bytewatt-card/SPLIT_CHECKLIST.md`
+
 ## Current builds
 
 - Policy card: `048`
