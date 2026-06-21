@@ -100,3 +100,8 @@ type: module
   assets from the same repo at once
 - if preferred, the optional frontend package can be split into a second repo
   and reviewed separately
+
+Supporting handoff docs:
+
+- `docs/UPSTREAM_SPLIT_PLAN.md`
+- `docs/REVIEWER_INSTALL_CHECKLIST.md`
