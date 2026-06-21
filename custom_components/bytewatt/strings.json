@@ -22,6 +22,13 @@
         "data": {
           "host_system_id": "Host inverter"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Byte-Watt",
+        "description": "Authentication for {username} failed. Enter the updated Byte-Watt password to reconnect without removing the integration.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -31,7 +38,8 @@
       "already_configured": "This Byte-Watt account is already configured.",
       "auth": "Authentication failed. Update credentials and try again.",
       "no_inverters": "No inverters were found on this account.",
-      "reconfigure_successful": "Host inverter selection updated."
+      "reconfigure_successful": "Host inverter selection updated.",
+      "reauth_successful": "Byte-Watt credentials updated."
     }
   },
   "options": {

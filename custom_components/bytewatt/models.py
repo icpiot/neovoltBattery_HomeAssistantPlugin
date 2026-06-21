@@ -216,16 +216,21 @@ class CycleStrategy:
     bat_use_cap: float = 10.0       # batUseCap        (global discharging cutoff SOC)
     execute_cycle_type: int = 0     # 0=every day, 1=every week
     ups_reserve: int = 0
+    ups_reserve_enable: int = 0
     loadcutout_en: int = 0
     cutoff_soc: int = 0
     wakeup_soc: int = 0
+    is_support_offgrid_soc_control: bool = False
     is_support_discharge_soc: bool = True
     is_support_charger_power: bool = True
     poinv: int = 10000
 
-    # Time slot lists
-    charge_slots: List[ChargeSlot] = field(default_factory=list)
-    discharge_slots: List[DischargeSlot] = field(default_factory=list)
+    # Stored time slot lists. The backend keeps daily and weekly rows
+    # separately and switches between them via executeCycleType.
+    day_charge_slots: List[ChargeSlot] = field(default_factory=list)
+    day_discharge_slots: List[DischargeSlot] = field(default_factory=list)
+    week_charge_slots: List[ChargeSlot] = field(default_factory=list)
+    week_discharge_slots: List[DischargeSlot] = field(default_factory=list)
 
     # Echo of unknown GET fields so they round-trip through PUT
     raw_data: Dict[str, Any] = field(default_factory=dict)
@@ -234,13 +239,21 @@ class CycleStrategy:
 
     @classmethod
     def from_api_response(cls, data: Dict[str, Any]) -> "CycleStrategy":
-        charge_slots = [
+        day_charge_slots = [
             ChargeSlot.from_api_response(s)
             for s in (data.get("dayChargeTimeList") or [])
         ]
-        discharge_slots = [
+        day_discharge_slots = [
             DischargeSlot.from_api_response(s)
             for s in (data.get("dayDischargeTimeList") or [])
+        ]
+        week_charge_slots = [
+            ChargeSlot.from_api_response(s)
+            for s in (data.get("weekChargeTimeList") or [])
+        ]
+        week_discharge_slots = [
+            DischargeSlot.from_api_response(s)
+            for s in (data.get("weekDischargeTimeList") or [])
         ]
         return cls(
             grid_charge_cycle=_safe_int(data, "gridChargeCycle", 1),
@@ -248,16 +261,50 @@ class CycleStrategy:
             bat_use_cap=_safe_float(data, "batUseCap", 10.0),
             execute_cycle_type=_safe_int(data, "executeCycleType", 0),
             ups_reserve=_safe_int(data, "upsReserve", 0),
+            ups_reserve_enable=_safe_int(data, "upsReserveEnable", 0),
             loadcutout_en=_safe_int(data, "loadcutoutEn", 0),
             cutoff_soc=_safe_int(data, "cutoffSoc", 0),
             wakeup_soc=_safe_int(data, "wakeupSoc", 0),
+            is_support_offgrid_soc_control=_safe_bool(data, "isSupportOffGridSocControl", False),
             is_support_discharge_soc=_safe_bool(data, "isSupportDischargeSoc", True),
             is_support_charger_power=_safe_bool(data, "isSupportChargerPower", True),
             poinv=_safe_int(data, "poinv", 10000),
-            charge_slots=charge_slots,
-            discharge_slots=discharge_slots,
+            day_charge_slots=day_charge_slots,
+            day_discharge_slots=day_discharge_slots,
+            week_charge_slots=week_charge_slots,
+            week_discharge_slots=week_discharge_slots,
             raw_data=data,
         )
+
+    @property
+    def charge_slots(self) -> List[ChargeSlot]:
+        return (
+            self.week_charge_slots
+            if self.execute_cycle_type == 1
+            else self.day_charge_slots
+        )
+
+    @charge_slots.setter
+    def charge_slots(self, slots: List[ChargeSlot]) -> None:
+        if self.execute_cycle_type == 1:
+            self.week_charge_slots = slots
+        else:
+            self.day_charge_slots = slots
+
+    @property
+    def discharge_slots(self) -> List[DischargeSlot]:
+        return (
+            self.week_discharge_slots
+            if self.execute_cycle_type == 1
+            else self.day_discharge_slots
+        )
+
+    @discharge_slots.setter
+    def discharge_slots(self, slots: List[DischargeSlot]) -> None:
+        if self.execute_cycle_type == 1:
+            self.week_discharge_slots = slots
+        else:
+            self.day_discharge_slots = slots
 
     def to_dict(self) -> Dict[str, Any]:
         """Build the PUT payload for setCycleStrategy.
@@ -271,10 +318,13 @@ class CycleStrategy:
         result = dict(self.raw_data)
         result.pop("dayChargeTimeList", None)
         result.pop("dayDischargeTimeList", None)
+        result.pop("weekChargeTimeList", None)
+        result.pop("weekDischargeTimeList", None)
         result.update({
             "id": self.host_system_id,
             "batUseCap": self.bat_use_cap,
             "upsReserve": self.ups_reserve,
+            "upsReserveEnable": self.ups_reserve_enable,
             "executeCycleType": self.execute_cycle_type,
             "loadcutoutEn": self.loadcutout_en,
             "wakeupSoc": self.wakeup_soc,

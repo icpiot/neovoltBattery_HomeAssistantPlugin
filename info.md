@@ -7,7 +7,7 @@ Requires Home Assistant **2024.11.0** or later.
 {% if installed %}
 ## Integration is installed
 
-**To configure:** Settings → Devices & Services → Add Integration → search for
+**To configure:** Settings -> Devices & Services -> Add Integration -> search for
 "Byte-Watt Battery Monitor" and follow the prompts.
 
 If you have more than one inverter on your account you'll be asked to pick the
@@ -16,16 +16,17 @@ Host inverter (used for Grid Feed-in and cycle strategy control).
 
 ## Features
 
-- **Real-time monitoring** — SOC, grid / house / PV / battery power
-- **Today's + cumulative energy** — generation, feed-in, grid import, charge / discharge
-- **Battery control** — charge / discharge windows, minimum SOC, charge cap,
-  per-slot charge & discharge power, grid charging switch
-- **Grid Feed-in Control** — enable / disable, cutoff SOC, Time Period 1
-- **Staged-edit workflow** — UI changes accumulate and are pushed in one shot
-  via the **Submit Settings** button (mirrors the portal's Save UX and avoids
-  rate-limit failures on rapid sequential writes)
-- **Multi-inverter** — pick the Host during setup; change later via Configure
-- **Automatic recovery** — heartbeat, circuit breaker, scheduled daily reconnect
+- **Real-time monitoring** - SOC, grid / house / PV / battery power
+- **Today's + cumulative energy** - generation, feed-in, grid import, charge / discharge
+- **Battery control** - charge / discharge windows, minimum SOC, charge cap,
+  per-slot charge and discharge power, grid charging switch
+- **Grid Feed-in Control** - enable / disable, cutoff SOC, Time Period 1
+- **Staged-edit workflow** - UI changes accumulate and are pushed in one shot
+  via the **Submit Settings** button
+- **Multi-inverter** - pick the Host during setup; change later via Configure
+- **Automatic recovery** - heartbeat, circuit breaker, scheduled daily reconnect
+- **Optional dashboard cards** - policy and reporting cards are included under
+  `examples/` for users who want a richer Lovelace UI
 
 ## Available services
 
@@ -43,4 +44,4 @@ Maintenance: `bytewatt.force_reconnect`, `bytewatt.health_check`,
 All services accept an optional `entry_id` field (required only when you have
 multiple Byte-Watt accounts configured).
 
-[Full documentation on GitHub](https://github.com/candreacchio/neovoltBattery_HomeAssistantPlugin)
+[Full documentation on GitHub](https://github.com/icpiot/neovoltBattery_HomeAssistantPlugin)

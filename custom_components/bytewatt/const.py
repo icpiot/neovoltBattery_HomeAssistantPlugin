@@ -87,6 +87,15 @@ HTTPS_PORT = 443
 SERVICE_SET_GRID_FEEDIN_ENABLED = "set_grid_feedin_enabled"
 SERVICE_SET_GRID_FEEDIN_CUTOFF_SOC = "set_grid_feedin_cutoff_soc"
 SERVICE_UPDATE_GRID_FEEDIN_SLOT = "update_grid_feedin_slot"
+SERVICE_DELETE_GRID_FEEDIN_SLOT = "delete_grid_feedin_slot"
+SERVICE_UPDATE_BATTERY_SLOT = "update_battery_slot"
+SERVICE_DELETE_BATTERY_SLOT = "delete_battery_slot"
+SERVICE_START_FORCE_CHARGE = "start_force_charge"
+SERVICE_STOP_FORCE_CHARGE = "stop_force_charge"
+SERVICE_START_DISCHARGE_NOW = "start_discharge_now"
+SERVICE_STOP_DISCHARGE_NOW = "stop_discharge_now"
+SERVICE_START_FEEDIN_NOW = "start_feedin_now"
+SERVICE_STOP_FEEDIN_NOW = "stop_feedin_now"
 
 ATTR_FEEDIN_ENABLED = "feedin_enabled"
 ATTR_FEEDIN_CUTOFF_SOC = "feedin_cutoff_soc"
@@ -94,6 +103,11 @@ ATTR_FEEDIN_SLOT = "slot"
 ATTR_FEEDIN_START = "start_time"
 ATTR_FEEDIN_END = "end_time"
 ATTR_FEEDIN_POWER = "power_watts"
+ATTR_POLICY_KIND = "policy_kind"
+ATTR_SLOT = "slot"
+ATTR_SLOT_SOC = "soc"
+ATTR_SLOT_WEEKS = "weeks"
+ATTR_DURATION_MINUTES = "duration_minutes"
 
 # Host inverter selection
 CONF_HOST_SYSTEM_ID = "host_system_id"
@@ -112,6 +126,8 @@ FEEDIN_MAX_SLOTS = 6
 # the inverters Byte-Watt targets. Used for both service-call validation
 # and entity slider max.
 FEEDIN_MAX_POWER_W = 20000
+BATTERY_DAILY_MAX_SLOTS = 6
+BATTERY_WEEKLY_MAX_SLOTS = 28
 
 
 def signal_pending_changed(entry_id: str) -> str:

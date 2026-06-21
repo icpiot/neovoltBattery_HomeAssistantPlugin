@@ -35,6 +35,8 @@ async def async_setup_entry(
         ByteWattMinimumSOCNumber(coordinator, config_entry, manager),
         ByteWattChargePowerNumber(coordinator, config_entry, manager),
         ByteWattDischargePowerNumber(coordinator, config_entry, manager),
+        ByteWattOffgridWakeupSOCNumber(coordinator, config_entry, manager),
+        ByteWattOffgridCutoffSOCNumber(coordinator, config_entry, manager),
     ])
 
 
@@ -90,10 +92,11 @@ class _BatteryNumberBase(CoordinatorEntity, NumberEntity):
         return float(value) if value is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        try:
-            self._manager.stage_battery(self._field, value)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_battery_one_shot({self._field: value})
+        if not result.battery_ok:
+            detail = result.battery_error or "see logs for details"
+            raise HomeAssistantError(f"Battery settings update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -140,4 +143,28 @@ class ByteWattDischargePowerNumber(_BatteryNumberBase):
             field="discharge_power",
             min_value=500, max_value=10000, step=100, unit="W",
             device_class=NumberDeviceClass.POWER,
+        )
+
+
+class ByteWattOffgridWakeupSOCNumber(_BatteryNumberBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="Off-grid Wake-up SOC", unique_id="offgrid_wakeup_soc",
+            icon="mdi:battery-arrow-up-outline",
+            field="offgrid_wakeup_soc",
+            min_value=0, max_value=100, step=1, unit="%",
+            device_class=NumberDeviceClass.BATTERY,
+        )
+
+
+class ByteWattOffgridCutoffSOCNumber(_BatteryNumberBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="Off-grid Cut-off SOC", unique_id="offgrid_cutoff_soc",
+            icon="mdi:battery-arrow-down-outline",
+            field="offgrid_cutoff_soc",
+            min_value=0, max_value=100, step=1, unit="%",
+            device_class=NumberDeviceClass.BATTERY,
         )

@@ -45,9 +45,11 @@ GET_RESPONSE_SAMPLE = {
     "batUseCap": 5,
     "executeCycleType": 0,
     "upsReserve": 1,
+    "upsReserveEnable": 1,
     "loadcutoutEn": 0,
     "cutoffSoc": 0,
     "wakeupSoc": 0,
+    "isSupportOffGridSocControl": True,
     "isSupportDischargeSoc": True,
     "isSupportChargerPower": True,
     "poinv": 10000,
@@ -70,6 +72,8 @@ def test_from_api_response_parses_top_level_fields():
     assert s.grid_charge_cycle == 0
     assert s.ctr_dis_cycle == 0
     assert s.ups_reserve == 1
+    assert s.ups_reserve_enable == 1
+    assert s.is_support_offgrid_soc_control is True
     assert s.is_support_discharge_soc is True
 
 
@@ -125,6 +129,7 @@ def test_to_dict_field_set_matches_har_capture():
     payload = s.to_dict()
     required_keys = {
         "id", "batUseCap", "upsReserve", "executeCycleType",
+        "upsReserveEnable",
         "loadcutoutEn", "wakeupSoc", "cutoffSoc",
         "gridChargeCycle", "ctrDisCycle",
         "chargeTimeList", "dischargeTimeList",

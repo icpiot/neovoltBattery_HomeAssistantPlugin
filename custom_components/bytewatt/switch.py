@@ -34,6 +34,8 @@ async def async_setup_entry(
     async_add_entities([
         ByteWattGridChargeSwitch(coordinator, config_entry, manager),
         ByteWattDischargeControlSwitch(coordinator, config_entry, manager),
+        ByteWattUpsReserveEnableSwitch(coordinator, config_entry, manager),
+        ByteWattOffgridSocControlSwitch(coordinator, config_entry, manager),
     ])
 
 
@@ -85,10 +87,11 @@ class _BatterySwitchBase(CoordinatorEntity, SwitchEntity):
         await self._stage(False)
 
     async def _stage(self, state: bool) -> None:
-        try:
-            self._manager.stage_battery(self._field, state)
-        except SettingsValidationError as ex:
-            raise HomeAssistantError(str(ex)) from ex
+        result = await self._manager.submit_battery_one_shot({self._field: state})
+        if not result.battery_ok:
+            detail = result.battery_error or "see logs for details"
+            raise HomeAssistantError(f"Battery settings update failed: {detail}")
+        await self.coordinator.async_request_refresh()
         self.async_write_ha_state()
 
 
@@ -111,4 +114,26 @@ class ByteWattGridChargeSwitch(_BatterySwitchBase):
             unique_id="grid_charging_battery",
             icon="mdi:transmission-tower",
             field="grid_charging",
+        )
+
+
+class ByteWattUpsReserveEnableSwitch(_BatterySwitchBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="UPS Reserve Enable",
+            unique_id="ups_reserve_enable",
+            icon="mdi:battery-lock",
+            field="ups_reserve_enable",
+        )
+
+
+class ByteWattOffgridSocControlSwitch(_BatterySwitchBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="Off-grid SOC Control",
+            unique_id="offgrid_soc_control",
+            icon="mdi:transmission-tower-off",
+            field="offgrid_soc_control",
         )
