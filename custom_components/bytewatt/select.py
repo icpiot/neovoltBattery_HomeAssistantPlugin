@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import ByteWattDataUpdateCoordinator
 from .settings_manager import SettingsManager
-from .topology import DiscoveredInverter
+from .topology import ByteWattScope, DiscoveredInverter
 
 _CYCLE_OPTIONS = ["Daily", "Weekly"]
 
@@ -85,7 +85,10 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        return list(self._options_map())
+        labels = list(self._options_map())
+        if len(labels) > 1:
+            return ["All systems", *labels]
+        return labels
 
     @property
     def available(self) -> bool:
@@ -94,6 +97,8 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         current_id = self._manager.current_settings_target_id
+        if not current_id and len(self.options) > 1:
+            return "All systems"
         for label, inverter in self._options_map().items():
             if inverter.system_id == current_id:
                 return label
@@ -106,15 +111,66 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             (inverter for inverter in self._inventory() if inverter.system_id == current_id),
             None,
         )
+        coordinator_data = self.coordinator.data or {}
+        aggregate_battery = coordinator_data.get("battery") or {}
+        selected_battery = coordinator_data.get("selected_battery") or {}
+        all_batteries = coordinator_data.get("all_batteries") or {}
+        monitoring_summary = {
+            "soc": selected_battery.get("soc") if current is not None else aggregate_battery.get("soc"),
+            "battery_power": selected_battery.get("pbat") if current is not None else aggregate_battery.get("pbat"),
+            "house_consumption": selected_battery.get("pload") if current is not None else aggregate_battery.get("pload"),
+        }
+        all_system_summaries = []
         if current is None:
-            return {}
+            seen_sys_sn: set[str] = set()
+            for inverter in self._inventory():
+                sys_sn = str(inverter.sys_sn or "").strip()
+                if not sys_sn or sys_sn in seen_sys_sn:
+                    continue
+                seen_sys_sn.add(sys_sn)
+                battery_data = all_batteries.get(sys_sn) or {}
+                all_system_summaries.append(
+                    {
+                        "label": inverter.display_name,
+                        "system_id": inverter.system_id,
+                        "sys_sn": inverter.sys_sn,
+                        "remark": inverter.remark,
+                        "soc": battery_data.get("soc"),
+                        "battery_power": battery_data.get("pbat"),
+                        "house_consumption": battery_data.get("pload"),
+                    }
+                )
+        if current is None:
+            return {
+                "monitoring_summary": monitoring_summary,
+                "all_system_summaries": all_system_summaries,
+                "battery_policy": self._manager.battery_policy_summary(),
+                "feedin_policy": self._manager.feedin_policy_summary(),
+            }
         return {
             "system_id": current.system_id,
             "sys_sn": current.sys_sn,
             "remark": current.remark,
+            "monitoring_summary": monitoring_summary,
+            "battery_policy": self._manager.battery_policy_summary(),
+            "feedin_policy": self._manager.feedin_policy_summary(),
         }
 
     async def async_select_option(self, option: str) -> None:
+        if option == "All systems":
+            scope = ByteWattScope(
+                system_id="",
+                sys_sn="All",
+                label="All systems",
+                aggregate=True,
+                settings_system_id="",
+                settings_sys_sn="",
+            )
+            await self._manager.async_select_settings_target(scope)
+            self.hass.data[DOMAIN][self._config_entry.entry_id]["settings_scope"] = scope
+            await self.coordinator.async_request_refresh()
+            self.async_write_ha_state()
+            return
         inverter = self._options_map().get(option)
         if inverter is None:
             raise HomeAssistantError(f"Unknown settings target: {option}")

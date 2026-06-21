@@ -188,3 +188,62 @@ class GridFeedInSettingsAPI:
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
         return False
+
+
+class ForceChargeAPI:
+    """Transport for immediate force-charge actions and status."""
+
+    STATUS_ENDPOINT = "api/iterate/sysSet/getForceChargeStatus?id="
+    LIMIT_ENDPOINT = "api/iterate/sysSet/getForceChargeLimit?id="
+    PROMPT_ENDPOINT = "api/iterate/sysSet/customerSetChargePrompt?type="
+    START_ENDPOINT = "api/iterate/sysSet/forceCharge"
+    STOP_ENDPOINT = "api/iterate/sysSet/stopCharge"
+
+    def __init__(self, api_client: "NeovoltClient") -> None:
+        self._client = api_client
+
+    def _host_id(self) -> str:
+        return getattr(self._client, "host_system_id", "") or ""
+
+    async def fetch_status(self) -> Optional[bool]:
+        response = await _with_relogin(
+            self._client,
+            lambda: self._client._async_get(f"{self.STATUS_ENDPOINT}{self._host_id()}"),
+        )
+        if response and response.get("code") == 200:
+            return bool(response.get("data"))
+        return None
+
+    async def fetch_limit(self) -> Optional[float]:
+        response = await _with_relogin(
+            self._client,
+            lambda: self._client._async_get(f"{self.LIMIT_ENDPOINT}{self._host_id()}"),
+        )
+        if response and response.get("code") == 200:
+            try:
+                return float(response.get("data"))
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    async def start(self, limit_soc: int) -> bool:
+        await _with_relogin(
+            self._client,
+            lambda: self._client._async_get(f"{self.PROMPT_ENDPOINT}0&batUseCap={limit_soc}"),
+        )
+        payload = {"id": self._host_id(), "batUseCap": limit_soc}
+        response = await _with_relogin(
+            self._client, lambda: self._client._async_put(self.START_ENDPOINT, payload)
+        )
+        return bool(response and response.get("code") == 200)
+
+    async def stop(self) -> bool:
+        await _with_relogin(
+            self._client,
+            lambda: self._client._async_get(f"{self.PROMPT_ENDPOINT}2"),
+        )
+        payload = {"id": self._host_id()}
+        response = await _with_relogin(
+            self._client, lambda: self._client._async_put(self.STOP_ENDPOINT, payload)
+        )
+        return bool(response and response.get("code") == 200)

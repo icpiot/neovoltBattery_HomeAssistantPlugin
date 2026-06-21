@@ -1,4 +1,4 @@
-const BYTEWATT_POLICY_CARD_BUILD = "031";
+const BYTEWATT_POLICY_CARD_BUILD = "030";
 
 class ByteWattPolicyCard extends HTMLElement {
   setConfig(config) {
@@ -166,15 +166,6 @@ class ByteWattPolicyCard extends HTMLElement {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
         }
-        .summary-stack {
-          display: grid;
-          gap: 12px;
-        }
-        .summary-subgrid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-          gap: 12px;
-        }
         .summary-card {
           position: relative;
           display: grid;
@@ -250,48 +241,6 @@ class ByteWattPolicyCard extends HTMLElement {
         }
         .summary-card .summary-value.live-pulse {
           animation: summary-pulse 1.85s ease-in-out infinite;
-        }
-        .summary-card.battery-breakout {
-          gap: 10px;
-          padding: 12px 14px;
-        }
-        .summary-title {
-          color: #fff;
-          font-size: 0.95rem;
-          font-weight: 800;
-          line-height: 1.2;
-          word-break: break-word;
-        }
-        .summary-meta {
-          color: rgba(220, 230, 243, 0.56);
-          font-size: 0.76rem;
-          font-weight: 600;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-        }
-        .summary-breakout-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .summary-breakout-cell {
-          display: grid;
-          gap: 4px;
-          min-width: 0;
-        }
-        .summary-breakout-label {
-          color: rgba(122, 171, 242, 0.92);
-          font-size: 0.7rem;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-        }
-        .summary-breakout-value {
-          color: #fff;
-          font-size: 0.96rem;
-          font-weight: 800;
-          line-height: 1.2;
-          word-break: break-word;
         }
         .section {
           display: grid;
@@ -832,7 +781,6 @@ class ByteWattPolicyCard extends HTMLElement {
 
   _renderSummary(attrs) {
     const monitoringSummary = attrs?.monitoring_summary || {};
-    const allSystemSummaries = Array.isArray(attrs?.all_system_summaries) ? attrs.all_system_summaries : [];
     const selectedSoc = Number(monitoringSummary?.soc);
     const selectedBatteryPower = Number(monitoringSummary?.battery_power);
     const selectedBatteryLoad = Number(monitoringSummary?.house_consumption);
@@ -862,20 +810,21 @@ class ByteWattPolicyCard extends HTMLElement {
     const batteryTone = this._summaryToneFromBatteryPower(batteryPower);
     const loadTone = Number.isFinite(batteryLoad) && batteryLoad > 0 ? "live" : "idle";
     const socTone = Number.isFinite(soc) ? "live" : "unavailable";
-    const totalsGrid = `
+
+    return `
       <div class="summary-grid">
         <div class="summary-card ${socTone}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total SOC" : "Current SOC"}</div>
+          <div class="summary-label">Current SOC</div>
           <div class="summary-value ${Number.isFinite(soc) ? "live-pulse" : ""}">${this._formatValue(soc, "%")}</div>
           ${this._renderSummaryMeter(Number.isFinite(soc) ? Math.max(0, Math.min(100, soc)) : null)}
         </div>
         <div class="summary-card ${batteryTone}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total Battery Charging" : "Battery Charging"}</div>
+          <div class="summary-label">Battery Charging</div>
           <div class="summary-value ${this._summaryIsAnimatedTone(batteryTone) ? "live-pulse" : ""}">${this._formatBatteryPower(batteryPower)}</div>
           ${this._renderSummaryMeter(this._summaryPowerMeterPercent(batteryPower))}
         </div>
         <div class="summary-card ${loadTone} ${Number.isFinite(batteryLoad) ? "live" : "unavailable"}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total Battery Load" : "Battery Load"}</div>
+          <div class="summary-label">Battery Load</div>
           <div class="summary-value">${this._formatValue(batteryLoad, "W")}</div>
           ${this._renderSummaryMeter(this._summaryLoadMeterPercent(batteryLoad))}
         </div>
@@ -883,48 +832,6 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="summary-label">Active Immediate State</div>
           <div class="summary-value ${activeTone !== "idle" ? "live-pulse" : ""}">${this._escapeHtml(activeImmediate)}</div>
           ${this._renderSummaryMeter(activeTone === "idle" ? 0 : 100)}
-        </div>
-      </div>
-    `;
-
-    if (this._isAllSystemsSelection() && allSystemSummaries.length) {
-      return `
-        <div class="summary-stack">
-          ${totalsGrid}
-          <div class="summary-subgrid">
-            ${allSystemSummaries.map((item) => this._renderBatterySummaryCard(item)).join("")}
-          </div>
-        </div>
-      `;
-    }
-
-    return totalsGrid;
-  }
-
-  _renderBatterySummaryCard(item) {
-    const soc = Number(item?.soc);
-    const batteryPower = Number(item?.battery_power);
-    const batteryLoad = Number(item?.house_consumption);
-    const tone = this._summaryToneFromBatteryPower(batteryPower);
-    const title = this._escapeHtml(item?.sys_sn || item?.label || item?.system_id || "Battery");
-    const meta = item?.remark ? this._escapeHtml(item.remark) : "";
-    return `
-      <div class="summary-card battery-breakout ${tone}">
-        <div class="summary-title">${title}</div>
-        ${meta ? `<div class="summary-meta">${meta}</div>` : ""}
-        <div class="summary-breakout-grid">
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">SOC</div>
-            <div class="summary-breakout-value">${this._formatValue(soc, "%")}</div>
-          </div>
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">Charge</div>
-            <div class="summary-breakout-value">${this._formatBatteryPower(batteryPower)}</div>
-          </div>
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">Load</div>
-            <div class="summary-breakout-value">${this._formatValue(batteryLoad, "W")}</div>
-          </div>
         </div>
       </div>
     `;

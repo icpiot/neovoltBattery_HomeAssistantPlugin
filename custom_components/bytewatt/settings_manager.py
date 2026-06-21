@@ -39,9 +39,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
-from .api.settings import BatterySettingsAPI, GridFeedInSettingsAPI
-from .const import signal_pending_changed
-from .models import CycleStrategy, GridFeedInSettings, GridFeedInSlot
+from .api.settings import BatterySettingsAPI, ForceChargeAPI, GridFeedInSettingsAPI
+from .const import (
+    BATTERY_DAILY_MAX_SLOTS,
+    BATTERY_WEEKLY_MAX_SLOTS,
+    FEEDIN_MAX_SLOTS,
+    signal_pending_changed,
+)
+from .models import ChargeSlot, CycleStrategy, DischargeSlot, GridFeedInSettings, GridFeedInSlot
 from .topology import ByteWattScope
 from .utilities.time_utils import sanitize_time_format
 
@@ -187,6 +192,38 @@ FEEDIN_SLOT_VALIDATORS = {
     "power": _v_feedin_power,
 }
 
+_WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 7]
+
+
+def _v_weeks(name: str, value: Any) -> list[int]:
+    if value in (None, "", []):
+        raise SettingsValidationError(f"{name} must contain at least one day")
+    if isinstance(value, str):
+        items = [part.strip() for part in value.split(",") if part.strip()]
+    elif isinstance(value, (list, tuple, set)):
+        items = list(value)
+    else:
+        raise SettingsValidationError(f"{name} must be a list of weekdays, got {value!r}")
+
+    weeks: list[int] = []
+    for item in items:
+        try:
+            day = int(item)
+        except (TypeError, ValueError) as ex:
+            raise SettingsValidationError(f"{name} contains invalid weekday {item!r}") from ex
+        if day not in _WEEKDAY_ORDER:
+            raise SettingsValidationError(f"{name} must use weekdays 1..7, got {day}")
+        if day not in weeks:
+            weeks.append(day)
+    if not weeks:
+        raise SettingsValidationError(f"{name} must contain at least one day")
+    return sorted(weeks, key=_WEEKDAY_ORDER.index)
+
+
+def _time_sort_key(value: str) -> tuple[int, int]:
+    hour, minute = value.split(":", 1)
+    return (int(hour), int(minute))
+
 
 class SettingsManager:
     """Owns cache + pending diff + submit lifecycle for one config entry."""
@@ -210,11 +247,16 @@ class SettingsManager:
         # Server cache
         self._battery_cache: Optional[CycleStrategy] = None
         self._feedin_cache: Optional[GridFeedInSettings] = None
+        self._force_charge_status: Optional[bool] = None
+        self._force_charge_limit: Optional[float] = None
 
         # Pending diff (cleared per-batch on successful submit)
         self._pending_battery: Dict[str, Any] = {}
         self._pending_feedin: Dict[str, Any] = {}
         self._pending_feedin_slots: Dict[int, Dict[str, Any]] = {}
+
+        # Temporary policy overlays for "now" helpers.
+        self._temporary_rows: Dict[tuple[str, str], Dict[str, Any]] = {}
 
         # Per-batch post-submit "trust local cache" timestamps
         self._battery_submitted_at: Optional[datetime] = None
@@ -261,9 +303,69 @@ class SettingsManager:
     def current_settings_target_sys_sn(self) -> str:
         return getattr(self._client, "host_sys_sn", "") or ""
 
+    @property
+    def force_charge_status(self) -> Optional[bool]:
+        return self._force_charge_status
+
+    @property
+    def force_charge_limit(self) -> Optional[float]:
+        return self._force_charge_limit
+
+    def battery_slot_limit(self) -> int:
+        if self._battery_cache and self._battery_cache.execute_cycle_type == 1:
+            return BATTERY_WEEKLY_MAX_SLOTS
+        return BATTERY_DAILY_MAX_SLOTS
+
+    def battery_policy_summary(self) -> dict[str, Any]:
+        strategy = self._battery_cache
+        if strategy is None:
+            return {}
+        target_key = self._target_key()
+        discharge_temp = self._temporary_rows.get(target_key + ("discharge",))
+        return {
+            "execution_cycle_type": strategy.execute_cycle_type,
+            "execution_cycle_label": "Weekly" if strategy.execute_cycle_type == 1 else "Daily",
+            "charge_slot_limit": self.battery_slot_limit(),
+            "discharge_slot_limit": self.battery_slot_limit(),
+            "charge_slots": [self._charge_slot_to_summary(slot) for slot in strategy.charge_slots],
+            "discharge_slots": [self._discharge_slot_to_summary(slot) for slot in strategy.discharge_slots],
+            "force_charge_active": bool(self._force_charge_status),
+            "force_charge_limit": self._force_charge_limit,
+            "discharge_policy_enabled": (
+                bool(discharge_temp["saved_enabled"])
+                if discharge_temp and "saved_enabled" in discharge_temp
+                else bool(strategy.ctr_dis_cycle)
+            ),
+            "temporary_discharge_now": target_key + ("discharge",) in self._temporary_rows,
+        }
+
+    def feedin_policy_summary(self) -> dict[str, Any]:
+        settings = self._feedin_cache
+        if settings is None:
+            return {}
+        target_key = self._target_key()
+        feedin_temp = self._temporary_rows.get(target_key + ("feedin",))
+        saved_enabled = (
+            bool(feedin_temp["saved_enabled"])
+            if feedin_temp and "saved_enabled" in feedin_temp
+            else bool(settings.battery_en)
+        )
+        return {
+            "slot_limit": FEEDIN_MAX_SLOTS,
+            "enabled": saved_enabled,
+            "runtime_enabled": bool(settings.battery_en),
+            "cutoff_soc": settings.battery_feed_cutoff_soc,
+            "slots": [self._feedin_slot_to_summary(slot) for slot in settings.slots],
+            "temporary_feedin_now": target_key + ("feedin",) in self._temporary_rows,
+        }
+
     def effective_battery(self, field: str, default: Any = None) -> Any:
         if field in self._pending_battery:
             return self._pending_battery[field]
+        if field == "discharge_time_control":
+            temp = self._temporary_rows.get(self._target_key() + ("discharge",))
+            if temp and "saved_enabled" in temp:
+                return bool(temp["saved_enabled"])
         return self._read_battery_from_cache(field, default)
 
     def effective_feedin(self, field: str, default: Any = None) -> Any:
@@ -272,6 +374,9 @@ class SettingsManager:
         if self._feedin_cache is None:
             return default
         if field == "enabled":
+            temp = self._temporary_rows.get(self._target_key() + ("feedin",))
+            if temp and "saved_enabled" in temp:
+                return bool(temp["saved_enabled"])
             return bool(self._feedin_cache.battery_en)
         if field == "cutoff_soc":
             return float(self._feedin_cache.battery_feed_cutoff_soc)
@@ -293,6 +398,40 @@ class SettingsManager:
         if field == "power":
             return slot.feed_power
         return default
+
+    def _target_key(self) -> tuple[str]:
+        return (self.current_settings_target_id or "__all__",)
+
+    @staticmethod
+    def _charge_slot_to_summary(slot: ChargeSlot) -> dict[str, Any]:
+        return {
+            "sort": slot.sort,
+            "start": slot.begin_time,
+            "end": slot.end_time,
+            "soc": slot.charge_limit,
+            "power": slot.charge_power,
+            "weeks": list(slot.weeks),
+        }
+
+    @staticmethod
+    def _discharge_slot_to_summary(slot: DischargeSlot) -> dict[str, Any]:
+        return {
+            "sort": slot.sort,
+            "start": slot.begin_time,
+            "end": slot.end_time,
+            "soc": slot.charge_limit,
+            "power": slot.charge_power,
+            "weeks": list(slot.weeks),
+        }
+
+    @staticmethod
+    def _feedin_slot_to_summary(slot: GridFeedInSlot) -> dict[str, Any]:
+        return {
+            "sort": slot.sort,
+            "start": slot.start,
+            "end": slot.end,
+            "power": slot.feed_power,
+        }
 
     def feedin_slot_available(self, slot_index: int) -> bool:
         if slot_index in self._pending_feedin_slots:
@@ -416,6 +555,9 @@ class SettingsManager:
                 battery = await BatterySettingsAPI(self._client).fetch_current_settings()
                 if battery is not None:
                     self._battery_cache = battery
+                force_charge_api = ForceChargeAPI(self._client)
+                self._force_charge_status = await force_charge_api.fetch_status()
+                self._force_charge_limit = await force_charge_api.fetch_limit()
             except Exception as ex:  # noqa: BLE001 — surface in logs, never crash poll
                 _LOGGER.warning("Battery settings refresh failed: %s", ex)
 
@@ -507,6 +649,214 @@ class SettingsManager:
             await self._submit_feedin(top_snapshot, slots_snapshot, result)
             self._notify_pending_changed()
         return result
+
+    async def force_charge_start(self, limit_soc: int) -> None:
+        validated = _v_soc("force_charge_limit", limit_soc)
+        async with self._lock:
+            api = ForceChargeAPI(self._client)
+            ok = await api.start(validated)
+            if not ok:
+                raise SettingsValidationError("Force charge start failed")
+            self._force_charge_status = True
+            self._force_charge_limit = float(validated)
+
+    async def force_charge_stop(self) -> None:
+        async with self._lock:
+            api = ForceChargeAPI(self._client)
+            ok = await api.stop()
+            if not ok:
+                raise SettingsValidationError("Force charge stop failed")
+            self._force_charge_status = False
+
+    async def update_battery_slot(
+        self,
+        policy_kind: str,
+        slot_number: int,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        soc: int | None = None,
+        power: int | None = None,
+        weeks: list[int] | None = None,
+    ) -> None:
+        kind = self._validate_policy_kind(policy_kind)
+        slot_index = self._validate_slot_index(slot_number)
+        async with self._lock:
+            if self._battery_cache is None:
+                raise SettingsValidationError("Battery settings are not loaded yet")
+            merged = copy.deepcopy(self._battery_cache)
+            slots = self._slots_for_policy(merged, kind)
+            self._ensure_slot(slots, slot_index, kind)
+            slot = slots[slot_index]
+            if start is not None:
+                value = _v_time("start_time", start)
+                if kind == "charge":
+                    slot.begin_time = value
+                else:
+                    slot.begin_time = value
+            if end is not None:
+                value = _v_time("end_time", end)
+                slot.end_time = value
+            if soc is not None:
+                slot.charge_limit = float(_v_soc("soc", soc))
+            if power is not None:
+                slot.charge_power = int(_v_battery_power("power", power))
+            if weeks is not None:
+                slot.weeks = _v_weeks("weeks", weeks)
+            self._normalize_and_validate_battery_slots(slots, kind, merged.execute_cycle_type)
+            result = SubmitResult()
+            await self._submit_battery_with_merged(merged, result)
+            if not result.battery_ok:
+                raise SettingsValidationError(result.battery_error or "Battery slot update failed")
+
+    async def delete_battery_slot(self, policy_kind: str, slot_number: int) -> None:
+        kind = self._validate_policy_kind(policy_kind)
+        slot_index = self._validate_slot_index(slot_number)
+        async with self._lock:
+            if self._battery_cache is None:
+                raise SettingsValidationError("Battery settings are not loaded yet")
+            merged = copy.deepcopy(self._battery_cache)
+            slots = self._slots_for_policy(merged, kind)
+            if slot_index >= len(slots):
+                raise SettingsValidationError(f"{kind.title()} slot {slot_number} does not exist")
+            slots.pop(slot_index)
+            self._normalize_and_validate_battery_slots(slots, kind, merged.execute_cycle_type)
+            result = SubmitResult()
+            await self._submit_battery_with_merged(merged, result)
+            if not result.battery_ok:
+                raise SettingsValidationError(result.battery_error or "Battery slot delete failed")
+
+    async def update_feedin_slot(
+        self,
+        slot_number: int,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        power: int | None = None,
+    ) -> None:
+        slot_index = self._validate_slot_index(slot_number)
+        async with self._lock:
+            if self._feedin_cache is None:
+                raise SettingsValidationError("Feed-in settings are not loaded yet")
+            merged = copy.deepcopy(self._feedin_cache)
+            self._ensure_feedin_slot(merged.slots, slot_index)
+            slot = merged.slots[slot_index]
+            if start is not None:
+                slot.start = _v_time("start_time", start)
+            if end is not None:
+                slot.end = _v_time("end_time", end)
+            if power is not None:
+                slot.feed_power = int(_v_feedin_power("power", power))
+            self._normalize_and_validate_feedin_slots(merged.slots)
+            result = SubmitResult()
+            await self._submit_feedin_with_merged(merged, result)
+            if not result.feedin_ok:
+                raise SettingsValidationError(result.feedin_error or "Feed-in slot update failed")
+
+    async def delete_feedin_slot(self, slot_number: int) -> None:
+        slot_index = self._validate_slot_index(slot_number)
+        async with self._lock:
+            if self._feedin_cache is None:
+                raise SettingsValidationError("Feed-in settings are not loaded yet")
+            merged = copy.deepcopy(self._feedin_cache)
+            if slot_index >= len(merged.slots):
+                raise SettingsValidationError(f"Feed-in slot {slot_number} does not exist")
+            merged.slots.pop(slot_index)
+            self._normalize_and_validate_feedin_slots(merged.slots)
+            result = SubmitResult()
+            await self._submit_feedin_with_merged(merged, result)
+            if not result.feedin_ok:
+                raise SettingsValidationError(result.feedin_error or "Feed-in slot delete failed")
+
+    async def start_discharge_now(
+        self, *, duration_minutes: int, soc: int, power: int
+    ) -> None:
+        async with self._lock:
+            if self._battery_cache is None:
+                raise SettingsValidationError("Battery settings are not loaded yet")
+            saved_enabled = bool(self._battery_cache.ctr_dis_cycle)
+            merged = copy.deepcopy(self._battery_cache)
+            slots = self._slots_for_policy(merged, "discharge")
+            if len(slots) >= self._slot_limit_for_cycle(merged.execute_cycle_type):
+                raise SettingsValidationError("All discharge slots are already in use")
+            temp_slot = DischargeSlot(
+                begin_time=self._now_hhmm(),
+                end_time=self._future_hhmm(duration_minutes),
+                charge_limit=float(_v_soc("soc", soc)),
+                charge_power=int(_v_battery_power("power", power)),
+                weeks=[1, 2, 3, 4, 5, 6, 7],
+            )
+            slots.append(temp_slot)
+            merged.ctr_dis_cycle = 1
+            self._normalize_and_validate_battery_slots(slots, "discharge", merged.execute_cycle_type)
+            result = SubmitResult()
+            await self._submit_battery_with_merged(merged, result)
+            if not result.battery_ok:
+                raise SettingsValidationError(result.battery_error or "Discharge now failed")
+            self._temporary_rows[self._target_key() + ("discharge",)] = {
+                "start": temp_slot.begin_time,
+                "end": temp_slot.end_time,
+                "soc": temp_slot.charge_limit,
+                "power": temp_slot.charge_power,
+                "saved_enabled": saved_enabled,
+            }
+
+    async def stop_discharge_now(self) -> None:
+        await self._stop_temporary_battery_row("discharge")
+
+    async def start_feedin_now(
+        self, *, duration_minutes: int, power: int
+    ) -> None:
+        async with self._lock:
+            if self._feedin_cache is None:
+                raise SettingsValidationError("Feed-in settings are not loaded yet")
+            saved_enabled = bool(self._feedin_cache.battery_en)
+            merged = copy.deepcopy(self._feedin_cache)
+            if len(merged.slots) >= FEEDIN_MAX_SLOTS:
+                raise SettingsValidationError("All feed-in slots are already in use")
+            temp_slot = GridFeedInSlot(
+                sys_sn=self.current_settings_target_sys_sn,
+                start=self._now_hhmm(),
+                end=self._future_hhmm(duration_minutes),
+                feed_power=int(_v_feedin_power("power", power)),
+            )
+            merged.slots.append(temp_slot)
+            merged.battery_en = 1
+            self._normalize_and_validate_feedin_slots(merged.slots)
+            result = SubmitResult()
+            await self._submit_feedin_with_merged(merged, result)
+            if not result.feedin_ok:
+                raise SettingsValidationError(result.feedin_error or "Feed-in now failed")
+            self._temporary_rows[self._target_key() + ("feedin",)] = {
+                "start": temp_slot.start,
+                "end": temp_slot.end,
+                "power": temp_slot.feed_power,
+                "saved_enabled": saved_enabled,
+            }
+
+    async def stop_feedin_now(self) -> None:
+        async with self._lock:
+            temp = self._temporary_rows.get(self._target_key() + ("feedin",))
+            if not temp:
+                return
+            if self._feedin_cache is None:
+                raise SettingsValidationError("Feed-in settings are not loaded yet")
+            merged = copy.deepcopy(self._feedin_cache)
+            merged.slots = [
+                slot for slot in merged.slots
+                if not (
+                    slot.start == temp["start"]
+                    and slot.end == temp["end"]
+                    and int(slot.feed_power) == int(temp["power"])
+                )
+            ]
+            merged.battery_en = 1 if temp.get("saved_enabled") else 0
+            self._normalize_and_validate_feedin_slots(merged.slots)
+            result = SubmitResult()
+            await self._submit_feedin_with_merged(merged, result)
+            if not result.feedin_ok:
+                raise SettingsValidationError(result.feedin_error or "Stop feed-in now failed")
+            self._temporary_rows.pop(self._target_key() + ("feedin",), None)
 
     async def submit(self) -> SubmitResult:
         """Push pending changes to the API.
@@ -783,6 +1133,163 @@ class SettingsManager:
 
         self._normalize_slot_powers_to_poinv(merged)
         return merged
+
+    async def _submit_battery_with_merged(
+        self, merged: CycleStrategy, result: SubmitResult
+    ) -> None:
+        result.battery_attempted = True
+        api = BatterySettingsAPI(self._client)
+        self._normalize_slot_powers_to_poinv(merged)
+        if await api.put(merged, max_retries=self._SINGLE_ATTEMPT):
+            self._battery_cache = merged
+            self._battery_submitted_at = dt_util.utcnow()
+            result.battery_ok = True
+            return
+        result.battery_error = "API call failed"
+
+    async def _submit_feedin_with_merged(
+        self, merged: GridFeedInSettings, result: SubmitResult
+    ) -> None:
+        result.feedin_attempted = True
+        api = GridFeedInSettingsAPI(self._client)
+        if await api.post(merged, max_retries=self._SINGLE_ATTEMPT):
+            self._feedin_cache = merged
+            self._feedin_submitted_at = dt_util.utcnow()
+            result.feedin_ok = True
+            return
+        result.feedin_error = "API call failed"
+
+    @staticmethod
+    def _validate_policy_kind(policy_kind: str) -> str:
+        kind = (policy_kind or "").strip().lower()
+        if kind not in {"charge", "discharge"}:
+            raise SettingsValidationError(f"Unknown policy_kind {policy_kind!r}")
+        return kind
+
+    @staticmethod
+    def _validate_slot_index(slot_number: int) -> int:
+        try:
+            slot = int(slot_number)
+        except (TypeError, ValueError) as ex:
+            raise SettingsValidationError(f"Invalid slot number {slot_number!r}") from ex
+        if slot < 1:
+            raise SettingsValidationError("Slot number must be 1 or higher")
+        return slot - 1
+
+    @staticmethod
+    def _slot_limit_for_cycle(execute_cycle_type: int) -> int:
+        return BATTERY_WEEKLY_MAX_SLOTS if execute_cycle_type == 1 else BATTERY_DAILY_MAX_SLOTS
+
+    @staticmethod
+    def _now_hhmm() -> str:
+        now = dt_util.now()
+        return now.strftime("%H:%M")
+
+    @staticmethod
+    def _future_hhmm(duration_minutes: int) -> str:
+        minutes = max(1, int(duration_minutes))
+        now = dt_util.now()
+        future = now + timedelta(minutes=minutes)
+        if future.date() != now.date():
+            return "23:59"
+        return future.strftime("%H:%M")
+
+    @staticmethod
+    def _slot_factory(kind: str) -> ChargeSlot | DischargeSlot:
+        if kind == "charge":
+            return ChargeSlot()
+        return DischargeSlot()
+
+    def _slots_for_policy(
+        self, strategy: CycleStrategy, kind: str
+    ) -> list[ChargeSlot] | list[DischargeSlot]:
+        return strategy.charge_slots if kind == "charge" else strategy.discharge_slots
+
+    def _ensure_slot(
+        self,
+        slots: list[ChargeSlot] | list[DischargeSlot],
+        slot_index: int,
+        kind: str,
+    ) -> None:
+        max_slots = self._slot_limit_for_cycle(self._battery_cache.execute_cycle_type if self._battery_cache else 0)
+        if slot_index >= max_slots:
+            raise SettingsValidationError(f"No free {kind} slot at position {slot_index + 1}")
+        while len(slots) <= slot_index:
+            slots.append(self._slot_factory(kind))
+
+    @staticmethod
+    def _normalize_and_validate_battery_slots(
+        slots: list[ChargeSlot] | list[DischargeSlot],
+        kind: str,
+        execute_cycle_type: int,
+    ) -> None:
+        max_slots = BATTERY_WEEKLY_MAX_SLOTS if execute_cycle_type == 1 else BATTERY_DAILY_MAX_SLOTS
+        if len(slots) > max_slots:
+            raise SettingsValidationError(f"{kind.title()} supports at most {max_slots} rows")
+        ordered = sorted(slots, key=lambda item: _time_sort_key(item.begin_time))
+        for index, slot in enumerate(ordered, start=1):
+            if _time_sort_key(slot.begin_time) >= _time_sort_key(slot.end_time):
+                raise SettingsValidationError(f"{kind.title()} rows must end after they start")
+            slot.sort = index
+            if execute_cycle_type == 0:
+                slot.weeks = [7, 1, 2, 3, 4, 5, 6]
+            else:
+                slot.weeks = _v_weeks("weeks", slot.weeks)
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1 :]:
+                overlaps = (
+                    _time_sort_key(left.begin_time) < _time_sort_key(right.end_time)
+                    and _time_sort_key(right.begin_time) < _time_sort_key(left.end_time)
+                )
+                if not overlaps:
+                    continue
+                if execute_cycle_type == 0 or set(left.weeks).intersection(right.weeks):
+                    raise SettingsValidationError(f"{kind.title()} rows cannot overlap")
+        slots[:] = ordered
+
+    def _normalize_and_validate_feedin_slots(self, slots: list[GridFeedInSlot]) -> None:
+        if len(slots) > FEEDIN_MAX_SLOTS:
+            raise SettingsValidationError(f"Feed-in supports at most {FEEDIN_MAX_SLOTS} rows")
+        previous_end: str | None = None
+        ordered = sorted(slots, key=lambda item: _time_sort_key(item.start))
+        for index, slot in enumerate(ordered, start=1):
+            if _time_sort_key(slot.start) >= _time_sort_key(slot.end):
+                raise SettingsValidationError("Feed-in rows must end after they start")
+            if previous_end and _time_sort_key(slot.start) < _time_sort_key(previous_end):
+                raise SettingsValidationError("Feed-in rows cannot overlap")
+            slot.sort = index
+            if not slot.sys_sn:
+                slot.sys_sn = self.current_settings_target_sys_sn
+            previous_end = slot.end
+        slots[:] = ordered
+
+    async def _stop_temporary_battery_row(self, kind: str) -> None:
+        async with self._lock:
+            temp = self._temporary_rows.get(self._target_key() + (kind,))
+            if not temp:
+                return
+            if self._battery_cache is None:
+                raise SettingsValidationError("Battery settings are not loaded yet")
+            merged = copy.deepcopy(self._battery_cache)
+            slots = self._slots_for_policy(merged, kind)
+            filtered = [
+                slot for slot in slots
+                if not (
+                    slot.begin_time == temp["start"]
+                    and slot.end_time == temp["end"]
+                    and int(slot.charge_power) == int(temp["power"])
+                    and int(slot.charge_limit) == int(temp["soc"])
+                )
+            ]
+            slots[:] = filtered
+            if kind == "discharge":
+                merged.ctr_dis_cycle = 1 if temp.get("saved_enabled") else 0
+            self._normalize_and_validate_battery_slots(slots, kind, merged.execute_cycle_type)
+            result = SubmitResult()
+            await self._submit_battery_with_merged(merged, result)
+            if not result.battery_ok:
+                raise SettingsValidationError(result.battery_error or f"Stop {kind} now failed")
+            self._temporary_rows.pop(self._target_key() + (kind,), None)
 
     @staticmethod
     def _normalize_slot_powers_to_poinv(merged: CycleStrategy) -> None:

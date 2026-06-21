@@ -1,4 +1,4 @@
-const BYTEWATT_POLICY_CARD_BUILD = "031";
+const BYTEWATT_POLICY_CARD_BUILD = "017";
 
 class ByteWattPolicyCard extends HTMLElement {
   setConfig(config) {
@@ -8,7 +8,6 @@ class ByteWattPolicyCard extends HTMLElement {
     }
     this._config = this._withDefaults({ ...config, variant });
     this._drafts = this._drafts || {};
-    this._immediateDrafts = this._immediateDrafts || {};
     this._immediateState = this._immediateState || {};
     this._status = null;
   }
@@ -73,22 +72,13 @@ class ByteWattPolicyCard extends HTMLElement {
         ha-card {
           width: 100%;
           background:
-            radial-gradient(circle at top right, rgba(67, 140, 255, 0.18), transparent 28%),
-            radial-gradient(circle at bottom left, rgba(32, 80, 160, 0.12), transparent 34%),
-            linear-gradient(180deg, #17263a 0%, #101926 100%);
-          border: 1px solid rgba(130, 177, 255, 0.14);
+            radial-gradient(circle at top right, rgba(42, 94, 179, 0.14), transparent 30%),
+            linear-gradient(180deg, #152131 0%, #0f1824 100%);
+          border: 1px solid rgba(255,255,255,0.08);
           border-radius: 18px;
           color: #fff;
           overflow: hidden;
-          box-shadow: 0 22px 44px rgba(0,0,0,0.32);
-        }
-        :host {
-          --bytewatt-soc-width: 82px;
-          --bytewatt-power-width: 100px;
-          --bytewatt-time-width: 118px;
-          --bytewatt-duration-width: 56px;
-          --bytewatt-select-width: 148px;
-          --bytewatt-action-width: 170px;
+          box-shadow: 0 16px 36px rgba(0,0,0,0.26);
         }
         .shell {
           display: grid;
@@ -118,10 +108,9 @@ class ByteWattPolicyCard extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #8dc5ff;
-          background: linear-gradient(180deg, rgba(52, 120, 220, 0.26), rgba(44, 92, 168, 0.14));
-          border: 1px solid rgba(97, 170, 255, 0.34);
-          box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 8px 18px rgba(38, 92, 170, 0.24);
+          color: #4aa2ff;
+          background: rgba(74, 162, 255, 0.12);
+          border: 1px solid rgba(74, 162, 255, 0.24);
           font-size: 1rem;
           font-weight: 800;
         }
@@ -138,10 +127,9 @@ class ByteWattPolicyCard extends HTMLElement {
           font-size: 0.76rem;
           font-weight: 800;
           letter-spacing: 0.04em;
-          color: #e9f5ff;
-          background: linear-gradient(180deg, rgba(68, 134, 230, 0.3), rgba(50, 102, 184, 0.18));
-          border: 1px solid rgba(108, 180, 255, 0.34);
-          box-shadow: 0 6px 14px rgba(26, 70, 136, 0.2);
+          color: rgba(220, 230, 243, 0.92);
+          background: rgba(74, 162, 255, 0.14);
+          border: 1px solid rgba(74, 162, 255, 0.26);
         }
         .selector-row {
           display: grid;
@@ -166,33 +154,14 @@ class ByteWattPolicyCard extends HTMLElement {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
         }
-        .summary-stack {
-          display: grid;
-          gap: 12px;
-        }
-        .summary-subgrid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-          gap: 12px;
-        }
         .summary-card {
-          position: relative;
           display: grid;
-          gap: 8px;
+          gap: 4px;
           min-width: 0;
-          padding: 12px 14px 14px;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.1);
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.028)),
-            rgba(17,29,44,0.82);
-          overflow: hidden;
-          transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-        }
-        .summary-card:hover {
-          transform: translateY(-1px);
-          border-color: rgba(146, 193, 255, 0.22);
-          box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.04);
         }
         .summary-label {
           color: rgba(122, 171, 242, 0.95);
@@ -203,92 +172,7 @@ class ByteWattPolicyCard extends HTMLElement {
         }
         .summary-value {
           color: #fff;
-          font-size: 1.1rem;
-          font-weight: 800;
-          line-height: 1.2;
-          word-break: break-word;
-        }
-        .summary-meter {
-          position: relative;
-          height: 5px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.08);
-          overflow: hidden;
-        }
-        .summary-meter span {
-          position: absolute;
-          inset: 0 auto 0 0;
-          border-radius: inherit;
-          background: linear-gradient(90deg, rgba(87, 157, 255, 0.85), rgba(120, 210, 255, 1));
-          box-shadow: 0 0 12px rgba(87, 157, 255, 0.55);
-        }
-        .summary-card.live::after {
-          content: "";
-          position: absolute;
-          inset: auto -24% 0 -24%;
-          height: 3px;
-          background: linear-gradient(90deg, transparent, rgba(115, 194, 255, 0.95), transparent);
-          animation: summary-sweep 2.4s linear infinite;
-        }
-        .summary-card.charging {
-          border-color: rgba(79, 152, 255, 0.34);
-          box-shadow: 0 12px 28px rgba(52, 107, 187, 0.24);
-        }
-        .summary-card.discharging {
-          border-color: rgba(154, 109, 255, 0.34);
-          box-shadow: 0 12px 28px rgba(94, 53, 177, 0.22);
-        }
-        .summary-card.feedin {
-          border-color: rgba(102, 214, 117, 0.34);
-          box-shadow: 0 12px 28px rgba(41, 130, 58, 0.22);
-        }
-        .summary-card.idle {
-          border-color: rgba(255,255,255,0.1);
-        }
-        .summary-card.unavailable {
-          opacity: 0.86;
-        }
-        .summary-card .summary-value.live-pulse {
-          animation: summary-pulse 1.85s ease-in-out infinite;
-        }
-        .summary-card.battery-breakout {
-          gap: 10px;
-          padding: 12px 14px;
-        }
-        .summary-title {
-          color: #fff;
-          font-size: 0.95rem;
-          font-weight: 800;
-          line-height: 1.2;
-          word-break: break-word;
-        }
-        .summary-meta {
-          color: rgba(220, 230, 243, 0.56);
-          font-size: 0.76rem;
-          font-weight: 600;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-        }
-        .summary-breakout-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .summary-breakout-cell {
-          display: grid;
-          gap: 4px;
-          min-width: 0;
-        }
-        .summary-breakout-label {
-          color: rgba(122, 171, 242, 0.92);
-          font-size: 0.7rem;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-        }
-        .summary-breakout-value {
-          color: #fff;
-          font-size: 0.96rem;
+          font-size: 1.05rem;
           font-weight: 800;
           line-height: 1.2;
           word-break: break-word;
@@ -296,13 +180,10 @@ class ByteWattPolicyCard extends HTMLElement {
         .section {
           display: grid;
           gap: 12px;
-          border: 1px solid rgba(255,255,255,0.09);
+          border: 1px solid rgba(255,255,255,0.08);
           border-radius: 16px;
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.018)),
-            rgba(17, 26, 40, 0.72);
+          background: rgba(255,255,255,0.025);
           padding: 12px;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
         }
         .section-content {
           display: grid;
@@ -311,9 +192,7 @@ class ByteWattPolicyCard extends HTMLElement {
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 14px;
           overflow: hidden;
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)),
-            rgba(11, 20, 32, 0.42);
+          background: rgba(10, 17, 27, 0.16);
         }
         .section-side {
           display: grid;
@@ -337,9 +216,8 @@ class ByteWattPolicyCard extends HTMLElement {
           align-self: start;
           padding: 12px;
           border-radius: 12px;
-          background: linear-gradient(180deg, rgba(18, 26, 38, 0.92), rgba(16, 24, 36, 0.88));
-          border: 1px solid rgba(255,255,255,0.07);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+          background: rgba(18, 26, 38, 0.86);
+          border: 1px solid rgba(255,255,255,0.06);
         }
         .section-header {
           display: flex;
@@ -395,13 +273,6 @@ class ByteWattPolicyCard extends HTMLElement {
         .field-title {
           font-size: 0.93rem;
           font-weight: 700;
-        }
-        .field-title.compact {
-          color: rgba(236, 242, 250, 0.92);
-          font-size: 0.76rem;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
         }
         .button-row {
           display: grid;
@@ -461,37 +332,21 @@ class ByteWattPolicyCard extends HTMLElement {
           align-items: center;
         }
         .policy-value.immediate-value {
-          display: inline-flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 0;
-          width: auto;
-        }
-        .policy-value.immediate-value input {
-          width: auto;
-          min-width: 0;
-        }
-        .policy-value.immediate-value.soc input {
-          width: var(--bytewatt-soc-width);
-        }
-        .policy-value.immediate-value.power input {
-          width: var(--bytewatt-power-width);
-        }
-        .policy-value.immediate-value.duration input {
-          width: var(--bytewatt-duration-width);
+          grid-template-columns: 120px auto;
+          justify-content: start;
         }
         .policy-cell.select-cell select {
-          width: min(100%, var(--bytewatt-select-width));
+          width: min(100%, 170px);
           justify-self: start;
         }
         .policy-cell.number-cell .policy-value {
           justify-content: start;
         }
         .policy-cell.number-cell.percent .policy-value {
-          grid-template-columns: var(--bytewatt-soc-width);
+          grid-template-columns: 150px auto;
         }
         .policy-cell.number-cell.watt .policy-value {
-          grid-template-columns: var(--bytewatt-power-width);
+          grid-template-columns: 160px auto;
         }
         .policy-cell.number-cell .policy-value input {
           width: 100%;
@@ -537,13 +392,13 @@ class ByteWattPolicyCard extends HTMLElement {
           min-width: 0;
         }
         .slot-field.time input {
-          width: min(100%, var(--bytewatt-time-width));
+          width: min(100%, 140px);
         }
         .slot-field.soc input {
-          width: min(100%, var(--bytewatt-soc-width));
+          width: min(100%, 110px);
         }
         .slot-field.power input {
-          width: min(100%, var(--bytewatt-power-width));
+          width: min(100%, 130px);
         }
         .charge-slot {
           gap: 8px;
@@ -560,19 +415,6 @@ class ByteWattPolicyCard extends HTMLElement {
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
           min-width: 0;
-        }
-        .charge-slot-grid.immediate-grid-compact {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: end;
-          gap: 14px 16px;
-          justify-content: flex-start;
-        }
-        .charge-slot-grid.immediate-grid-compact .slot-field {
-          flex: 0 0 auto;
-        }
-        .charge-slot-grid.immediate-grid-compact.two {
-          gap: 14px 16px;
         }
         .slot-delete-icon {
           width: 28px;
@@ -615,11 +457,11 @@ class ByteWattPolicyCard extends HTMLElement {
         .footer-actions {
           display: inline-flex;
           justify-content: flex-end;
-          gap: 10px;
+          gap: 0;
           width: auto;
         }
         .footer-actions button {
-          min-width: var(--bytewatt-action-width);
+          min-width: 170px;
         }
         .schedule-empty {
           color: rgba(220, 230, 243, 0.62);
@@ -687,19 +529,16 @@ class ByteWattPolicyCard extends HTMLElement {
           line-height: 1;
         }
         button.primary {
-          background: linear-gradient(90deg, #3275e3 0%, #53a0ff 100%);
+          background: linear-gradient(90deg, #2f6fd9 0%, #428dff 100%);
           border-color: transparent;
-          box-shadow: 0 10px 22px rgba(50, 117, 227, 0.22);
         }
         button.purple {
-          background: linear-gradient(90deg, #8846f4 0%, #b36dff 100%);
+          background: linear-gradient(90deg, #7a3fe0 0%, #a15bf8 100%);
           border-color: transparent;
-          box-shadow: 0 10px 22px rgba(136, 70, 244, 0.2);
         }
         button.green {
-          background: linear-gradient(90deg, #63b84b 0%, #86e367 100%);
+          background: linear-gradient(90deg, #5ca848 0%, #79d764 100%);
           border-color: transparent;
-          box-shadow: 0 10px 22px rgba(99, 184, 75, 0.18);
         }
         button.danger {
           background: linear-gradient(90deg, rgba(127, 53, 45, 0.95) 0%, rgba(169, 70, 58, 0.95) 100%);
@@ -709,28 +548,18 @@ class ByteWattPolicyCard extends HTMLElement {
           padding: 10px 12px;
           border-radius: 10px;
           border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
         }
         .status.success {
-          background: linear-gradient(180deg, rgba(62,142,92,0.2), rgba(45,108,70,0.14));
+          background: rgba(62,142,92,0.18);
           color: #c6f5d2;
         }
         .status.error {
-          background: linear-gradient(180deg, rgba(163,52,52,0.24), rgba(118,38,38,0.16));
+          background: rgba(163,52,52,0.2);
           color: #ffd3d3;
         }
         .status.info {
-          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.035));
+          background: rgba(255,255,255,0.05);
           color: rgba(220, 230, 243, 0.82);
-        }
-        @keyframes summary-sweep {
-          from { transform: translateX(-18%); opacity: 0.5; }
-          50% { opacity: 1; }
-          to { transform: translateX(18%); opacity: 0.5; }
-        }
-        @keyframes summary-pulse {
-          0%, 100% { transform: translateY(0); opacity: 0.92; }
-          50% { transform: translateY(-1px); opacity: 1; }
         }
         .chip {
           border-radius: 8px;
@@ -754,8 +583,6 @@ class ByteWattPolicyCard extends HTMLElement {
           .charge-policy-grid,
           .discharge-policy-grid,
           .charge-slot-grid,
-          .immediate-grid-compact,
-          .immediate-grid-compact.two,
           .slot-grid,
           .slot-grid.feedin,
           .footer-actions {
@@ -822,109 +649,48 @@ class ByteWattPolicyCard extends HTMLElement {
     if (!batteryPolicy || !Object.keys(batteryPolicy).length) {
       return `<div class="muted">Battery policy data is not available yet.</div>`;
     }
-    const showFeedin = !this._isAllSystemsSelection();
     return `
       ${this._renderChargeSection(batteryPolicy)}
       ${this._renderDischargeSection(batteryPolicy)}
-      ${showFeedin ? this._renderFeedinSection(this._stateObj(this._config.settings_target)?.attributes?.feedin_policy || {}) : ""}
+      ${this._renderFeedinSection(this._stateObj(this._config.settings_target)?.attributes?.feedin_policy || {})}
     `;
   }
 
   _renderSummary(attrs) {
-    const monitoringSummary = attrs?.monitoring_summary || {};
-    const allSystemSummaries = Array.isArray(attrs?.all_system_summaries) ? attrs.all_system_summaries : [];
-    const selectedSoc = Number(monitoringSummary?.soc);
-    const selectedBatteryPower = Number(monitoringSummary?.battery_power);
-    const selectedBatteryLoad = Number(monitoringSummary?.house_consumption);
-    const soc = Number.isFinite(selectedSoc)
-      ? selectedSoc
-      : this._readSummaryNumber(
-          this._config.summary_soc,
-          ["_battery_percentage", "_soc"],
-          ["Battery Percentage", "Battery SOC", "SOC"]
-        );
-    const batteryPower = Number.isFinite(selectedBatteryPower)
-      ? selectedBatteryPower
-      : this._readSummaryNumber(
-          this._config.summary_battery_power,
-          ["_battery_power", "_pbat"],
-          ["Battery Power"]
-        );
-    const batteryLoad = Number.isFinite(selectedBatteryLoad)
-      ? selectedBatteryLoad
-      : this._readSummaryNumber(
-          this._config.summary_battery_load,
-          ["_house_consumption", "_house_load", "_pload"],
-          ["House Consumption", "House Load"]
-        );
+    const soc = this._readSummaryNumber(
+      this._config.summary_soc,
+      ["_battery_percentage", "_soc"],
+      ["Battery Percentage", "Battery SOC", "SOC"]
+    );
+    const batteryPower = this._readSummaryNumber(
+      this._config.summary_battery_power,
+      ["_battery_power", "_pbat"],
+      ["Battery Power"]
+    );
+    const batteryLoad = this._readSummaryNumber(
+      this._config.summary_battery_load,
+      ["_house_consumption", "_house_load", "_pload"],
+      ["House Consumption", "House Load"]
+    );
     const activeImmediate = this._activeImmediateState(attrs);
-    const activeTone = this._summaryToneFromImmediate(activeImmediate);
-    const batteryTone = this._summaryToneFromBatteryPower(batteryPower);
-    const loadTone = Number.isFinite(batteryLoad) && batteryLoad > 0 ? "live" : "idle";
-    const socTone = Number.isFinite(soc) ? "live" : "unavailable";
-    const totalsGrid = `
-      <div class="summary-grid">
-        <div class="summary-card ${socTone}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total SOC" : "Current SOC"}</div>
-          <div class="summary-value ${Number.isFinite(soc) ? "live-pulse" : ""}">${this._formatValue(soc, "%")}</div>
-          ${this._renderSummaryMeter(Number.isFinite(soc) ? Math.max(0, Math.min(100, soc)) : null)}
-        </div>
-        <div class="summary-card ${batteryTone}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total Battery Charging" : "Battery Charging"}</div>
-          <div class="summary-value ${this._summaryIsAnimatedTone(batteryTone) ? "live-pulse" : ""}">${this._formatBatteryPower(batteryPower)}</div>
-          ${this._renderSummaryMeter(this._summaryPowerMeterPercent(batteryPower))}
-        </div>
-        <div class="summary-card ${loadTone} ${Number.isFinite(batteryLoad) ? "live" : "unavailable"}">
-          <div class="summary-label">${this._isAllSystemsSelection() ? "Total Battery Load" : "Battery Load"}</div>
-          <div class="summary-value">${this._formatValue(batteryLoad, "W")}</div>
-          ${this._renderSummaryMeter(this._summaryLoadMeterPercent(batteryLoad))}
-        </div>
-        <div class="summary-card ${activeTone} ${activeTone !== "idle" ? "live" : ""}">
-          <div class="summary-label">Active Immediate State</div>
-          <div class="summary-value ${activeTone !== "idle" ? "live-pulse" : ""}">${this._escapeHtml(activeImmediate)}</div>
-          ${this._renderSummaryMeter(activeTone === "idle" ? 0 : 100)}
-        </div>
-      </div>
-    `;
 
-    if (this._isAllSystemsSelection() && allSystemSummaries.length) {
-      return `
-        <div class="summary-stack">
-          ${totalsGrid}
-          <div class="summary-subgrid">
-            ${allSystemSummaries.map((item) => this._renderBatterySummaryCard(item)).join("")}
-          </div>
-        </div>
-      `;
-    }
-
-    return totalsGrid;
-  }
-
-  _renderBatterySummaryCard(item) {
-    const soc = Number(item?.soc);
-    const batteryPower = Number(item?.battery_power);
-    const batteryLoad = Number(item?.house_consumption);
-    const tone = this._summaryToneFromBatteryPower(batteryPower);
-    const title = this._escapeHtml(item?.sys_sn || item?.label || item?.system_id || "Battery");
-    const meta = item?.remark ? this._escapeHtml(item.remark) : "";
     return `
-      <div class="summary-card battery-breakout ${tone}">
-        <div class="summary-title">${title}</div>
-        ${meta ? `<div class="summary-meta">${meta}</div>` : ""}
-        <div class="summary-breakout-grid">
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">SOC</div>
-            <div class="summary-breakout-value">${this._formatValue(soc, "%")}</div>
-          </div>
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">Charge</div>
-            <div class="summary-breakout-value">${this._formatBatteryPower(batteryPower)}</div>
-          </div>
-          <div class="summary-breakout-cell">
-            <div class="summary-breakout-label">Load</div>
-            <div class="summary-breakout-value">${this._formatValue(batteryLoad, "W")}</div>
-          </div>
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Current SOC</div>
+          <div class="summary-value">${this._formatValue(soc, "%")}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Battery Charging</div>
+          <div class="summary-value">${this._formatBatteryPower(batteryPower)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Battery Load</div>
+          <div class="summary-value">${this._formatValue(batteryLoad, "W")}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Active Immediate State</div>
+          <div class="summary-value">${this._escapeHtml(activeImmediate)}</div>
         </div>
       </div>
     `;
@@ -940,7 +706,6 @@ class ByteWattPolicyCard extends HTMLElement {
     const rows = summary.charge_slots || [];
     const limit = summary.charge_slot_limit || 6;
     const enabled = this._policyEnabled("charge", this._config.charge_switch);
-    const chargeDisabledReason = this._chargeDisabledReason();
     return this._renderSection(
       "charge",
       "&#9889;",
@@ -948,8 +713,8 @@ class ByteWattPolicyCard extends HTMLElement {
       `
         <div class="eyebrow">Immediate</div>
         <div class="stack">
-          <div class="field-title">SOC (%)</div>
-          ${this._numberInput("force-charge-limit", this._immediateDraftValue("force-charge-limit", this._entityNumberValue(this._config.charge_cap, 100)), "%")}
+          <div class="field-title">Charge Until SOC</div>
+          ${this._numberInput("force-charge-limit", this._entityNumberValue(this._config.charge_cap, 100), "%")}
         </div>
         ${this._renderImmediateAction(
           "charge",
@@ -957,8 +722,7 @@ class ByteWattPolicyCard extends HTMLElement {
           "Stop Charging",
           "start_force_charge",
           "stop_force_charge",
-          "primary",
-          chargeDisabledReason
+          "primary"
         )}
       `,
       `
@@ -969,8 +733,8 @@ class ByteWattPolicyCard extends HTMLElement {
             ? `
               <div class="policy-grid charge-policy-grid">
                 ${this._selectCell("Execution Cycle", this._config.execution_cycle, "charge", cycle.options)}
-                ${this._numberCell("SOC (%)", this._config.charge_cap, "charge", "%")}
-                ${this._numberCell("POWER (W)", this._config.charge_power, "charge", "W")}
+                ${this._numberCell("Charging stops at SOC", this._config.charge_cap, "charge", "%")}
+                ${this._numberCell("Charge Power", this._config.charge_power, "charge", "W")}
               </div>
             `
             : `<div class="muted">Charge policy is off. Enable it to show schedule settings.</div>`
@@ -982,7 +746,7 @@ class ByteWattPolicyCard extends HTMLElement {
             ? `
               ${this._renderScheduleHead(limit)}
               ${this._renderBatterySchedule("charge", rows, cycle.weekly, limit, "Add Charge Row")}
-              ${this._renderFooter("charge", rows.length < limit, "Add Charge Row")}
+              ${this._renderFooter("charge")}
             `
             : ""
         }
@@ -995,15 +759,6 @@ class ByteWattPolicyCard extends HTMLElement {
     const rows = summary.discharge_slots || [];
     const limit = summary.discharge_slot_limit || 6;
     const enabled = this._policyEnabled("discharge", this._config.discharge_switch);
-    const immediateDischargeSoc = this._immediateDraftValue(
-      "immediate-discharge-soc",
-      this._entityNumberValue(this._config.discharge_cutoff, 10)
-    );
-    const immediateDischargePower = this._immediateDraftValue(
-      "immediate-discharge-power",
-      this._entityNumberValue(this._config.discharge_power, 5000)
-    );
-    const immediateDischargeDuration = this._immediateDraftValue("immediate-discharge-duration", 60);
     return this._renderSection(
       "discharge",
       "&#8595;",
@@ -1012,26 +767,6 @@ class ByteWattPolicyCard extends HTMLElement {
         <div class="eyebrow">Immediate</div>
         <div class="stack">
           <div class="field-title">Discharge Now</div>
-          ${this._immediatePairFields([
-            {
-              label: "SOC (%)",
-              key: "immediate-discharge-soc",
-              value: immediateDischargeSoc,
-              unit: "%",
-            },
-            {
-              label: "POWER (W)",
-              key: "immediate-discharge-power",
-              value: immediateDischargePower,
-              unit: "W",
-            },
-            {
-              label: "DURATION (MIN)",
-              key: "immediate-discharge-duration",
-              value: immediateDischargeDuration,
-              unit: "min",
-            },
-          ])}
         </div>
         ${this._renderImmediateAction(
           "discharge",
@@ -1050,8 +785,8 @@ class ByteWattPolicyCard extends HTMLElement {
             ? `
               <div class="policy-grid discharge-policy-grid">
                 ${this._selectCell("Execution Cycle", this._config.execution_cycle, "discharge", cycle.options)}
-                ${this._numberCell("SOC (%)", this._config.discharge_cutoff, "discharge", "%")}
-                ${this._numberCell("POWER (W)", this._config.discharge_power, "discharge", "W")}
+                ${this._numberCell("Discharge cutoff SOC", this._config.discharge_cutoff, "discharge", "%")}
+                ${this._numberCell("Discharge Power", this._config.discharge_power, "discharge", "W")}
               </div>
             `
             : `<div class="muted">Discharge policy is off. Enable it to show schedule settings.</div>`
@@ -1063,7 +798,7 @@ class ByteWattPolicyCard extends HTMLElement {
             ? `
               ${this._renderScheduleHead(limit)}
               ${this._renderBatterySchedule("discharge", rows, cycle.weekly, limit, "Add Discharge Row")}
-              ${this._renderFooter("discharge", rows.length < limit, "Add Discharge Row")}
+              ${this._renderFooter("discharge")}
             `
             : ""
         }
@@ -1072,22 +807,24 @@ class ByteWattPolicyCard extends HTMLElement {
   }
 
   _renderFeedinSection(summary) {
-    const hasSummary = Boolean(summary && Object.keys(summary).length);
-    const rows = hasSummary ? summary.slots || [] : [];
-    const limit = hasSummary ? summary.slot_limit || 6 : 6;
+    if (!summary || !Object.keys(summary).length) {
+      return this._renderSection(
+        "feedin",
+        "&#8593;",
+        "Feed-in",
+        `
+          <div class="eyebrow">Immediate</div>
+        `,
+        `<div class="muted">Select an individual battery to edit feed-in policy.</div>`,
+        ""
+      );
+    }
+
+    const rows = summary.slots || [];
+    const limit = summary.slot_limit || 6;
     const enabled = this._policyEnabled("feedin", this._config.feedin_enabled);
-    const immediateCutoffSoc = this._immediateDraftValue(
-      "immediate-feedin-cutoff",
-      this._entityNumberValue(this._config.feedin_cutoff, 0)
-    );
-    const immediatePower = this._immediateDraftValue(
-      "immediate-feedin-power",
-      this._immediateFeedinPower(summary)
-    );
-    const immediateDuration = this._immediateDraftValue(
-      "immediate-feedin-duration",
-      this._immediateFeedinDuration(summary)
-    );
+    const immediatePower = this._immediateFeedinPower(summary);
+    const immediateDuration = this._immediateFeedinDuration(summary);
     return this._renderSection(
       "feedin",
       "&#8593;",
@@ -1098,19 +835,13 @@ class ByteWattPolicyCard extends HTMLElement {
           <div class="field-title">Feed-in Now</div>
           ${this._immediatePairFields([
             {
-              label: "SOC (%)",
-              key: "immediate-feedin-cutoff",
-              value: immediateCutoffSoc,
-              unit: "%",
-            },
-            {
-              label: "POWER (W)",
+              label: "Feed-in Power",
               key: "immediate-feedin-power",
               value: immediatePower,
               unit: "W",
             },
             {
-              label: "DURATION (MIN)",
+              label: "Duration",
               key: "immediate-feedin-duration",
               value: immediateDuration,
               unit: "min",
@@ -1130,25 +861,23 @@ class ByteWattPolicyCard extends HTMLElement {
         <div class="eyebrow">Policy</div>
         ${this._toggleCell("Feed-in policy", this._config.feedin_enabled, "feedin")}
         ${
-          !hasSummary
-            ? `<div class="muted">Select an individual battery to edit feed-in schedule settings.</div>`
-            : enabled
+          enabled
             ? `
               <div class="policy-grid">
-                ${this._numberCell("SOC (%)", this._config.feedin_cutoff, "feedin", "%")}
+                ${this._numberCell("Feed-in cutoff SOC", this._config.feedin_cutoff, "feedin", "%")}
               </div>
             `
             : `<div class="muted">Feed-in policy is off. Enable it to show schedule settings.</div>`
         }
       `,
-        `
-          ${
-            hasSummary && enabled
-              ? `
-                ${this._renderScheduleHead(limit)}
-                ${this._renderFeedinSchedule(rows, limit, "Add Feed-in Row")}
-                ${this._renderFooter("feedin", rows.length < limit, "Add Feed-in Row")}
-              `
+      `
+        ${
+          enabled
+            ? `
+              ${this._renderScheduleHead(limit)}
+              ${this._renderFeedinSchedule(rows, limit, "Add Feed-in Row")}
+              ${this._renderFooter("feedin")}
+            `
             : ""
         }
       `
@@ -1177,21 +906,18 @@ class ByteWattPolicyCard extends HTMLElement {
     `;
   }
 
-  _renderImmediateAction(kind, startLabel, stopLabel, startService, stopService, buttonClass, customDisabledReason = "") {
+  _renderImmediateAction(kind, startLabel, stopLabel, startService, stopService, buttonClass) {
     const attrs = this._currentTargetAttrs();
     const flags = this._immediateFlags(attrs);
     const running = flags[kind];
     const blocked = !running && Object.entries(flags).some(([name, active]) => name !== kind && active);
-    const disabledReason = !running && customDisabledReason
-      ? customDisabledReason
-      : blocked
-        ? "Another immediate action is active"
-        : "";
     return `
       <div class="stack">
         <div class="immediate-status">
           <span class="immediate-status-dot ${running ? "running" : ""}"></span>
-          <span>${running ? "Running" : disabledReason || "Stopped"}</span>
+          <span>${
+            running ? "Running" : blocked ? "Another immediate action is active" : "Stopped"
+          }</span>
         </div>
         <div class="button-row single-action">
           <button
@@ -1199,7 +925,7 @@ class ByteWattPolicyCard extends HTMLElement {
             data-immediate-kind="${kind}"
             data-start-service="${startService}"
             data-stop-service="${stopService}"
-            ${disabledReason ? "disabled" : ""}
+            ${blocked ? "disabled" : ""}
           >
             ${running ? stopLabel : startLabel}
           </button>
@@ -1227,6 +953,7 @@ class ByteWattPolicyCard extends HTMLElement {
       return `
         <div class="stack">
           ${renderRow({ sort: 1, soc: "", start: "", end: "", power: "", weeks: [] })}
+          <button data-add-slot="${kind}">${addLabel}</button>
         </div>
       `;
     }
@@ -1237,6 +964,11 @@ class ByteWattPolicyCard extends HTMLElement {
           rows.length
             ? rows.map((slot) => renderRow(slot)).join("")
             : `<div class="schedule-empty">No schedule rows defined.</div>`
+        }
+        ${
+          rows.length < limit
+            ? `<button data-add-slot="${kind}">${addLabel}</button>`
+            : `<div class="muted">All rows are in use.</div>`
         }
       </div>
     `;
@@ -1262,7 +994,7 @@ class ByteWattPolicyCard extends HTMLElement {
           ${this._slotField("SOC (%)", `charge:${slotNo}:soc`, slot.soc, "number")}
           ${this._slotField("Start Time", `charge:${slotNo}:start`, slot.start, "time")}
           ${this._slotField("End Time", `charge:${slotNo}:end`, slot.end, "time")}
-          ${this._slotField("POWER (W)", `charge:${slotNo}:power`, slot.power, "number")}
+          ${this._slotField("Power (W)", `charge:${slotNo}:power`, slot.power, "number")}
         </div>
         ${
           weekly
@@ -1285,6 +1017,11 @@ class ByteWattPolicyCard extends HTMLElement {
           rows.length
             ? rows.map((slot) => this._renderFeedinSlot(slot)).join("")
             : `<div class="schedule-empty">No schedule rows defined.</div>`
+        }
+        ${
+          rows.length < limit
+            ? `<button data-add-slot="feedin">${addLabel}</button>`
+            : `<div class="muted">All rows are in use.</div>`
         }
       </div>
     `;
@@ -1310,7 +1047,7 @@ class ByteWattPolicyCard extends HTMLElement {
           ${this._slotField("SOC (%)", `${kind}:${slotNo}:soc`, slot.soc, "number")}
           ${this._slotField("Start Time", `${kind}:${slotNo}:start`, slot.start, "time")}
           ${this._slotField("End Time", `${kind}:${slotNo}:end`, slot.end, "time")}
-          ${this._slotField("POWER (W)", `${kind}:${slotNo}:power`, slot.power, "number")}
+          ${this._slotField("Power (W)", `${kind}:${slotNo}:power`, slot.power, "number")}
         </div>
         ${
           weekly
@@ -1329,34 +1066,27 @@ class ByteWattPolicyCard extends HTMLElement {
   _renderFeedinSlot(slot) {
     const slotNo = slot.sort || 1;
     return `
-      <div class="slot charge-slot">
-        <div class="charge-slot-header">
+      <div class="slot">
+        <div class="slot-top">
           <div class="slot-name">Setting ${slotNo}</div>
-          <button
-            class="slot-delete-icon"
-            type="button"
-            title="Delete setting ${slotNo}"
-            aria-label="Delete setting ${slotNo}"
-            data-delete-slot="feedin:${slotNo}"
-          >
-            &times;
-          </button>
-        </div>
-        <div class="charge-slot-grid">
-          ${this._slotReadonlyField("SOC (%)", "POLICY", "soc")}
-          ${this._slotField("Start Time", `feedin:${slotNo}:start`, slot.start, "time")}
-          ${this._slotField("End Time", `feedin:${slotNo}:end`, slot.end, "time")}
-          ${this._slotField("POWER (W)", `feedin:${slotNo}:power`, slot.power, "number")}
+          <div class="slot-grid feedin">
+            ${this._slotField("Start Time", `feedin:${slotNo}:start`, slot.start, "time")}
+            ${this._slotField("End Time", `feedin:${slotNo}:end`, slot.end, "time")}
+            ${this._slotField("Power (W)", `feedin:${slotNo}:power`, slot.power, "number")}
+          </div>
+          <div class="slot-actions">
+            <button class="primary" data-apply-slot="feedin:${slotNo}">Apply</button>
+            <button class="danger" data-delete-slot="feedin:${slotNo}">Delete</button>
+          </div>
         </div>
       </div>
     `;
   }
 
-  _renderFooter(section, canAdd = false, addLabel = "") {
+  _renderFooter(section) {
     return `
       <div class="footer">
         <div class="footer-actions ${section === "charge" ? "charge-footer-actions" : ""}">
-          ${canAdd ? `<button data-add-slot="${section}">${addLabel}</button>` : ``}
           <button class="primary" data-commit-policy="${section}">Commit Policy</button>
         </div>
       </div>
@@ -1410,31 +1140,30 @@ class ByteWattPolicyCard extends HTMLElement {
         <div class="field-title">${label}</div>
         <div class="policy-value">
           <input type="number" data-policy-number="${entityId}" data-section="${section}" value="${this._escapeHtml(value ?? "")}" />
+          <div>${this._escapeHtml(unit)}</div>
         </div>
       </div>
     `;
   }
 
-  _numberInput(key, value, unit, disabled = false) {
-    const unitClass =
-      unit === "%" ? "soc" : unit === "W" ? "power" : unit === "min" ? "duration" : "generic";
+  _numberInput(key, value, unit) {
     return `
-      <div class="policy-value immediate-value ${unitClass}">
-        <input type="number" data-key="${key}" value="${this._escapeHtml(this._normalizeNumberState(value))}" ${disabled ? "disabled" : ""} />
+      <div class="policy-value immediate-value">
+        <input type="number" data-key="${key}" value="${this._escapeHtml(this._normalizeNumberState(value))}" />
+        <div>${this._escapeHtml(unit)}</div>
       </div>
     `;
   }
 
   _immediatePairFields(fields) {
-    const compactClass = fields.length <= 2 ? "immediate-grid-compact two" : "immediate-grid-compact";
     return `
-      <div class="charge-slot-grid ${compactClass}">
+      <div class="charge-slot-grid">
         ${fields
           .map(
             (field) => `
               <div class="slot-field ${this._escapeHtml(field.unit === "W" ? "power" : "soc")}">
-                <div class="field-title compact">${this._escapeHtml(field.label)}</div>
-                ${this._numberInput(field.key, field.value, field.unit, Boolean(field.disabled))}
+                <div class="eyebrow">${this._escapeHtml(field.label)}</div>
+                ${this._numberInput(field.key, field.value, field.unit)}
               </div>
             `
           )
@@ -1450,17 +1179,8 @@ class ByteWattPolicyCard extends HTMLElement {
       type === "time" ? "time" : label.includes("SOC") ? "soc" : label.includes("Power") ? "power" : "generic";
     return `
       <div class="slot-field ${fieldClass}">
-        <div class="field-title compact">${label}</div>
+        <div class="eyebrow">${label}</div>
         <input type="${type}" data-slot-field="${key}" value="${this._escapeHtml(inputValue)}" />
-      </div>
-    `;
-  }
-
-  _slotReadonlyField(label, value, fieldClass = "generic") {
-    return `
-      <div class="slot-field ${fieldClass}">
-        <div class="field-title compact">${label}</div>
-        <input type="text" value="${this._escapeHtml(value)}" readonly disabled />
       </div>
     `;
   }
@@ -1525,16 +1245,6 @@ class ByteWattPolicyCard extends HTMLElement {
     this._draftBucket(section)[key] = value;
   }
 
-  _immediateDraftValue(key, fallback) {
-    return Object.prototype.hasOwnProperty.call(this._immediateDrafts, key)
-      ? this._immediateDrafts[key]
-      : fallback;
-  }
-
-  _setImmediateDraftValue(key, value) {
-    this._immediateDrafts[key] = value;
-  }
-
   _clearSectionDraft(section) {
     this._drafts[section] = {};
   }
@@ -1556,7 +1266,6 @@ class ByteWattPolicyCard extends HTMLElement {
   }
 
   _readSummaryNumber(primaryEntityId, suffixes = [], friendlyNames = []) {
-    const directState = this._stateObj(primaryEntityId);
     const direct = this._readEntityNumber(primaryEntityId);
     if (Number.isFinite(direct)) {
       return direct;
@@ -1574,7 +1283,6 @@ class ByteWattPolicyCard extends HTMLElement {
       ) {
         return false;
       }
-      if (!this._entityMatchesSelectedTarget(entityId, stateObj)) return false;
       return Number.isFinite(Number(stateObj?.state));
     });
     if (suffixMatch) {
@@ -1593,7 +1301,6 @@ class ByteWattPolicyCard extends HTMLElement {
       ) {
         return false;
       }
-      if (!this._entityMatchesSelectedTarget(entityId, stateObj)) return false;
       return Number.isFinite(Number(stateObj?.state));
     });
     if (friendlyMatch) {
@@ -1601,40 +1308,6 @@ class ByteWattPolicyCard extends HTMLElement {
     }
 
     return null;
-  }
-
-  _currentTargetLabel() {
-    return String(this._stateObj(this._config.settings_target)?.state || "").trim();
-  }
-
-  _isAllSystemsSelection(value = this._currentTargetLabel()) {
-    const normalized = String(value || "").trim().toLowerCase();
-    return !normalized || normalized === "all" || normalized === "all systems" || normalized === "__all__";
-  }
-
-  _selectedTargetToken() {
-    const label = this._currentTargetLabel();
-    if (this._isAllSystemsSelection(label)) return null;
-    return String(label).toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  _entityMatchesSelectedTarget(entityId, stateObj) {
-    const token = this._selectedTargetToken();
-    if (!token) return true;
-    const source = [
-      entityId,
-      stateObj?.attributes?.friendly_name,
-      stateObj?.attributes?.device_name,
-      stateObj?.attributes?.name,
-      stateObj?.attributes?.system_sn,
-      stateObj?.attributes?.sys_sn,
-      stateObj?.attributes?.serial,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-    return source.includes(token);
   }
 
   _immediateFlags(attrs = this._currentTargetAttrs()) {
@@ -1652,7 +1325,6 @@ class ByteWattPolicyCard extends HTMLElement {
   }
 
   _resetImmediateState() {
-    this._immediateDrafts = {};
     this._immediateState = {
       charge: false,
       discharge: false,
@@ -1667,18 +1339,6 @@ class ByteWattPolicyCard extends HTMLElement {
     if (flags.discharge) states.push("Discharging");
     if (flags.feedin) states.push("Feed-in");
     return states.length ? states.join(", ") : "Idle";
-  }
-
-  _chargeDisabledReason() {
-    const soc = this._readSummaryNumber(
-      this._config.summary_soc,
-      ["_battery_percentage", "_soc"],
-      ["Battery Percentage", "Battery SOC", "SOC"]
-    );
-    if (Number.isFinite(soc) && soc >= 100) {
-      return "Charge disabled: battery SOC is 100%";
-    }
-    return "";
   }
 
   _formatValue(value, unit = "") {
@@ -1701,41 +1361,6 @@ class ByteWattPolicyCard extends HTMLElement {
     return "Idle 0 W";
   }
 
-  _renderSummaryMeter(percent) {
-    if (!Number.isFinite(percent)) return "";
-    const clamped = Math.max(0, Math.min(100, percent));
-    return `<div class="summary-meter"><span style="width:${clamped}%"></span></div>`;
-  }
-
-  _summaryToneFromBatteryPower(value) {
-    if (!Number.isFinite(value)) return "unavailable";
-    if (value > 0) return "charging live";
-    if (value < 0) return "discharging live";
-    return "idle";
-  }
-
-  _summaryToneFromImmediate(value) {
-    const text = String(value || "").toLowerCase();
-    if (text.includes("feed-in")) return "feedin";
-    if (text.includes("discharging")) return "discharging";
-    if (text.includes("charging")) return "charging";
-    return "idle";
-  }
-
-  _summaryIsAnimatedTone(tone) {
-    return /charging|discharging|feedin/.test(String(tone || ""));
-  }
-
-  _summaryPowerMeterPercent(value) {
-    if (!Number.isFinite(value)) return null;
-    return Math.max(0, Math.min(100, Math.abs(value) / 100));
-  }
-
-  _summaryLoadMeterPercent(value) {
-    if (!Number.isFinite(value)) return null;
-    return Math.max(0, Math.min(100, Math.abs(value) / 100));
-  }
-
   _nextAvailableSlot(slots, limit) {
     const used = new Set(
       (slots || [])
@@ -1752,10 +1377,7 @@ class ByteWattPolicyCard extends HTMLElement {
   _normalizeNumberState(value) {
     if (value === undefined || value === null) return "";
     const text = String(value);
-    if (text === "unknown" || text === "unavailable") return "";
-    const parsed = Number(text);
-    if (!Number.isFinite(parsed)) return text;
-    return Number.isInteger(parsed) ? String(parsed) : String(parsed);
+    return text === "unknown" || text === "unavailable" ? "" : text;
   }
 
   _normalizeTimeValue(value) {
@@ -1943,40 +1565,26 @@ class ByteWattPolicyCard extends HTMLElement {
     if (service === "start_force_charge") {
       const node = this.shadowRoot.querySelector('[data-key="force-charge-limit"]');
       data.charge_cap = Number(
-        node?.value || this._immediateDraftValue("force-charge-limit", this._entityNumberValue(this._config.charge_cap, 100))
+        node?.value || this._entityNumberValue(this._config.charge_cap, 100)
       );
     }
     if (service === "start_discharge_now") {
-      const socNode = this.shadowRoot.querySelector('[data-key="immediate-discharge-soc"]');
-      const powerNode = this.shadowRoot.querySelector('[data-key="immediate-discharge-power"]');
-      const durationNode = this.shadowRoot.querySelector('[data-key="immediate-discharge-duration"]');
-      data.soc = Number(
-        socNode?.value || this._immediateDraftValue("immediate-discharge-soc", this._entityNumberValue(this._config.discharge_cutoff, 10))
-      );
-      data.power_watts = Number(
-        powerNode?.value || this._immediateDraftValue("immediate-discharge-power", this._entityNumberValue(this._config.discharge_power, 5000))
-      );
-      data.duration_minutes = Number(durationNode?.value || this._immediateDraftValue("immediate-discharge-duration", 60));
+      data.soc = this._entityNumberValue(this._config.discharge_cutoff, 10);
+      data.power_watts = this._entityNumberValue(this._config.discharge_power, 5000);
+      data.duration_minutes = 60;
     }
     if (service === "start_feedin_now") {
       const powerNode = this.shadowRoot.querySelector('[data-key="immediate-feedin-power"]');
       const durationNode = this.shadowRoot.querySelector('[data-key="immediate-feedin-duration"]');
-      data.power_watts = Number(powerNode?.value || this._immediateDraftValue("immediate-feedin-power", 1000));
-      data.duration_minutes = Number(durationNode?.value || this._immediateDraftValue("immediate-feedin-duration", 60));
+      data.power_watts = Number(powerNode?.value || 1000);
+      data.duration_minutes = Number(durationNode?.value || 60);
     }
     return data;
   }
 
   async _runNow(service) {
     const data = this._runNowData(service);
-    await this._run(
-      async () => {
-        await this._syncImmediateLinkedFields(service, data);
-        await this._callByteWatt(service, data);
-      },
-      "Action sent",
-      "Action failed"
-    );
+    await this._run(() => this._callByteWatt(service, data), "Action sent", "Action failed");
   }
 
   async _toggleImmediate(kind, startService, stopService) {
@@ -1996,53 +1604,12 @@ class ByteWattPolicyCard extends HTMLElement {
       : `${actionLabel} start requested`;
 
     try {
-      await this._syncImmediateLinkedFields(service, data);
       await this._callByteWatt(service, data);
       this._immediateState[kind] = !running;
       this._setStatus("success", successMessage);
     } catch (error) {
       this._setStatus("error", `Action failed: ${this._errorMessage(error)}`);
     }
-  }
-
-  async _syncImmediateLinkedFields(service, data) {
-    if (service === "start_feedin_now") {
-      const cutoffNode = this.shadowRoot.querySelector('[data-key="immediate-feedin-cutoff"]');
-      const cutoffValue = Number(
-        cutoffNode?.value || this._entityNumberValue(this._config.feedin_cutoff, 0)
-      );
-      await this._setNumberIfNeeded(this._config.feedin_cutoff, cutoffValue);
-    }
-  }
-
-  _immediateKindForKey(key) {
-    if (key === "force-charge-limit") return "charge";
-    if (String(key || "").startsWith("immediate-discharge-")) return "discharge";
-    if (String(key || "").startsWith("immediate-feedin-")) return "feedin";
-    return null;
-  }
-
-  _startServiceForImmediateKind(kind) {
-    if (kind === "charge") return "start_force_charge";
-    if (kind === "discharge") return "start_discharge_now";
-    if (kind === "feedin") return "start_feedin_now";
-    return null;
-  }
-
-  async _reapplyImmediateIfRunning(key) {
-    const kind = this._immediateKindForKey(key);
-    if (!kind || !this._isImmediateRunning(kind)) return;
-    const service = this._startServiceForImmediateKind(kind);
-    if (!service) return;
-    const data = this._runNowData(service);
-    await this._run(
-      async () => {
-        await this._syncImmediateLinkedFields(service, data);
-        await this._callByteWatt(service, data);
-      },
-      `${kind === "feedin" ? "Feed-in" : kind[0].toUpperCase() + kind.slice(1)} updated`,
-      "Immediate update failed"
-    );
   }
 
   async _commitPolicy(section) {
@@ -2223,16 +1790,6 @@ class ByteWattPolicyCard extends HTMLElement {
           node.dataset.stopService
         )
       );
-    });
-
-    this.shadowRoot.querySelectorAll("[data-key]").forEach((node) => {
-      node.addEventListener("input", () => {
-        this._setImmediateDraftValue(node.dataset.key, node.value);
-      });
-      node.addEventListener("change", () => {
-        this._setImmediateDraftValue(node.dataset.key, node.value);
-        this._reapplyImmediateIfRunning(node.dataset.key);
-      });
     });
 
     this.shadowRoot.querySelectorAll("[data-apply-slot]").forEach((node) => {

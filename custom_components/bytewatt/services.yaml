@@ -323,3 +323,219 @@ update_grid_feedin_slot:
       required: false
       selector:
         text:
+
+delete_grid_feedin_slot:
+  name: Delete Grid Feed-in Slot
+  description: Delete one configured grid feed-in row.
+  fields:
+    slot:
+      name: Slot Number
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 6
+          step: 1
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+update_battery_slot:
+  name: Update Battery Slot
+  description: Update one charge or discharge schedule row.
+  fields:
+    policy_kind:
+      name: Policy
+      required: true
+      selector:
+        select:
+          options:
+            - charge
+            - discharge
+    slot:
+      name: Slot Number
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 28
+          step: 1
+    start_time:
+      name: Start Time
+      required: false
+      selector:
+        time: {}
+    end_time:
+      name: End Time
+      required: false
+      selector:
+        time: {}
+    soc:
+      name: SOC
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+    power_watts:
+      name: Power
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 50000
+          step: 100
+          unit_of_measurement: "W"
+    weeks:
+      name: Weeks
+      required: false
+      selector:
+        object:
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+delete_battery_slot:
+  name: Delete Battery Slot
+  description: Delete one charge or discharge schedule row.
+  fields:
+    policy_kind:
+      name: Policy
+      required: true
+      selector:
+        select:
+          options:
+            - charge
+            - discharge
+    slot:
+      name: Slot Number
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 28
+          step: 1
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+start_force_charge:
+  name: Start Force Charge
+  description: Start immediate force charge to the requested charge cap.
+  fields:
+    charge_cap:
+      name: Charge Cap
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+stop_force_charge:
+  name: Stop Force Charge
+  description: Stop the immediate force-charge action.
+  fields:
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+start_discharge_now:
+  name: Start Discharge Now
+  description: Add a temporary valid discharge row and enable discharge policy.
+  fields:
+    soc:
+      name: SOC
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+    power_watts:
+      name: Power
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 50000
+          step: 100
+          unit_of_measurement: "W"
+    duration_minutes:
+      name: Duration
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1439
+          step: 1
+          unit_of_measurement: "min"
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+stop_discharge_now:
+  name: Stop Discharge Now
+  description: Remove the temporary discharge-now row added by the integration.
+  fields:
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+start_feedin_now:
+  name: Start Feed-in Now
+  description: Add a temporary valid feed-in row and enable feed-in policy.
+  fields:
+    power_watts:
+      name: Power
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 20000
+          step: 100
+          unit_of_measurement: "W"
+    duration_minutes:
+      name: Duration
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1439
+          step: 1
+          unit_of_measurement: "min"
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:
+
+stop_feedin_now:
+  name: Stop Feed-in Now
+  description: Remove the temporary feed-in-now row added by the integration.
+  fields:
+    entry_id:
+      name: Integration ID
+      required: false
+      selector:
+        text:

@@ -47,17 +47,36 @@ Recommended approach:
 
 ## Installing The Custom Card
 
-Copy `examples/www/bytewatt-policy-card.js` to your Home Assistant `www` folder,
-for example:
+Copy the working file from `examples/www/` to your Home Assistant `www` folder:
 
-- `/config/www/bytewatt-policy-card.js`
+- `/config/www/community/bytewatt-card/bytewatt-policy-card.js`
 
-Then add it as a dashboard resource:
+Then add it as a dashboard resource using a fixed filename and a cache-buster:
 
 ```yaml
-url: /local/bytewatt-policy-card.js
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=031
 type: module
 ```
+
+## Resource Counter
+
+To force Home Assistant and the browser to load a fresh custom-card build:
+
+1. Keep the resource filename fixed as `bytewatt-policy-card.js`
+2. Increment the internal build number in the JS file
+3. Increment only the Lovelace `?v=` value to the same number
+4. Keep numbered archive copies in `examples/www/` for rollback/reference
+
+Example next iteration:
+
+```yaml
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=032
+type: module
+```
+
+Current build stamp in this repo:
+
+- `031`
 
 ## Defaults
 
@@ -109,3 +128,4 @@ Feed-in fields:
 Optional not-yet-enabled fields:
 
 - `master_action`
+

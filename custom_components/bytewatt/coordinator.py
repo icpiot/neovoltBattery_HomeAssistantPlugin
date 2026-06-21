@@ -69,6 +69,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry_id = entry_id
         self._last_battery_data = None
+        self._last_selected_battery_data = None
+        self._last_all_battery_data: Dict[str, Any] = {}
         self._scan_interval = scan_interval
         self._last_successful_update: Optional[datetime] = None
         self._consecutive_stale_checks = 0
@@ -186,6 +188,43 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             if manager is not None:
                 await manager.refresh()
             
+            selected_battery_data = None
+            all_battery_data: Dict[str, Any] = {}
+            if manager is not None:
+                selected_sys_sn = getattr(manager, "current_settings_target_sys_sn", "") or ""
+                if selected_sys_sn and selected_sys_sn.lower() != "all":
+                    try:
+                        with self._timed_operation("get_selected_battery_data"):
+                            selected_battery_data = await self.client.get_battery_data(
+                                sys_sn=selected_sys_sn
+                            )
+                    except Exception as selected_err:
+                        _LOGGER.warning(
+                            "Failed to get selected battery monitoring for %s: %s",
+                            selected_sys_sn,
+                            selected_err,
+                        )
+
+                inventory = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("inverters", [])
+                for inverter in inventory:
+                    sys_sn = str(getattr(inverter, "sys_sn", "") or "").strip()
+                    if not sys_sn or sys_sn.lower() == "all" or sys_sn in all_battery_data:
+                        continue
+                    if selected_battery_data and sys_sn == selected_sys_sn:
+                        all_battery_data[sys_sn] = selected_battery_data
+                        continue
+                    try:
+                        with self._timed_operation(f"get_inventory_battery_data_{sys_sn}"):
+                            inverter_battery_data = await self.client.get_battery_data(sys_sn=sys_sn)
+                        if inverter_battery_data:
+                            all_battery_data[sys_sn] = inverter_battery_data
+                    except Exception as inventory_err:
+                        _LOGGER.warning(
+                            "Failed to get inventory battery monitoring for %s: %s",
+                            sys_sn,
+                            inventory_err,
+                        )
+
             # If we got battery data, update our cached version and last successful time
             if battery_data:
                 self._last_battery_data = battery_data
@@ -197,6 +236,15 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     "type": "battery_data",
                     "result": "success"
                 })
+                if selected_battery_data:
+                    self._last_selected_battery_data = selected_battery_data
+                elif manager is not None and (
+                    not ((getattr(manager, "current_settings_target_sys_sn", "") or "").strip())
+                    or (getattr(manager, "current_settings_target_sys_sn", "") or "").strip().lower() == "all"
+                ):
+                    self._last_selected_battery_data = None
+                if all_battery_data:
+                    self._last_all_battery_data = all_battery_data
             elif self._last_battery_data is None:
                 # Only raise error if we never got data
                 error_msg = "Failed to get battery data and no cached data available"
@@ -220,6 +268,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             # Return the data along with connection status
             data = {
                 "battery": self._last_battery_data or {},
+                "selected_battery": self._last_selected_battery_data or {},
+                "all_batteries": self._last_all_battery_data or {},
                 "connection_status": "connected" if battery_data else "partial",
                 "circuit_breaker": self.circuit_breaker.state.value,
                 "last_updated": current_time.isoformat()
@@ -254,6 +304,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 return {
                     "battery": self._last_battery_data,
+                    "selected_battery": self._last_selected_battery_data or {},
+                    "all_batteries": self._last_all_battery_data or {},
                     "connection_status": "cached",
                     "cache_age": cache_age,
                     "circuit_breaker": self.circuit_breaker.state.value,

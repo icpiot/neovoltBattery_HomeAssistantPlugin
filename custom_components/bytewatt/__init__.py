@@ -59,18 +59,34 @@ from .const import (
     SERVICE_SET_GRID_FEEDIN_ENABLED,
     SERVICE_SET_GRID_FEEDIN_CUTOFF_SOC,
     SERVICE_UPDATE_GRID_FEEDIN_SLOT,
+    SERVICE_DELETE_GRID_FEEDIN_SLOT,
+    SERVICE_UPDATE_BATTERY_SLOT,
+    SERVICE_DELETE_BATTERY_SLOT,
+    SERVICE_START_FORCE_CHARGE,
+    SERVICE_STOP_FORCE_CHARGE,
+    SERVICE_START_DISCHARGE_NOW,
+    SERVICE_STOP_DISCHARGE_NOW,
+    SERVICE_START_FEEDIN_NOW,
+    SERVICE_STOP_FEEDIN_NOW,
     ATTR_FEEDIN_ENABLED,
     ATTR_FEEDIN_CUTOFF_SOC,
     ATTR_FEEDIN_SLOT,
     ATTR_FEEDIN_START,
     ATTR_FEEDIN_END,
     ATTR_FEEDIN_POWER,
+    ATTR_POLICY_KIND,
+    ATTR_SLOT,
+    ATTR_SLOT_SOC,
+    ATTR_SLOT_WEEKS,
+    ATTR_DURATION_MINUTES,
     ATTR_ENTRY_ID,
     CONF_HOST_SYSTEM_ID,
     CONF_HOST_SYS_SN,
     CURRENT_ENTRY_VERSION,
     FEEDIN_MAX_SLOTS,
     FEEDIN_MAX_POWER_W,
+    BATTERY_DAILY_MAX_SLOTS,
+    BATTERY_WEEKLY_MAX_SLOTS,
     SENSOR_TOTAL_BATTERY_DISCHARGE,
 )
 
@@ -436,6 +452,11 @@ def _manager_for(hass: HomeAssistant, call: ServiceCall) -> SettingsManager:
     return hass.data[DOMAIN][entry_id]["manager"]
 
 
+def _coordinator_for(hass: HomeAssistant, call: ServiceCall):
+    entry_id = _resolve_entry_id(hass, call)
+    return hass.data[DOMAIN][entry_id]["coordinator"]
+
+
 async def _submit_battery_service(
     hass: HomeAssistant, call: ServiceCall, **fields: Any
 ) -> bool:
@@ -513,6 +534,7 @@ def _register_services(hass: HomeAssistant) -> None:
         if not result.feedin_ok:
             detail = result.feedin_error or "see logs for details"
             raise HomeAssistantError(f"Grid feed-in enable update failed: {detail}")
+        await _coordinator_for(hass, call).async_request_refresh()
 
     async def handle_set_grid_feedin_cutoff_soc(call: ServiceCall) -> None:
         manager = _manager_for(hass, call)
@@ -524,6 +546,7 @@ def _register_services(hass: HomeAssistant) -> None:
         if not result.feedin_ok:
             detail = result.feedin_error or "see logs for details"
             raise HomeAssistantError(f"Grid feed-in cutoff SOC update failed: {detail}")
+        await _coordinator_for(hass, call).async_request_refresh()
 
     async def handle_update_grid_feedin_slot(call: ServiceCall) -> None:
         slot_1based = call.data[ATTR_FEEDIN_SLOT]
@@ -548,6 +571,96 @@ def _register_services(hass: HomeAssistant) -> None:
         if not result.feedin_ok:
             detail = result.feedin_error or "see logs for details"
             raise HomeAssistantError(f"Grid feed-in slot update failed: {detail}")
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_delete_grid_feedin_slot(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.delete_feedin_slot(call.data[ATTR_SLOT])
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_update_battery_slot(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.update_battery_slot(
+                call.data[ATTR_POLICY_KIND],
+                call.data[ATTR_SLOT],
+                start=call.data.get(ATTR_FEEDIN_START),
+                end=call.data.get(ATTR_FEEDIN_END),
+                soc=call.data.get(ATTR_SLOT_SOC),
+                power=call.data.get(ATTR_FEEDIN_POWER),
+                weeks=call.data.get(ATTR_SLOT_WEEKS),
+            )
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_delete_battery_slot(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.delete_battery_slot(
+                call.data[ATTR_POLICY_KIND], call.data[ATTR_SLOT]
+            )
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_start_force_charge(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.force_charge_start(call.data[ATTR_CHARGE_CAP])
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_stop_force_charge(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.force_charge_stop()
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_start_discharge_now(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.start_discharge_now(
+                duration_minutes=call.data.get(ATTR_DURATION_MINUTES, 60),
+                soc=call.data[ATTR_SLOT_SOC],
+                power=call.data[ATTR_FEEDIN_POWER],
+            )
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_stop_discharge_now(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.stop_discharge_now()
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_start_feedin_now(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.start_feedin_now(
+                duration_minutes=call.data.get(ATTR_DURATION_MINUTES, 60),
+                power=call.data[ATTR_FEEDIN_POWER],
+            )
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
+
+    async def handle_stop_feedin_now(call: ServiceCall) -> None:
+        manager = _manager_for(hass, call)
+        try:
+            await manager.stop_feedin_now()
+        except SettingsValidationError as ex:
+            raise HomeAssistantError(str(ex)) from ex
+        await _coordinator_for(hass, call).async_request_refresh()
 
     # ---------- Maintenance ----------
 
@@ -631,6 +744,7 @@ def _register_services(hass: HomeAssistant) -> None:
     _time_schema = vol.All(cv.string)
     _soc_schema = vol.All(vol.Coerce(int), vol.Range(min=1, max=100))
     _feedin_power_schema = vol.All(vol.Coerce(int), vol.Range(min=0, max=FEEDIN_MAX_POWER_W))
+    _battery_power_schema = vol.All(vol.Coerce(int), vol.Range(min=0, max=50000))
     _entry_id_opt = {vol.Optional(ATTR_ENTRY_ID): cv.string}
 
     hass.services.async_register(
@@ -689,6 +803,67 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Optional(ATTR_FEEDIN_POWER): _feedin_power_schema,
             **_entry_id_opt,
         }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_GRID_FEEDIN_SLOT, handle_delete_grid_feedin_slot,
+        schema=vol.Schema({
+            vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=FEEDIN_MAX_SLOTS)),
+            **_entry_id_opt,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UPDATE_BATTERY_SLOT, handle_update_battery_slot,
+        schema=vol.Schema({
+            vol.Required(ATTR_POLICY_KIND): vol.In(["charge", "discharge"]),
+            vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=BATTERY_WEEKLY_MAX_SLOTS)),
+            vol.Optional(ATTR_FEEDIN_START): _time_schema,
+            vol.Optional(ATTR_FEEDIN_END): _time_schema,
+            vol.Optional(ATTR_SLOT_SOC): _soc_schema,
+            vol.Optional(ATTR_FEEDIN_POWER): _battery_power_schema,
+            vol.Optional(ATTR_SLOT_WEEKS): [vol.All(vol.Coerce(int), vol.Range(min=1, max=7))],
+            **_entry_id_opt,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_BATTERY_SLOT, handle_delete_battery_slot,
+        schema=vol.Schema({
+            vol.Required(ATTR_POLICY_KIND): vol.In(["charge", "discharge"]),
+            vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=BATTERY_WEEKLY_MAX_SLOTS)),
+            **_entry_id_opt,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_START_FORCE_CHARGE, handle_start_force_charge,
+        schema=vol.Schema({vol.Required(ATTR_CHARGE_CAP): _soc_schema, **_entry_id_opt}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_STOP_FORCE_CHARGE, handle_stop_force_charge,
+        schema=vol.Schema(_entry_id_opt),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_START_DISCHARGE_NOW, handle_start_discharge_now,
+        schema=vol.Schema({
+            vol.Required(ATTR_SLOT_SOC): _soc_schema,
+            vol.Required(ATTR_FEEDIN_POWER): _battery_power_schema,
+            vol.Optional(ATTR_DURATION_MINUTES, default=60): vol.All(vol.Coerce(int), vol.Range(min=1, max=1439)),
+            **_entry_id_opt,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_STOP_DISCHARGE_NOW, handle_stop_discharge_now,
+        schema=vol.Schema(_entry_id_opt),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_START_FEEDIN_NOW, handle_start_feedin_now,
+        schema=vol.Schema({
+            vol.Required(ATTR_FEEDIN_POWER): _feedin_power_schema,
+            vol.Optional(ATTR_DURATION_MINUTES, default=60): vol.All(vol.Coerce(int), vol.Range(min=1, max=1439)),
+            **_entry_id_opt,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_STOP_FEEDIN_NOW, handle_stop_feedin_now,
+        schema=vol.Schema(_entry_id_opt),
     )
     hass.services.async_register(
         DOMAIN, SERVICE_FORCE_RECONNECT, handle_force_reconnect,
