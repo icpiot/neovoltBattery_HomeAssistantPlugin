@@ -39,6 +39,10 @@ class ByteWattAPIError(Exception):
     """
 
 
+class ByteWattAuthError(ByteWattAPIError):
+    """Raised when authentication fails and the config entry needs reauth."""
+
+
 async def _decode_json_object(response, context: str) -> Optional[Dict[str, Any]]:
     """Decode an aiohttp response body to a JSON object (dict), or return None.
 
@@ -108,6 +112,15 @@ class NeovoltClient:
         self.token: Optional[str] = None
         self.host_system_id = host_system_id   # systemId of the Host inverter
         self.host_sys_sn = host_sys_sn         # sysSn of the Host inverter
+
+    def _aggregate_monitoring_sys_sn(self) -> str:
+        """Return the merged monitoring scope used by aggregate sensors.
+
+        The Byte-Watt app exposes a combined "All" view for whole-system
+        monitoring. Battery-specific settings are a separate concern and are
+        targeted through host_system_id / host_sys_sn on the settings APIs.
+        """
+        return "All"
     
     async def async_login(self) -> bool:
         """Login to the Neovolt API using encrypted password."""
@@ -231,7 +244,10 @@ class NeovoltClient:
             return None
     
     async def async_get_battery_data(
-        self, station_id: str = None, _retry_count: int = 0,
+        self,
+        station_id: str = None,
+        sys_sn: Optional[str] = None,
+        _retry_count: int = 0,
     ) -> Dict[str, Any]:
         """Get data for a specific battery using the new API endpoint.
 
@@ -253,12 +269,13 @@ class NeovoltClient:
         """
         if not self.token:
             if not await self.async_login():
-                raise ByteWattAPIError("Login failed; cannot fetch battery data")
+                raise ByteWattAuthError("Login failed; cannot fetch battery data")
 
         # First get the real-time power data — failures of THIS call raise.
         url = f"{self.base_url}/api/report/energyStorage/getLastPowerData"
 
-        params = {"sysSn": "All", "stationId": station_id or ""}
+        effective_sys_sn = sys_sn or self._aggregate_monitoring_sys_sn()
+        params = {"sysSn": effective_sys_sn, "stationId": station_id or ""}
 
         current_date = dt_util.now().strftime("%Y-%m-%d %H:%M:%S")
         headers = self._get_auth_headers()
@@ -281,7 +298,11 @@ class NeovoltClient:
                         body = await response.text()
                         if response.status == 401 and _retry_count < MAX_RELOGIN_RETRIES:
                             if await self.async_login():
-                                return await self.async_get_battery_data(station_id, _retry_count + 1)
+                                return await self.async_get_battery_data(
+                                    station_id, effective_sys_sn, _retry_count + 1
+                                )
+                        if response.status == 401:
+                            raise ByteWattAuthError("Authentication failed while fetching battery data")
                         raise ByteWattAPIError(
                             f"getLastPowerData HTTP {response.status}: {body[:200]}"
                         )
@@ -296,7 +317,10 @@ class NeovoltClient:
                         if result.get("code") == 6069:
                             _LOGGER.warning("Session expired (code 6069), attempting to re-login")
                             if _retry_count < MAX_RELOGIN_RETRIES and await self.async_login():
-                                return await self.async_get_battery_data(station_id, _retry_count + 1)
+                                return await self.async_get_battery_data(
+                                    station_id, effective_sys_sn, _retry_count + 1
+                                )
+                            raise ByteWattAuthError("Session expired and re-login failed")
                         raise ByteWattAPIError(
                             f"getLastPowerData code={result.get('code')}: {result.get('msg')}"
                         )
@@ -321,7 +345,7 @@ class NeovoltClient:
                          begin_date, end_date, now.strftime("%Y-%m-%d %H:%M:%S %Z"))
             
             stats_params = {
-                "sysSn": "All", 
+                "sysSn": effective_sys_sn,
                 "stationId": station_id or "",
                 "beginDate": begin_date,
                 "endDate": end_date
@@ -355,7 +379,10 @@ class NeovoltClient:
                             elif stats_result.get("code") == 6069:
                                 _LOGGER.warning("Session expired (code 6069) during statistics fetch")
                                 if _retry_count < MAX_RELOGIN_RETRIES and await self.async_login():
-                                    return await self.async_get_battery_data(station_id, _retry_count + 1)
+                                    return await self.async_get_battery_data(
+                                        station_id, effective_sys_sn, _retry_count + 1
+                                    )
+                                raise ByteWattAuthError("Session expired during statistics fetch and re-login failed")
                             else:
                                 _LOGGER.error(
                                     "Failed to get energy statistics with code %s: %s",
@@ -376,7 +403,7 @@ class NeovoltClient:
             today_date = now.strftime("%Y-%m-%d")
             
             today_params = {
-                "sn": "All",
+                "sn": effective_sys_sn,
                 "stationId": station_id or "",
                 "tday": today_date
             }
@@ -420,7 +447,10 @@ class NeovoltClient:
                             elif today_result.get("code") == 6069:
                                 _LOGGER.warning("Session expired (code 6069) during today's stats fetch")
                                 if _retry_count < MAX_RELOGIN_RETRIES and await self.async_login():
-                                    return await self.async_get_battery_data(station_id, _retry_count + 1)
+                                    return await self.async_get_battery_data(
+                                        station_id, effective_sys_sn, _retry_count + 1
+                                    )
+                                raise ByteWattAuthError("Session expired during today's stats fetch and re-login failed")
                             else:
                                 _LOGGER.error(
                                     "Failed to get today's stats with code %s: %s",
@@ -439,7 +469,7 @@ class NeovoltClient:
             today_stats_url = f"{self.base_url}/api/report/power/staticsByDay"
             today_stats_date = now.strftime("%Y-%m-%d")
             today_stats_params = {
-                "sysSn": "",
+                "sysSn": effective_sys_sn,
                 "date": today_stats_date,
             }
 
@@ -472,14 +502,54 @@ class NeovoltClient:
                                     battery_data["Grid_Import_Today"]     = grid_import
                                     battery_data["Battery_Charged_Today"] = charged
 
-                                    # Discharge = energy used minus energy gained.
-                                    total_gained = pv_today + grid_import
-                                    total_used   = consumed + feed_in + charged
-                                    battery_data["Battery_Discharged_Today"] = total_used - total_gained
+                                    if battery_data.get("Battery_Discharged_Today") is None:
+                                        # Fallback only when the dedicated API field is absent.
+                                        total_gained = pv_today + grid_import
+                                        total_used   = consumed + feed_in + charged
+                                        battery_data["Battery_Discharged_Today"] = max(
+                                            total_used - total_gained, 0
+                                        )
+
+                                    time_points = stats_data.get("time") or []
+                                    battery_curve = stats_data.get("cbat") or []
+                                    if not battery_curve and time_points:
+                                        battery_curve = [stats_data.get("soc")] * len(time_points)
+
+                                    battery_data["Power_Diagram"] = {
+                                        "date": today_stats_date,
+                                        "time": time_points,
+                                        "series": {
+                                            "bat": battery_curve,
+                                            "load": stats_data.get("usePower") or stats_data.get("homePower") or [],
+                                            "solar": stats_data.get("ppv") or [],
+                                            "feed_in": stats_data.get("feedIn") or [],
+                                            "consumed": stats_data.get("gridCharge") or [],
+                                        },
+                                        "summary": {
+                                            "soc": stats_data.get("soc"),
+                                            "solar_generation": stats_data.get("epvtoday"),
+                                            "load_consumption": stats_data.get("eload"),
+                                            "feed_in": stats_data.get("efeedIn"),
+                                            "grid_consumption": stats_data.get("egridCharge"),
+                                            "battery_charge": stats_data.get("echarge"),
+                                            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
+                                        },
+                                        "meta": {
+                                            "power_source": stats_data.get("powerSource"),
+                                            "system_time": stats_data.get("systemTime"),
+                                            "maximum_power": stats_data.get("maximumPower"),
+                                            "inverter_mode": stats_data.get("inverterMode"),
+                                        },
+                                    }
                             elif today_stats_result.get("code") == 6069:
                                 _LOGGER.warning("Session expired (code 6069) during today's detailed stats fetch")
                                 if _retry_count < MAX_RELOGIN_RETRIES and await self.async_login():
-                                    return await self.async_get_battery_data(station_id, _retry_count + 1)
+                                    return await self.async_get_battery_data(
+                                        station_id, effective_sys_sn, _retry_count + 1
+                                    )
+                                raise ByteWattAuthError(
+                                    "Session expired during today's detailed stats fetch and re-login failed"
+                                )
                             else:
                                 _LOGGER.error(
                                     "Failed to get today's detailed stats with code %s: %s",

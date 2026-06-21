@@ -26,6 +26,7 @@ from custom_components.bytewatt.settings_manager import (  # noqa: E402
     SettingsManager,
     SubmitResult,
 )
+from custom_components.bytewatt.topology import ByteWattScope  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +135,13 @@ def test_bool_validator_coerces():
     assert BATTERY_VALIDATORS["grid_charging"]("grid_charging", "false") is False
 
 
+def test_execution_cycle_validator_accepts_daily_and_weekly():
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", "daily") == 0
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", "weekly") == 1
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", 0) == 0
+    assert BATTERY_VALIDATORS["execution_cycle_type"]("execution_cycle_type", 1) == 1
+
+
 def test_battery_power_validator_range():
     assert BATTERY_VALIDATORS["charge_power"]("charge_power", 5000) == 5000
     with pytest.raises(SettingsValidationError):
@@ -222,6 +230,9 @@ def test_effective_battery_reads_from_cache(manager, populated_cache):
     manager._battery_cache = populated_cache
     assert manager.effective_battery("minimum_soc") == 10.0
     assert manager.effective_battery("grid_charging") is True
+    assert manager.effective_battery("execution_cycle_type") == 0
+    assert manager.effective_battery("ups_reserve_enable") is False
+    assert manager.effective_battery("offgrid_soc_control") is False
     assert manager.effective_battery("charge_start_time") == "01:00"
     assert manager.effective_battery("discharge_end_time") == "22:00"
 
@@ -279,6 +290,18 @@ def test_build_battery_payload_applies_slot_times(manager, populated_cache):
     assert merged.discharge_slots[0].end_time == "23:00"
 
 
+def test_build_battery_payload_applies_strategy_toggles(manager, populated_cache):
+    manager._battery_cache = populated_cache
+    merged = manager._build_battery_payload({
+        "execution_cycle_type": 1,
+        "ups_reserve_enable": True,
+        "offgrid_soc_control": True,
+    })
+    assert merged.execute_cycle_type == 1
+    assert merged.ups_reserve_enable == 1
+    assert merged.loadcutout_en == 1
+
+
 def test_build_battery_payload_raises_when_no_cache(manager):
     with pytest.raises(SettingsValidationError):
         manager._build_battery_payload({"minimum_soc": 25})
@@ -291,6 +314,29 @@ def test_build_battery_payload_does_not_mutate_cache(manager, populated_cache):
     manager._build_battery_payload({"minimum_soc": 99})
     # Cache itself must NOT change — only the returned merged copy.
     assert manager._battery_cache.bat_use_cap == original_soc
+
+
+def test_build_battery_payload_clamps_slot_powers_to_poinv(manager, populated_cache):
+    """A stale 10 kW slot must not poison a submit once the API drops to 5 kW."""
+    populated_cache.poinv = 5000
+    manager._battery_cache = populated_cache
+
+    merged = manager._build_battery_payload({"minimum_soc": 30})
+
+    assert merged.charge_slots[0].charge_power == 5000
+    assert merged.discharge_slots[0].charge_power == 5000
+
+
+def test_build_battery_payload_preserves_lower_slot_powers(manager, populated_cache):
+    populated_cache.poinv = 5000
+    populated_cache.charge_slots[0].charge_power = 4000
+    populated_cache.discharge_slots[0].charge_power = 3000
+    manager._battery_cache = populated_cache
+
+    merged = manager._build_battery_payload({"grid_charging": False})
+
+    assert merged.charge_slots[0].charge_power == 4000
+    assert merged.discharge_slots[0].charge_power == 3000
 
 
 # ---------------------------------------------------------------------------
@@ -410,3 +456,41 @@ async def test_submit_preserves_pending_after_all_retries_fail(
     # Pending preserved so the user can fix + retry without re-entering.
     assert manager.has_pending() is True
     assert manager.effective_battery("minimum_soc") == 25
+
+
+class _StubApiClient:
+    def __init__(self):
+        self.host_system_id = "system-a"
+        self.host_sys_sn = "sn-a"
+
+
+async def test_select_settings_target_switches_client_and_clears_state(stub_hass):
+    client = _StubApiClient()
+    manager = SettingsManager(stub_hass, client=client, entry_id="test_entry")
+    manager._battery_cache = object()
+    manager._feedin_cache = object()
+    manager._battery_submitted_at = object()
+    manager._feedin_submitted_at = object()
+    manager.stage_battery("minimum_soc", 25)
+    manager.stage_feedin("enabled", True)
+
+    async def fake_refresh_locked():
+        manager._battery_cache = "battery-cache"
+        manager._feedin_cache = "feedin-cache"
+
+    manager._refresh_locked = fake_refresh_locked
+
+    discarded = await manager.async_select_settings_target(
+        ByteWattScope(system_id="system-b", sys_sn="sn-b")
+    )
+
+    assert discarded == 2
+    assert client.host_system_id == "system-b"
+    assert client.host_sys_sn == "sn-b"
+    assert manager.current_settings_target_id == "system-b"
+    assert manager.current_settings_target_sys_sn == "sn-b"
+    assert manager.has_pending() is False
+    assert manager._battery_cache == "battery-cache"
+    assert manager._feedin_cache == "feedin-cache"
+    assert manager._battery_submitted_at is None
+    assert manager._feedin_submitted_at is None

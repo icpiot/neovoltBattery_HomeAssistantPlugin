@@ -27,17 +27,17 @@ from .const import (
     DOMAIN,
     MIN_SCAN_INTERVAL,
 )
+from .topology import DiscoveredInverter
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _pre_select_host(inverters: list[dict[str, Any]]) -> str | None:
+def _pre_select_host(inverters: list[DiscoveredInverter]) -> str | None:
     """Pick a sensible default for the Host inverter dropdown."""
     candidates = []
     for inv in inverters:
-        remark = (inv.get("remark") or "").lower()
-        if "master" in remark or "host" in remark:
-            candidates.append(inv.get("systemId", ""))
+        if inv.is_host_candidate:
+            candidates.append(inv.system_id)
     if len(candidates) == 1:
         return candidates[0]
     if len(candidates) > 1:
@@ -46,18 +46,14 @@ def _pre_select_host(inverters: list[dict[str, Any]]) -> str | None:
         )
         return None
     if inverters:
-        return inverters[0].get("systemId", "")
+        return inverters[0].system_id
     return None
 
 
-def _build_inverter_options(inverters: list[dict[str, Any]]) -> list[SelectOptionDict]:
+def _build_inverter_options(inverters: list[DiscoveredInverter]) -> list[SelectOptionDict]:
     options: list[SelectOptionDict] = []
     for inv in inverters:
-        system_id = inv.get("systemId", "")
-        sys_sn = inv.get("sysSn", system_id)
-        remark = inv.get("remark", "")
-        label = f"{sys_sn} ({remark})" if remark else sys_sn
-        options.append(SelectOptionDict(value=system_id, label=label))
+        options.append(SelectOptionDict(value=inv.system_id, label=inv.display_name))
     return options
 
 
@@ -69,8 +65,9 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._user_input: dict[str, Any] = {}
         self._client: ByteWattClient | None = None
-        self._inverters: list[dict[str, Any]] = []
+        self._inverters: list[DiscoveredInverter] = []
         self._reconfigure_entry: config_entries.ConfigEntry | None = None
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
         errors = {}
@@ -89,13 +86,13 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 self._client = client
                 self._user_input = user_input
-                self._inverters = await client.fetch_inverter_list()
+                self._inverters = await client.fetch_inverter_inventory()
                 if len(self._inverters) > 1:
                     return await self.async_step_select_inverter()
                 if len(self._inverters) == 1:
                     inv = self._inverters[0]
-                    self._user_input[CONF_HOST_SYSTEM_ID] = inv.get("systemId", "")
-                    self._user_input[CONF_HOST_SYS_SN] = inv.get("sysSn", "")
+                    self._user_input[CONF_HOST_SYSTEM_ID] = inv.system_id
+                    self._user_input[CONF_HOST_SYS_SN] = inv.sys_sn
                     return self._create_entry()
                 # Could not enumerate inverters — let the user proceed, but the
                 # grid feed-in features will be disabled until reconfigure.
@@ -122,7 +119,7 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             selected_id = user_input[CONF_HOST_SYSTEM_ID]
             sys_sn = next(
-                (i.get("sysSn", "") for i in self._inverters if i.get("systemId") == selected_id),
+                (i.sys_sn for i in self._inverters if i.system_id == selected_id),
                 "",
             )
             self._user_input[CONF_HOST_SYSTEM_ID] = selected_id
@@ -148,6 +145,48 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data=self._user_input,
         )
 
+    async def async_step_reauth(self, entry_data: dict[str, Any]):
+        """Handle a reauth flow triggered by auth failures."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Confirm updated credentials for an existing account."""
+        entry = self._reauth_entry
+        assert entry is not None
+
+        errors = {}
+        if user_input is not None:
+            client = ByteWattClient(
+                self.hass,
+                entry.data[CONF_USERNAME],
+                user_input[CONF_PASSWORD],
+                host_system_id=entry.data.get(CONF_HOST_SYSTEM_ID, ""),
+                host_sys_sn=entry.data.get(CONF_HOST_SYS_SN, ""),
+            )
+            if not await client.initialize():
+                errors["base"] = "auth"
+            else:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({
+                vol.Required(CONF_PASSWORD): str,
+            }),
+            description_placeholders={
+                "username": entry.data[CONF_USERNAME],
+            },
+            errors=errors,
+        )
+
     # ---------- Reconfigure (change Host inverter without losing entity history) ----------
 
     async def async_step_reconfigure(self, user_input=None):
@@ -157,7 +196,7 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         client = ByteWattClient(self.hass, creds[CONF_USERNAME], creds[CONF_PASSWORD])
         if not await client.initialize():
             return self.async_abort(reason="auth")
-        self._inverters = await client.fetch_inverter_list()
+        self._inverters = await client.fetch_inverter_inventory()
         if not self._inverters:
             return self.async_abort(reason="no_inverters")
         return await self.async_step_reconfigure_select()
@@ -168,7 +207,7 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             selected_id = user_input[CONF_HOST_SYSTEM_ID]
             sys_sn = next(
-                (i.get("sysSn", "") for i in self._inverters if i.get("systemId") == selected_id),
+                (i.sys_sn for i in self._inverters if i.system_id == selected_id),
                 "",
             )
             new_data = {
