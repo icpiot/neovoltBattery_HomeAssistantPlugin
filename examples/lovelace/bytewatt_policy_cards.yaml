@@ -1,0 +1,99 @@
+title: ByteWatt Policy
+path: bytewatt-policy
+icon: mdi:battery-cog
+cards:
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Charging / Discharging Setting
+          Wired to the current `house_bytewatt_battery_system` entities.
+          
+          Do not use the web portal `All` selector for settings changes.
+          For parallel systems, configure policy settings from an individual
+          battery selection.
+
+      - type: entities
+        title: Charging / Discharging
+        show_header_toggle: false
+        entities:
+          - entity: select.house_bytewatt_battery_system_settings_target
+            name: Battery
+          - entity: number.house_bytewatt_battery_system_battery_charge_cap
+            name: Charging stops at SOC
+          - entity: switch.house_bytewatt_battery_system_grid_charging_battery
+            name: Charge
+          - entity: switch.house_bytewatt_battery_system_battery_discharge_time_control
+            name: Discharge
+          - entity: number.house_bytewatt_battery_system_minimum_soc
+            name: Discharging cut off SOC
+          - entity: number.house_bytewatt_battery_system_battery_charge_power
+            name: Charge Power
+          - entity: number.house_bytewatt_battery_system_battery_discharge_power
+            name: Discharge Power
+          - entity: select.house_bytewatt_battery_system_execution_cycle
+            name: Execution Cycle
+          - entity: switch.house_bytewatt_battery_system_ups_reserve_enable
+            name: UPS reserve enable
+          - entity: switch.house_bytewatt_battery_system_offgrid_soc_control
+            name: Off-grid SOC Control
+
+      - type: entities
+        title: Charge Window
+        show_header_toggle: false
+        entities:
+          - entity: time.house_bytewatt_battery_system_charge_start_time
+            name: Charge Start
+          - entity: time.house_bytewatt_battery_system_charge_end_time
+            name: Charge End
+
+      - type: entities
+        title: Discharge Window
+        show_header_toggle: false
+        entities:
+          - entity: time.house_bytewatt_battery_system_discharge_start_time
+            name: Discharge Start
+          - entity: time.house_bytewatt_battery_system_discharge_end_time
+            name: Discharge End
+
+      - type: entities
+        title: Pending Changes
+        show_header_toggle: false
+        entities:
+          - entity: button.house_bytewatt_battery_system_discard_pending_settings
+            name: Discard
+          - entity: button.house_bytewatt_battery_system_submit_settings
+            name: Submit
+
+      - type: markdown
+        content: |
+          ### Still Not Modeled
+          - Any separate Start / Stop master action, if the app uses one
+
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## Feed-in Control
+          Wired to the currently exposed feed-in entities.
+          
+          Use an individual battery selection for feed-in settings.
+
+      - type: entities
+        title: Feed-in
+        show_header_toggle: false
+        entities:
+          - entity: switch.house_bytewatt_battery_system_grid_feed_in_function
+            name: Feed-in Function
+          - entity: number.house_bytewatt_battery_system_grid_feed_in_discharging_cutoff_soc
+            name: Discharging cut off SOC
+          - entity: time.house_bytewatt_battery_system_grid_feed_in_time1_start
+            name: Feed-in Time1 Start
+          - entity: time.house_bytewatt_battery_system_grid_feed_in_time1_end
+            name: Feed-in Time1 End
+          - entity: number.house_bytewatt_battery_system_grid_feed_in_time1_power
+            name: Feed-in Power
+          - entity: button.house_bytewatt_battery_system_discard_pending_settings
+            name: Discard
+          - entity: button.house_bytewatt_battery_system_submit_settings
+            name: Submit
