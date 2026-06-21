@@ -176,6 +176,8 @@ BATTERY_VALIDATORS = {
     "discharge_time_control": _v_bool,
     "ups_reserve_enable":     _v_bool,
     "offgrid_soc_control":    _v_bool,
+    "offgrid_wakeup_soc":     _v_cutoff_soc,
+    "offgrid_cutoff_soc":     _v_cutoff_soc,
     "charge_power":           _v_battery_power,
     "discharge_power":        _v_battery_power,
     "execution_cycle_type":   _v_execution_cycle,
@@ -331,6 +333,10 @@ class SettingsManager:
             "discharge_slots": [self._discharge_slot_to_summary(slot) for slot in strategy.discharge_slots],
             "force_charge_active": bool(self._force_charge_status),
             "force_charge_limit": self._force_charge_limit,
+            "offgrid_supported": bool(strategy.is_support_offgrid_soc_control),
+            "offgrid_enabled": bool(strategy.loadcutout_en),
+            "offgrid_wakeup_soc": strategy.wakeup_soc,
+            "offgrid_cutoff_soc": strategy.cutoff_soc,
             "discharge_policy_enabled": (
                 bool(discharge_temp["saved_enabled"])
                 if discharge_temp and "saved_enabled" in discharge_temp
@@ -465,6 +471,10 @@ class SettingsManager:
             return bool(c.ups_reserve_enable)
         if field == "offgrid_soc_control":
             return bool(c.loadcutout_en)
+        if field == "offgrid_wakeup_soc":
+            return c.wakeup_soc
+        if field == "offgrid_cutoff_soc":
+            return c.cutoff_soc
         if field == "execution_cycle_type":
             return c.execute_cycle_type
         if field == "charge_power":
@@ -1105,6 +1115,10 @@ class SettingsManager:
             merged.ups_reserve_enable = 1 if pending["ups_reserve_enable"] else 0
         if "offgrid_soc_control" in pending:
             merged.loadcutout_en = 1 if pending["offgrid_soc_control"] else 0
+        if "offgrid_wakeup_soc" in pending:
+            merged.wakeup_soc = int(pending["offgrid_wakeup_soc"])
+        if "offgrid_cutoff_soc" in pending:
+            merged.cutoff_soc = int(pending["offgrid_cutoff_soc"])
         if "execution_cycle_type" in pending:
             merged.execute_cycle_type = int(pending["execution_cycle_type"])
 

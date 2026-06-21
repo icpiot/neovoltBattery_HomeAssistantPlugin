@@ -35,6 +35,8 @@ async def async_setup_entry(
         ByteWattMinimumSOCNumber(coordinator, config_entry, manager),
         ByteWattChargePowerNumber(coordinator, config_entry, manager),
         ByteWattDischargePowerNumber(coordinator, config_entry, manager),
+        ByteWattOffgridWakeupSOCNumber(coordinator, config_entry, manager),
+        ByteWattOffgridCutoffSOCNumber(coordinator, config_entry, manager),
     ])
 
 
@@ -141,4 +143,28 @@ class ByteWattDischargePowerNumber(_BatteryNumberBase):
             field="discharge_power",
             min_value=500, max_value=10000, step=100, unit="W",
             device_class=NumberDeviceClass.POWER,
+        )
+
+
+class ByteWattOffgridWakeupSOCNumber(_BatteryNumberBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="Off-grid Wake-up SOC", unique_id="offgrid_wakeup_soc",
+            icon="mdi:battery-arrow-up-outline",
+            field="offgrid_wakeup_soc",
+            min_value=0, max_value=100, step=1, unit="%",
+            device_class=NumberDeviceClass.BATTERY,
+        )
+
+
+class ByteWattOffgridCutoffSOCNumber(_BatteryNumberBase):
+    def __init__(self, coordinator, config_entry, manager) -> None:
+        super().__init__(
+            coordinator, config_entry, manager,
+            name="Off-grid Cut-off SOC", unique_id="offgrid_cutoff_soc",
+            icon="mdi:battery-arrow-down-outline",
+            field="offgrid_cutoff_soc",
+            min_value=0, max_value=100, step=1, unit="%",
+            device_class=NumberDeviceClass.BATTERY,
         )
