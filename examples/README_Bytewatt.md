@@ -54,7 +54,7 @@ Copy the working file from `examples/www/` to your Home Assistant `www` folder:
 Then add it as a dashboard resource using a fixed filename and a cache-buster:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=032
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=037
 type: module
 ```
 
@@ -70,13 +70,13 @@ To force Home Assistant and the browser to load a fresh custom-card build:
 Example next iteration:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=033
+url: /local/community/bytewatt-card/bytewatt-policy-card.js?v=038
 type: module
 ```
 
 Current build stamp in this repo:
 
-- `032`
+- `037`
 
 ## Defaults
 

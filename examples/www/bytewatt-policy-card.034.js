@@ -1,4 +1,4 @@
-const BYTEWATT_POLICY_CARD_BUILD = "037";
+const BYTEWATT_POLICY_CARD_BUILD = "034";
 
 class ByteWattPolicyCard extends HTMLElement {
   setConfig(config) {
@@ -50,8 +50,6 @@ class ByteWattPolicyCard extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    const scrollRoot = this._scrollRoot();
-    const preservedScrollTop = scrollRoot ? scrollRoot.scrollTop : null;
 
     const target = this._stateObj(this._config.settings_target);
     const attrs = target?.attributes || {};
@@ -773,7 +771,7 @@ class ByteWattPolicyCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
           .summary-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 6px;
           }
           .summary-card {
@@ -819,31 +817,6 @@ class ByteWattPolicyCard extends HTMLElement {
             border-bottom: 1px solid rgba(255,255,255,0.08);
           }
         }
-        @media (max-width: 640px) and (orientation: portrait) {
-          .summary-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-            gap: 6px !important;
-          }
-          .summary-card {
-            gap: 6px !important;
-            padding: 9px 8px 10px !important;
-            border-radius: 12px !important;
-          }
-          .summary-label,
-          .summary-breakout-label {
-            font-size: 0.62rem !important;
-            letter-spacing: 0.03em !important;
-          }
-          .summary-value {
-            font-size: 0.92rem !important;
-          }
-          .summary-title {
-            font-size: 0.84rem !important;
-          }
-          .summary-meta {
-            font-size: 0.68rem !important;
-          }
-        }
       </style>
       <ha-card>
         <div class="shell">
@@ -865,7 +838,6 @@ class ByteWattPolicyCard extends HTMLElement {
     `;
 
     this._bindEvents();
-    this._restoreScrollPosition(scrollRoot, preservedScrollTop);
   }
 
   _renderSelector() {
@@ -1887,17 +1859,6 @@ class ByteWattPolicyCard extends HTMLElement {
   _setStatus(type, message) {
     this._status = { type, message };
     this.render();
-  }
-
-  _scrollRoot() {
-    return window.document.scrollingElement || window.document.documentElement || null;
-  }
-
-  _restoreScrollPosition(scrollRoot, scrollTop) {
-    if (!scrollRoot || scrollTop === null || scrollTop === undefined) return;
-    window.requestAnimationFrame(() => {
-      scrollRoot.scrollTop = scrollTop;
-    });
   }
 
   _errorMessage(error) {
