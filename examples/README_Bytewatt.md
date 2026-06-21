@@ -66,7 +66,7 @@ type: module
 Reporting card:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-report-card.js?v=002
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=003
 type: module
 ```
 
@@ -89,14 +89,14 @@ type: module
 Reporting card next iteration:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-report-card.js?v=003
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=004
 type: module
 ```
 
 Current build stamp in this repo:
 
 - Policy card: `048`
-- Reporting card: `002`
+- Reporting card: `003`
 
 ## Defaults
 
