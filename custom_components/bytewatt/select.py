@@ -140,28 +140,29 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             "power_source": selected_battery.get("powerSource") if current is not None else aggregate_battery.get("powerSource"),
         }
         all_system_summaries = []
-        if current is None:
-            seen_sys_sn: set[str] = set()
-            for inverter in self._inventory():
-                sys_sn = str(inverter.sys_sn or "").strip()
-                if not sys_sn or sys_sn in seen_sys_sn:
-                    continue
-                seen_sys_sn.add(sys_sn)
-                battery_data = all_batteries.get(sys_sn) or {}
-                all_system_summaries.append(
-                    {
-                        "label": inverter.display_name,
-                        "system_id": inverter.system_id,
-                        "sys_sn": inverter.sys_sn,
-                        "remark": inverter.remark,
-                        "soc": battery_data.get("soc"),
-                        "battery_power": battery_data.get("pbat"),
-                        "house_consumption": battery_data.get("pload"),
-                        "grid_power": battery_data.get("pgrid"),
-                        "pv_power": battery_data.get("ppv"),
-                        "power_source": battery_data.get("powerSource"),
-                    }
-                )
+        seen_sys_sn: set[str] = set()
+        for inverter in self._inventory():
+            sys_sn = str(inverter.sys_sn or "").strip()
+            if not sys_sn or sys_sn in seen_sys_sn:
+                continue
+            seen_sys_sn.add(sys_sn)
+            battery_data = all_batteries.get(sys_sn) or {}
+            if current is not None and sys_sn == str(current.sys_sn or "").strip():
+                battery_data = selected_battery or monitoring_summary
+            all_system_summaries.append(
+                {
+                    "label": inverter.display_name,
+                    "system_id": inverter.system_id,
+                    "sys_sn": inverter.sys_sn,
+                    "remark": inverter.remark,
+                    "soc": battery_data.get("soc"),
+                    "battery_power": battery_data.get("pbat"),
+                    "house_consumption": battery_data.get("pload"),
+                    "grid_power": battery_data.get("pgrid"),
+                    "pv_power": battery_data.get("ppv"),
+                    "power_source": battery_data.get("powerSource"),
+                }
+            )
         if current is None:
             return {
                 "monitoring_summary": monitoring_summary,
@@ -180,6 +181,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             "sys_sn": current.sys_sn,
             "remark": current.remark,
             "monitoring_summary": monitoring_summary,
+            "all_system_summaries": all_system_summaries,
             "reporting": _reporting_payload(
                 selected_battery,
                 aggregate=False,

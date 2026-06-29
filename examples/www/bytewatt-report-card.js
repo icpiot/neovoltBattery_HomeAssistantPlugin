@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "093";
+const BYTEWATT_REPORT_CARD_BUILD = "094";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -427,7 +427,6 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderAggregateStrip(reporting) {
-    if (!reporting?.aggregate) return "";
     const summaries = this._systemSummaries();
     if (!summaries.length) return "";
     return `
@@ -450,7 +449,6 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderAggregateTable(reporting) {
-    if (!reporting?.aggregate) return "";
     const summaries = this._systemSummaries();
     if (!summaries.length) return "";
     return `
