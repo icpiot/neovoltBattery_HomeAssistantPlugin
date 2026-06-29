@@ -42,6 +42,7 @@ from .const import (
     STALE_DATA_THRESHOLD,
     HTTPS_PORT,
 )
+from .reporting import ByteWattReportHistory, build_reporting_payload
 from .utilities.circuit_breaker import CircuitBreaker, CircuitBreakerState
 from .utilities.connection_stats import ConnectionStatistics
 from .utilities.diagnostic_service import DiagnosticService
@@ -82,6 +83,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         # Tracked so we can cancel it on entry unload — otherwise the
         # callback would fire on a torn-down coordinator.
         self._recovery_retry_unsub = None
+        self._history_store = ByteWattReportHistory(hass, entry_id)
 
 
         # Connection health tracking
@@ -149,6 +151,71 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     details["error"] = str(error)
                     details["error_type"] = type(error).__name__
                 self.diagnostic_service.log_diagnostic("operation", details)
+
+    def _scope_label_for_sys_sn(self, sys_sn: str, inventory: List[Any]) -> str:
+        """Return a human label for a sysSn when we have it."""
+        sys_sn = str(sys_sn or "").strip()
+        if not sys_sn:
+            return "Battery"
+        for inverter in inventory:
+            inverter_sys_sn = str(getattr(inverter, "sys_sn", "") or "").strip()
+            if inverter_sys_sn == sys_sn:
+                return str(getattr(inverter, "display_name", "") or sys_sn)
+        return sys_sn
+
+    async def _persist_history_snapshots(
+        self,
+        *,
+        battery_data: Dict[str, Any],
+        selected_battery_data: Optional[Dict[str, Any]],
+        all_battery_data: Dict[str, Any],
+        inventory: List[Any],
+    ) -> None:
+        """Persist the latest successful snapshot for each scope locally."""
+        snapshots: list[tuple[str, str, Dict[str, Any], bool]] = [
+            ("all", "All systems", battery_data, True),
+        ]
+
+        selected_sys_sn = ""
+        manager = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("manager")
+        if manager is not None:
+            selected_sys_sn = str(getattr(manager, "current_settings_target_sys_sn", "") or "").strip()
+
+        if selected_battery_data and selected_sys_sn and selected_sys_sn.lower() != "all":
+            snapshots.append(
+                (
+                    selected_sys_sn,
+                    self._scope_label_for_sys_sn(selected_sys_sn, inventory),
+                    selected_battery_data,
+                    False,
+                )
+            )
+
+        for sys_sn, data in all_battery_data.items():
+            sys_sn = str(sys_sn or "").strip()
+            if not sys_sn:
+                continue
+            snapshots.append(
+                (
+                    sys_sn,
+                    self._scope_label_for_sys_sn(sys_sn, inventory),
+                    data,
+                    False,
+                )
+            )
+
+        seen: set[str] = set()
+        for scope_key, label, data, aggregate in snapshots:
+            scope_key = str(scope_key or "").strip()
+            if not scope_key or scope_key in seen or not data:
+                continue
+            seen.add(scope_key)
+            reporting = build_reporting_payload(data, aggregate=aggregate, label=label)
+            await self._history_store.async_store_snapshot(
+                scope_key=scope_key,
+                label=label,
+                reporting=reporting,
+            )
     
     async def _async_update_data(self):
         """Update data via library with improved error handling."""
@@ -185,6 +252,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             # The manager owns its lock so concurrent submit() / refresh() are serialized,
             # and per-batch failures are swallowed there — don't fail the poll on them.
             manager = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("manager")
+            inventory = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("inverters", [])
             if manager is not None:
                 await manager.refresh()
             
@@ -205,7 +273,6 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                             selected_err,
                         )
 
-                inventory = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("inverters", [])
                 for inverter in inventory:
                     sys_sn = str(getattr(inverter, "sys_sn", "") or "").strip()
                     if not sys_sn or sys_sn.lower() == "all" or sys_sn in all_battery_data:
@@ -245,6 +312,12 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     self._last_selected_battery_data = None
                 if all_battery_data:
                     self._last_all_battery_data = all_battery_data
+                await self._persist_history_snapshots(
+                    battery_data=battery_data,
+                    selected_battery_data=selected_battery_data,
+                    all_battery_data=all_battery_data,
+                    inventory=inventory,
+                )
             elif self._last_battery_data is None:
                 # Only raise error if we never got data
                 error_msg = "Failed to get battery data and no cached data available"

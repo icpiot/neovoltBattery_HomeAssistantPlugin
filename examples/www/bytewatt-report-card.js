@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "008";
+const BYTEWATT_REPORT_CARD_BUILD = "009";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -16,6 +16,12 @@ class ByteWattReportCard extends HTMLElement {
       feed_in: true,
       consumed: true,
     };
+    this._historyPeriod = this._historyPeriod || "7d";
+    this._historyLoading = false;
+    this._historyData = this._historyData || null;
+    this._historyLoadError = this._historyLoadError || "";
+    this._historyAttempted = this._historyAttempted || false;
+    this._historySourceKey = this._historySourceKey || "";
   }
 
   set hass(hass) {
@@ -50,6 +56,184 @@ class ByteWattReportCard extends HTMLElement {
       sys_sn: attrs.sys_sn || "",
       remark: attrs.remark || "",
     };
+  }
+
+  _historyMeta() {
+    return this._selectorState()?.attributes?.history || {};
+  }
+
+  _historyScopeKey() {
+    const history = this._historyMeta();
+    const currentScope = String(history.current_scope || "").trim();
+    return currentScope || "all";
+  }
+
+  _historyUrl() {
+    const history = this._historyMeta();
+    if (!history.enabled || !history.base_url) return "";
+    const base = String(history.base_url).replace(/\/+$/, "");
+    return `${base}/history.json`;
+  }
+
+  _historyPeriodDays() {
+    return this._historyPeriod === "30d" ? 30 : this._historyPeriod === "all" ? 3650 : 7;
+  }
+
+  _historyRecordWindow(recordDates) {
+    const dates = (recordDates || [])
+      .map((item) => new Date(`${item}T00:00:00`))
+      .filter((item) => !Number.isNaN(item.getTime()))
+      .sort((a, b) => a - b);
+    if (!dates.length) return [];
+    if (this._historyPeriod === "all") return dates;
+    const end = dates[dates.length - 1];
+    const start = new Date(end.getTime());
+    start.setDate(start.getDate() - (this._historyPeriodDays() - 1));
+    return dates.filter((item) => item >= start && item <= end);
+  }
+
+  _parseFloat(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  _aggregateHistoryRecords(records) {
+    const aggregate = {
+      count: 0,
+      latest_date: "",
+      latest_saved_at: "",
+      live_soc: 0,
+      solar_generation_today: 0,
+      load_consumption_today: 0,
+      feed_in_today: 0,
+      grid_consumption_today: 0,
+      battery_charged_today: 0,
+      battery_discharged_today: 0,
+      total_solar_generation: 0,
+      total_feed_in: 0,
+      total_battery_charge: 0,
+      total_battery_discharge: 0,
+      total_house_consumption: 0,
+      total_grid_consumption: 0,
+      pv_power_house: 0,
+      pv_charging_battery: 0,
+      grid_battery_charge: 0,
+    };
+
+    records.forEach((record) => {
+      aggregate.count += 1;
+      aggregate.latest_date = record.reporting_date || record.record_date || aggregate.latest_date;
+      aggregate.latest_saved_at = record.saved_at || aggregate.latest_saved_at;
+      aggregate.live_soc = this._parseFloat(record.live_soc);
+      aggregate.solar_generation_today += this._parseFloat(record.solar_generation_today);
+      aggregate.load_consumption_today += this._parseFloat(record.load_consumption_today);
+      aggregate.feed_in_today += this._parseFloat(record.feed_in_today);
+      aggregate.grid_consumption_today += this._parseFloat(record.grid_consumption_today);
+      aggregate.battery_charged_today += this._parseFloat(record.battery_charged_today);
+      aggregate.battery_discharged_today += this._parseFloat(record.battery_discharged_today);
+      aggregate.total_solar_generation += this._parseFloat(record.total_solar_generation);
+      aggregate.total_feed_in += this._parseFloat(record.total_feed_in);
+      aggregate.total_battery_charge += this._parseFloat(record.total_battery_charge);
+      aggregate.total_battery_discharge += this._parseFloat(record.total_battery_discharge);
+      aggregate.total_house_consumption += this._parseFloat(record.total_house_consumption);
+      aggregate.total_grid_consumption += this._parseFloat(record.total_grid_consumption);
+      aggregate.pv_power_house += this._parseFloat(record.pv_power_house);
+      aggregate.pv_charging_battery += this._parseFloat(record.pv_charging_battery);
+      aggregate.grid_battery_charge += this._parseFloat(record.grid_battery_charge);
+    });
+
+    return aggregate;
+  }
+
+  async _ensureHistoryLoaded() {
+    const url = this._historyUrl();
+    if (!url || this._historyLoading || this._historyData || this._historyAttempted) return;
+    this._historyLoading = true;
+    this._historyAttempted = true;
+    this._historyLoadError = "";
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      this._historyData = data;
+    } catch (error) {
+      this._historyLoadError = String(error?.message || error);
+      this._historyData = null;
+    } finally {
+      this._historyLoading = false;
+      this.render();
+    }
+  }
+
+  _historyRecords() {
+    const data = this._historyData?.scopes?.[this._historyScopeKey()]?.records || {};
+    return Object.entries(data).map(([recordDate, reporting]) => ({
+      record_date: recordDate,
+      ...(reporting || {}),
+    }));
+  }
+
+  _selectedHistoryRecords() {
+    const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    if (!records.length) return [];
+    const windowDates = this._historyRecordWindow(records.map((record) => record.record_date));
+    if (!windowDates.length) return records;
+    const allowed = new Set(windowDates.map((date) => date.toISOString().slice(0, 10)));
+    return records.filter((record) => allowed.has(record.record_date));
+  }
+
+  _renderHistoryPanel() {
+    const history = this._historyMeta();
+    if (!history.enabled) return "";
+    const records = this._selectedHistoryRecords();
+    const summary = this._aggregateHistoryRecords(records);
+    const loading = this._historyLoading && !this._historyData;
+    const error = this._historyLoadError;
+    return `
+      <section class="history-panel">
+        <div class="panel-header">
+          <div class="panel-title">Local Archive</div>
+          <div class="panel-date">${this._escape(history.base_url || "")}</div>
+        </div>
+        <div class="history-controls">
+          ${this._historyButton("7 days", "7d")}
+          ${this._historyButton("30 days", "30d")}
+          ${this._historyButton("All", "all")}
+        </div>
+        ${
+          loading
+            ? `<div class="empty">Loading local history from ${this._escape(this._historyUrl())}...</div>`
+            : error
+              ? `<div class="empty">Local history unavailable: ${this._escape(error)}</div>`
+              : records.length
+                ? `
+                  <div class="history-summary">
+                    ${this._metric("Records", summary.count)}
+                    ${this._metric("Latest Date", this._escape(summary.latest_date || "Unavailable"))}
+                    ${this._metric("Solar", this._fmtEnergy(summary.solar_generation_today))}
+                    ${this._metric("Load", this._fmtEnergy(summary.load_consumption_today))}
+                    ${this._metric("Feed-in", this._fmtEnergy(summary.feed_in_today))}
+                    ${this._metric("Grid", this._fmtEnergy(summary.grid_consumption_today))}
+                  </div>
+                  <div class="history-summary">
+                    ${this._metric("Battery Charge", this._fmtEnergy(summary.battery_charged_today))}
+                    ${this._metric("Battery Discharge", this._fmtEnergy(summary.battery_discharged_today))}
+                    ${this._metric("PV to House", this._fmtEnergy(summary.pv_power_house))}
+                    ${this._metric("PV to Battery", this._fmtEnergy(summary.pv_charging_battery))}
+                    ${this._metric("Grid to Battery", this._fmtEnergy(summary.grid_battery_charge))}
+                    ${this._metric("SOC", this._fmtPercent(summary.live_soc))}
+                  </div>
+                `
+                : `<div class="empty">No local history records found yet for this scope.</div>`
+        }
+      </section>
+    `;
+  }
+
+  _historyButton(label, value) {
+    return `<button class="history-pill ${this._historyPeriod === value ? "active" : ""}" data-history-period="${value}">${label}</button>`;
   }
 
   _fmtNumber(value, digits = 1) {
@@ -287,6 +471,7 @@ class ByteWattReportCard extends HTMLElement {
   _renderHeroBanner(reporting) {
     const live = reporting?.live || {};
     const meta = this._selectionMeta();
+    const history = this._selectorState()?.attributes?.history || {};
     const direction = this._batteryDirection(live.battery_power);
     const gridDirection = this._gridDirection(live.grid_power);
     const systemCount = this._systemSummaries().length;
@@ -299,6 +484,11 @@ class ByteWattReportCard extends HTMLElement {
           <div class="hero-kicker">At A Glance</div>
           <div class="hero-title">${this._escape(scopeLabel)}</div>
           <div class="hero-subtitle">${this._escape(live.power_source || "Idle")} | ${direction} | ${gridDirection}</div>
+          ${
+            history.enabled
+              ? `<div class="hero-history">Local archive: ${this._escape(history.base_url || "")}</div>`
+              : ""
+          }
         </div>
         <div class="hero-metrics">
           ${this._heroChip("SOC", this._fmtPercent(live.soc))}
@@ -715,6 +905,20 @@ class ByteWattReportCard extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     const reporting = this._reporting();
+    const historyKey = [
+      this._historyUrl(),
+      this._historyScopeKey(),
+      reporting?.meta?.saved_at || reporting?.power_diagram?.date || "",
+    ].join("|");
+    if (historyKey !== this._historySourceKey) {
+      this._historySourceKey = historyKey;
+      this._historyData = null;
+      this._historyLoadError = "";
+      this._historyAttempted = false;
+    }
+    if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
+      this._ensureHistoryLoaded();
+    }
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -801,6 +1005,45 @@ class ByteWattReportCard extends HTMLElement {
           color:#486782;
           font-size:0.96rem;
           font-weight:700;
+        }
+        .hero-history {
+          margin-top:6px;
+          color:#2c69b2;
+          font-size:0.8rem;
+          font-weight:700;
+          word-break:break-all;
+        }
+        .history-panel {
+          background:#fff;
+          border-radius:18px;
+          border:1px solid rgba(51, 92, 140, 0.12);
+          padding:16px 18px;
+          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.06);
+          display:grid;
+          gap:14px;
+        }
+        .history-controls {
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+        }
+        .history-pill {
+          border:none;
+          border-radius:999px;
+          padding:8px 14px;
+          font-weight:800;
+          cursor:pointer;
+          background:#e8eff8;
+          color:#476687;
+        }
+        .history-pill.active {
+          background:#2f75d8;
+          color:#fff;
+        }
+        .history-summary {
+          display:grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap:12px;
         }
         .hero-metrics {
           display:grid;
@@ -1260,6 +1503,9 @@ class ByteWattReportCard extends HTMLElement {
           .hero-metrics {
             grid-template-columns: 1fr;
           }
+          .history-summary {
+            grid-template-columns: 1fr;
+          }
           .aggregate-row {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -1295,6 +1541,7 @@ class ByteWattReportCard extends HTMLElement {
             reporting
               ? `
             ${this._renderHeroBanner(reporting)}
+            ${this._renderHistoryPanel()}
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
             ${this._renderOverviewBands(reporting)}
@@ -1334,6 +1581,12 @@ class ByteWattReportCard extends HTMLElement {
       button.addEventListener("click", () => {
         const key = button.dataset.series;
         this._activeSeries[key] = !this._activeSeries[key];
+        this.render();
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-history-period]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._historyPeriod = button.dataset.historyPeriod;
         this.render();
       });
     });

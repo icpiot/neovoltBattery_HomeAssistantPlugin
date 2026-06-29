@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import ByteWattDataUpdateCoordinator
+from .reporting import build_reporting_payload
 from .settings_manager import SettingsManager
 from .topology import ByteWattScope, DiscoveredInverter
 
@@ -26,45 +27,7 @@ def _reporting_payload(
     label: str,
 ) -> dict[str, Any]:
     """Build a compact reporting payload for custom Lovelace cards."""
-    power_diagram = battery_data.get("Power_Diagram") or {}
-    return {
-        "aggregate": aggregate,
-        "label": label,
-        "live": {
-            "soc": battery_data.get("soc"),
-            "battery_power": battery_data.get("pbat"),
-            "house_consumption": battery_data.get("pload"),
-            "grid_power": battery_data.get("pgrid"),
-            "pv_power": battery_data.get("ppv"),
-            "power_source": battery_data.get("powerSource"),
-        },
-        "today": {
-            "solar_generation": battery_data.get("PV_Generated_Today"),
-            "load_consumption": battery_data.get("Consumed_Today"),
-            "feed_in": battery_data.get("Feed_In_Today"),
-            "grid_consumption": battery_data.get("Grid_Import_Today"),
-            "battery_charge": battery_data.get("Battery_Charged_Today"),
-            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
-            "self_consumption": battery_data.get("Self_Consumption"),
-            "self_sufficiency": battery_data.get("Self_Sufficiency"),
-            "trees_planted": battery_data.get("Trees_Planted"),
-            "co2_reduction_tons": battery_data.get("CO2_Reduction_Tons"),
-            "today_income": battery_data.get("Today_Income"),
-            "total_income": battery_data.get("Total_Income"),
-        },
-        "totals": {
-            "solar_generation": battery_data.get("Total_Solar_Generation"),
-            "feed_in": battery_data.get("Total_Feed_In"),
-            "battery_charge": battery_data.get("Total_Battery_Charge"),
-            "battery_discharge": battery_data.get("Total_Battery_Discharge"),
-            "house_consumption": battery_data.get("Total_House_Consumption"),
-            "grid_consumption": battery_data.get("Grid_Power_Consumption"),
-            "pv_power_house": battery_data.get("PV_Power_House"),
-            "pv_charging_battery": battery_data.get("PV_Charging_Battery"),
-            "grid_battery_charge": battery_data.get("Grid_Based_Battery_Charge"),
-        },
-        "power_diagram": power_diagram,
-    }
+    return build_reporting_payload(battery_data, aggregate=aggregate, label=label)
 
 
 async def async_setup_entry(
@@ -163,6 +126,11 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
         aggregate_battery = coordinator_data.get("battery") or {}
         selected_battery = coordinator_data.get("selected_battery") or {}
         all_batteries = coordinator_data.get("all_batteries") or {}
+        history_hint = {
+            "enabled": True,
+            "base_url": f"/local/bytewatt-history/{self._config_entry.entry_id}/",
+            "current_scope": current.sys_sn if current is not None else "all",
+        }
         monitoring_summary = {
             "soc": selected_battery.get("soc") if current is not None else aggregate_battery.get("soc"),
             "battery_power": selected_battery.get("pbat") if current is not None else aggregate_battery.get("pbat"),
@@ -203,6 +171,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                     aggregate=True,
                     label="All systems",
                 ),
+                "history": history_hint,
                 "battery_policy": self._manager.battery_policy_summary(),
                 "feedin_policy": self._manager.feedin_policy_summary(),
             }
@@ -216,6 +185,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                 aggregate=False,
                 label=current.display_name,
             ),
+            "history": history_hint,
             "battery_policy": self._manager.battery_policy_summary(),
             "feedin_policy": self._manager.feedin_policy_summary(),
         }
