@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "094";
+const BYTEWATT_REPORT_CARD_BUILD = "090";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -661,6 +661,88 @@ class ByteWattReportCard extends HTMLElement {
           <div class="energy-bridge battery-load">Use ${this._fmtEnergy(today.battery_discharge)}</div>
           <div class="energy-bridge solar-grid">Feed-in ${this._fmtEnergy(today.feed_in)}</div>
           <div class="energy-bridge grid-load">Consumed ${this._fmtEnergy(today.grid_consumption)}</div>
+        </div>
+      </section>
+    `;
+  }
+
+  _renderSankeyPanel(reporting) {
+    const today = reporting?.today || {};
+    const totals = reporting?.totals || {};
+    const solar = Number(today.solar_generation) || 0;
+    const load = Number(today.load_consumption) || 0;
+    const grid = Number(today.grid_consumption) || 0;
+    const feedIn = Number(today.feed_in) || 0;
+    const batteryCharge = Number(today.battery_charge) || 0;
+    const batteryDischarge = Number(today.battery_discharge) || 0;
+    const pvToHouse = Number(totals.pv_power_house) || Math.max(load - grid - batteryDischarge, 0);
+    const pvToBattery = Number(totals.pv_charging_battery) || Math.max(batteryCharge - grid, 0);
+    const gridToBattery = Number(totals.grid_battery_charge) || 0;
+
+    const solarScale = Math.max(solar, load, 1);
+    const gridScale = Math.max(grid, gridToBattery, 1);
+    const batteryScale = Math.max(batteryCharge, batteryDischarge, 1);
+
+    const widthFor = (value, scale) => `${Math.max(Math.round((Math.max(value, 0) / Math.max(scale, 1)) * 100), 6)}%`;
+
+    return `
+      <section class="panel sankey-panel">
+        <div class="panel-header">
+          <div class="panel-title">Energy Flow Sankey</div>
+          <div class="panel-date">${this._escape(reporting?.power_diagram?.date || "")}</div>
+        </div>
+        <div class="sankey-wrap">
+          <div class="sankey-column">
+            <div class="sankey-node node-solar">
+              <div class="sankey-label">Solar PV</div>
+              <div class="sankey-value">${this._fmtEnergy(solar)}</div>
+            </div>
+            <div class="sankey-node node-grid">
+              <div class="sankey-label">Grid Import</div>
+              <div class="sankey-value">${this._fmtEnergy(grid)}</div>
+            </div>
+          </div>
+          <div class="sankey-column sankey-center">
+            <div class="sankey-node node-battery">
+              <div class="sankey-label">Battery Storage</div>
+              <div class="sankey-value">${this._fmtEnergy(batteryCharge + batteryDischarge)}</div>
+              <div class="sankey-sub">In ${this._fmtEnergy(batteryCharge)} / Out ${this._fmtEnergy(batteryDischarge)}</div>
+            </div>
+            <div class="sankey-flow-list">
+              <div class="sankey-flow flow-solar-load">
+                <span>Solar to Load</span>
+                <strong>${this._fmtEnergy(pvToHouse)}</strong>
+                <div class="sankey-bar" style="width:${widthFor(pvToHouse, solarScale)}"></div>
+              </div>
+              <div class="sankey-flow flow-solar-battery">
+                <span>Solar to Battery</span>
+                <strong>${this._fmtEnergy(pvToBattery)}</strong>
+                <div class="sankey-bar" style="width:${widthFor(pvToBattery, solarScale)}"></div>
+              </div>
+              <div class="sankey-flow flow-grid-battery">
+                <span>Grid to Battery</span>
+                <strong>${this._fmtEnergy(gridToBattery)}</strong>
+                <div class="sankey-bar" style="width:${widthFor(gridToBattery, gridScale)}"></div>
+              </div>
+              <div class="sankey-flow flow-battery-load">
+                <span>Battery to Load</span>
+                <strong>${this._fmtEnergy(batteryDischarge)}</strong>
+                <div class="sankey-bar" style="width:${widthFor(batteryDischarge, batteryScale)}"></div>
+              </div>
+            </div>
+          </div>
+          <div class="sankey-column">
+            <div class="sankey-node node-load">
+              <div class="sankey-label">House Load</div>
+              <div class="sankey-value">${this._fmtEnergy(load)}</div>
+              <div class="sankey-sub">PV ${this._fmtEnergy(pvToHouse)} / Grid ${this._fmtEnergy(grid)}</div>
+            </div>
+            <div class="sankey-node node-feed">
+              <div class="sankey-label">Feed-in</div>
+              <div class="sankey-value">${this._fmtEnergy(feedIn)}</div>
+              <div class="sankey-sub">Export to grid</div>
+            </div>
+          </div>
         </div>
       </section>
     `;
@@ -1345,6 +1427,86 @@ class ByteWattReportCard extends HTMLElement {
           text-align:center;
           font-weight:700;
         }
+        .sankey-panel {
+          display:grid;
+          gap:14px;
+        }
+        .sankey-wrap {
+          display:grid;
+          grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.2fr) minmax(180px, 0.8fr);
+          gap:16px;
+          align-items:stretch;
+        }
+        .sankey-column {
+          display:grid;
+          gap:14px;
+        }
+        .sankey-center {
+          align-content:start;
+        }
+        .sankey-node {
+          background:#f8fbff;
+          border:1px solid rgba(51, 92, 140, 0.1);
+          border-radius:18px;
+          padding:16px;
+          min-height:88px;
+          display:grid;
+          gap:6px;
+          align-content:center;
+          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.05);
+        }
+        .sankey-label {
+          font-size:0.76rem;
+          font-weight:800;
+          letter-spacing:0.05em;
+          text-transform:uppercase;
+          color:#5a7592;
+        }
+        .sankey-value {
+          font-size:1.2rem;
+          font-weight:900;
+          color:#16253a;
+        }
+        .sankey-sub {
+          color:#4d6787;
+          font-size:0.86rem;
+          font-weight:700;
+        }
+        .node-solar { box-shadow: inset 0 0 0 1px rgba(242, 166, 58, 0.18); }
+        .node-grid { box-shadow: inset 0 0 0 1px rgba(122, 138, 151, 0.18); }
+        .node-battery { box-shadow: inset 0 0 0 1px rgba(152, 211, 91, 0.18); }
+        .node-load { box-shadow: inset 0 0 0 1px rgba(111, 214, 235, 0.18); }
+        .node-feed { box-shadow: inset 0 0 0 1px rgba(255, 143, 62, 0.18); }
+        .sankey-flow-list {
+          display:grid;
+          gap:10px;
+        }
+        .sankey-flow {
+          background:#fff;
+          border-radius:14px;
+          border:1px solid rgba(51, 92, 140, 0.1);
+          padding:12px 14px;
+          display:grid;
+          gap:8px;
+        }
+        .sankey-flow span {
+          font-size:0.84rem;
+          font-weight:800;
+          color:#355377;
+        }
+        .sankey-flow strong {
+          font-size:1rem;
+          color:#16253a;
+        }
+        .sankey-bar {
+          height:10px;
+          border-radius:999px;
+          background:linear-gradient(90deg, rgba(47,117,216,0.18), rgba(47,117,216,0.4));
+        }
+        .flow-solar-load .sankey-bar { background:linear-gradient(90deg, #f0b343, #ffd552); }
+        .flow-solar-battery .sankey-bar { background:linear-gradient(90deg, #88cd4a, #b8e078); }
+        .flow-grid-battery .sankey-bar { background:linear-gradient(90deg, #7b8d99, #a9b7c3); }
+        .flow-battery-load .sankey-bar { background:linear-gradient(90deg, #2f75d8, #6ca7ff); }
         .chart-header { margin-bottom:18px; }
         .panel-tabs { display:flex; gap:10px; }
         .chart-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
@@ -1568,6 +1730,7 @@ class ByteWattReportCard extends HTMLElement {
               <div class="stack-grid">
                 ${this._renderRealtimePanel(reporting)}
                 ${this._renderEnergyDiagram(reporting)}
+                ${this._renderSankeyPanel(reporting)}
                 ${this._renderDetailsPanel(reporting)}
               </div>
               ${this._renderChart(reporting)}
