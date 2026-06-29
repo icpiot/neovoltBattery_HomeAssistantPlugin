@@ -100,6 +100,7 @@ class ByteWattReportCard extends HTMLElement {
   _aggregateHistoryRecords(records) {
     const aggregate = {
       count: 0,
+      first_date: "",
       latest_date: "",
       latest_saved_at: "",
       live_soc: 0,
@@ -120,27 +121,43 @@ class ByteWattReportCard extends HTMLElement {
       grid_battery_charge: 0,
     };
 
+    const firstRecord = records[0] || {};
+    const latestRecord = records[records.length - 1] || {};
+
     records.forEach((record) => {
       aggregate.count += 1;
+      if (!aggregate.first_date) {
+        aggregate.first_date = record.reporting_date || record.record_date || "";
+      }
       aggregate.latest_date = record.reporting_date || record.record_date || aggregate.latest_date;
       aggregate.latest_saved_at = record.saved_at || aggregate.latest_saved_at;
-      aggregate.live_soc = this._parseFloat(record.live_soc);
       aggregate.solar_generation_today += this._parseFloat(record.solar_generation_today);
       aggregate.load_consumption_today += this._parseFloat(record.load_consumption_today);
       aggregate.feed_in_today += this._parseFloat(record.feed_in_today);
       aggregate.grid_consumption_today += this._parseFloat(record.grid_consumption_today);
       aggregate.battery_charged_today += this._parseFloat(record.battery_charged_today);
       aggregate.battery_discharged_today += this._parseFloat(record.battery_discharged_today);
-      aggregate.total_solar_generation += this._parseFloat(record.total_solar_generation);
-      aggregate.total_feed_in += this._parseFloat(record.total_feed_in);
-      aggregate.total_battery_charge += this._parseFloat(record.total_battery_charge);
-      aggregate.total_battery_discharge += this._parseFloat(record.total_battery_discharge);
-      aggregate.total_house_consumption += this._parseFloat(record.total_house_consumption);
-      aggregate.total_grid_consumption += this._parseFloat(record.total_grid_consumption);
-      aggregate.pv_power_house += this._parseFloat(record.pv_power_house);
-      aggregate.pv_charging_battery += this._parseFloat(record.pv_charging_battery);
-      aggregate.grid_battery_charge += this._parseFloat(record.grid_battery_charge);
     });
+
+    const periodDelta = (key) => {
+      const start = this._parseFloat(firstRecord?.[key]);
+      const end = this._parseFloat(latestRecord?.[key]);
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        return Math.max(end - start, 0);
+      }
+      return end || 0;
+    };
+
+    aggregate.live_soc = this._parseFloat(latestRecord.live_soc);
+    aggregate.total_solar_generation = periodDelta("total_solar_generation");
+    aggregate.total_feed_in = periodDelta("total_feed_in");
+    aggregate.total_battery_charge = periodDelta("total_battery_charge");
+    aggregate.total_battery_discharge = periodDelta("total_battery_discharge");
+    aggregate.total_house_consumption = periodDelta("total_house_consumption");
+    aggregate.total_grid_consumption = periodDelta("total_grid_consumption");
+    aggregate.pv_power_house = periodDelta("pv_power_house");
+    aggregate.pv_charging_battery = periodDelta("pv_charging_battery");
+    aggregate.grid_battery_charge = periodDelta("grid_battery_charge");
 
     return aggregate;
   }
@@ -195,7 +212,9 @@ class ByteWattReportCard extends HTMLElement {
       <section class="history-panel">
         <div class="panel-header">
           <div class="panel-title">Local Archive</div>
-          <div class="panel-date">${this._escape(history.base_url || "")}</div>
+          <div class="panel-date">
+            ${this._escape(summary.first_date ? `${summary.first_date} → ${summary.latest_date || summary.first_date}` : history.base_url || "")}
+          </div>
         </div>
         <div class="history-controls">
           ${this._historyButton("7 days", "7d")}
