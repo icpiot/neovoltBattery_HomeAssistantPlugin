@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "106";
+const BYTEWATT_REPORT_CARD_BUILD = "107";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1017,12 +1017,89 @@ class ByteWattReportCard extends HTMLElement {
       Number(today.grid_battery_charge) ||
       Number(totals.grid_battery_charge) ||
       0;
+    const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
+    const thickness = (value) => Math.max(6, Math.round((Math.max(value, 0) / flowScale) * 28));
+    const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1 + 115} ${y1}, ${x2 - 115} ${y2}, ${x2} ${y2}`;
 
-    const solarScale = Math.max(solar, load, pvToHouse, pvToBattery, 1);
-    const gridScale = Math.max(grid, gridToBattery, 1);
-    const batteryScale = Math.max(batteryCharge, batteryDischarge, 1);
+    const nodes = {
+      solar: { x: 18, y: 38, w: 185, h: 114, accent: "var(--bw-solar)", title: "Solar PV", value: this._fmtEnergy(solar), lines: [] },
+      grid: { x: 18, y: 222, w: 185, h: 114, accent: "var(--bw-grid)", title: "Grid Import", value: this._fmtEnergy(grid), lines: [] },
+      battery: {
+        x: 356,
+        y: 114,
+        w: 230,
+        h: 150,
+        accent: "var(--bw-battery)",
+        title: "Battery Storage",
+        value: this._fmtEnergy(batteryCharge + batteryDischarge),
+        lines: [`In ${this._fmtEnergy(batteryCharge)} / Out ${this._fmtEnergy(batteryDischarge)}`],
+      },
+      load: {
+        x: 726,
+        y: 70,
+        w: 188,
+        h: 120,
+        accent: "var(--bw-load)",
+        title: "House Load",
+        value: this._fmtEnergy(load),
+        lines: [`PV ${this._fmtEnergy(pvToHouse)} / Grid ${this._fmtEnergy(grid)}`],
+      },
+      feed: {
+        x: 726,
+        y: 228,
+        w: 188,
+        h: 98,
+        accent: "var(--bw-feed)",
+        title: "Feed-in",
+        value: this._fmtEnergy(feedIn),
+        lines: ["Export to grid"],
+      },
+    };
 
-    const widthFor = (value, scale) => `${Math.max(Math.round((Math.max(value, 0) / Math.max(scale, 1)) * 100), 6)}%`;
+    const nodeHtml = (node) => {
+      const lines = (node.lines || [])
+        .map(
+          (line, index) =>
+            `<text x="${node.x + 16}" y="${node.y + 80 + index * 18}" class="sankey-node-sub">${this._escape(line)}</text>`
+        )
+        .join("");
+      return `
+        <g class="sankey-node-group" transform="translate(${node.x}, ${node.y})">
+          <rect width="${node.w}" height="${node.h}" rx="18" ry="18" fill="#ffffff" stroke="${node.accent}" stroke-width="2"></rect>
+          <rect x="0" y="0" width="${node.w}" height="6" rx="18" ry="18" fill="${node.accent}" opacity="0.18"></rect>
+          <text x="16" y="26" class="sankey-node-title">${this._escape(node.title)}</text>
+          <text x="16" y="56" class="sankey-node-value">${this._escape(node.value)}</text>
+          ${lines}
+        </g>
+      `;
+    };
+
+    const link = (source, target, value, color, sourceY, targetY) => {
+      if (!(value > 0)) return "";
+      const sourceNode = nodes[source];
+      const targetNode = nodes[target];
+      const startX = sourceNode.x + sourceNode.w;
+      const endX = targetNode.x;
+      const startY = sourceNode.y + sourceY;
+      const endY = targetNode.y + targetY;
+      return `<path class="sankey-link" d="${curve(startX, startY, endX, endY)}" stroke="${color}" stroke-width="${thickness(value)}" opacity="0.34"></path>`;
+    };
+
+    const links = [
+      link("solar", "load", pvToHouse, "var(--bw-solar)", 50, 52),
+      link("solar", "battery", pvToBattery, "var(--bw-battery)", 74, 58),
+      link("solar", "feed", feedIn, "var(--bw-feed)", 94, 26),
+      link("grid", "battery", gridToBattery, "var(--bw-grid)", 60, 100),
+      link("battery", "load", batteryDischarge, "var(--bw-load)", 88, 68),
+    ].join("");
+
+    const summaryCards = [
+      ["Solar to Load", this._fmtEnergy(pvToHouse), "solar"],
+      ["Solar to Battery", this._fmtEnergy(pvToBattery), "battery"],
+      ["Solar to Feed-in", this._fmtEnergy(feedIn), "feed"],
+      ["Grid to Battery", this._fmtEnergy(gridToBattery), "grid"],
+      ["Battery to Load", this._fmtEnergy(batteryDischarge), "load"],
+    ];
 
     return `
       <section class="panel sankey-panel">
@@ -1030,58 +1107,33 @@ class ByteWattReportCard extends HTMLElement {
           <div class="panel-title">Energy Flow Sankey</div>
           <div class="panel-date">${this._escape(reporting?.power_diagram?.date || "")}</div>
         </div>
-        <div class="sankey-wrap">
-          <div class="sankey-column">
-            <div class="sankey-node node-solar">
-              <div class="sankey-label">Solar PV</div>
-              <div class="sankey-value">${this._fmtEnergy(solar)}</div>
-            </div>
-            <div class="sankey-node node-grid">
-              <div class="sankey-label">Grid Import</div>
-              <div class="sankey-value">${this._fmtEnergy(grid)}</div>
-            </div>
-          </div>
-          <div class="sankey-column sankey-center">
-            <div class="sankey-node node-battery">
-              <div class="sankey-label">Battery Storage</div>
-              <div class="sankey-value">${this._fmtEnergy(batteryCharge + batteryDischarge)}</div>
-              <div class="sankey-sub">In ${this._fmtEnergy(batteryCharge)} / Out ${this._fmtEnergy(batteryDischarge)}</div>
-            </div>
-            <div class="sankey-flow-list">
-              <div class="sankey-flow flow-solar-load">
-                <span>Solar to Load</span>
-                <strong>${this._fmtEnergy(pvToHouse)}</strong>
-                <div class="sankey-bar" style="width:${widthFor(pvToHouse, solarScale)}"></div>
-              </div>
-              <div class="sankey-flow flow-solar-battery">
-                <span>Solar to Battery</span>
-                <strong>${this._fmtEnergy(pvToBattery)}</strong>
-                <div class="sankey-bar" style="width:${widthFor(pvToBattery, solarScale)}"></div>
-              </div>
-              <div class="sankey-flow flow-grid-battery">
-                <span>Grid to Battery</span>
-                <strong>${this._fmtEnergy(gridToBattery)}</strong>
-                <div class="sankey-bar" style="width:${widthFor(gridToBattery, gridScale)}"></div>
-              </div>
-              <div class="sankey-flow flow-battery-load">
-                <span>Battery to Load</span>
-                <strong>${this._fmtEnergy(batteryDischarge)}</strong>
-                <div class="sankey-bar" style="width:${widthFor(batteryDischarge, batteryScale)}"></div>
-              </div>
-            </div>
-          </div>
-          <div class="sankey-column">
-            <div class="sankey-node node-load">
-              <div class="sankey-label">House Load</div>
-              <div class="sankey-value">${this._fmtEnergy(load)}</div>
-              <div class="sankey-sub">PV ${this._fmtEnergy(pvToHouse)} / Grid ${this._fmtEnergy(grid)}</div>
-            </div>
-            <div class="sankey-node node-feed">
-              <div class="sankey-label">Feed-in</div>
-              <div class="sankey-value">${this._fmtEnergy(feedIn)}</div>
-              <div class="sankey-sub">Export to grid</div>
-            </div>
-          </div>
+        <div class="sankey-stage">
+          <svg class="sankey-svg" viewBox="0 0 940 370" role="img" aria-label="ByteWatt energy Sankey diagram">
+            <defs>
+              <filter id="sankeyShadow" x="-10%" y="-10%" width="120%" height="120%">
+                <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.07"></feDropShadow>
+              </filter>
+            </defs>
+            <line x1="470" y1="36" x2="470" y2="334" class="sankey-centerline"></line>
+            ${links}
+            ${nodeHtml(nodes.solar)}
+            ${nodeHtml(nodes.grid)}
+            ${nodeHtml(nodes.battery)}
+            ${nodeHtml(nodes.load)}
+            ${nodeHtml(nodes.feed)}
+          </svg>
+        </div>
+        <div class="sankey-summary-grid">
+          ${summaryCards
+            .map(
+              ([label, value, kind]) => `
+                <div class="sankey-summary sankey-summary-${kind}">
+                  <div class="sankey-summary-label">${label}</div>
+                  <div class="sankey-summary-value">${value}</div>
+                </div>
+              `
+            )
+            .join("")}
         </div>
       </section>
     `;
@@ -1879,84 +1931,82 @@ class ByteWattReportCard extends HTMLElement {
         .sankey-panel {
           width:100%;
           display:grid;
-          gap:14px;
-        }
-        .sankey-wrap {
-          display:grid;
-          grid-template-columns: minmax(180px, 0.8fr) minmax(280px, 1.2fr) minmax(180px, 0.8fr);
           gap:16px;
-          align-items:stretch;
         }
-        .sankey-column {
-          display:grid;
-          gap:14px;
-        }
-        .sankey-center {
-          align-content:start;
-        }
-        .sankey-node {
-          background:#f8fafc;
+        .sankey-stage {
+          background:#fbfcfe;
           border:1px solid #e2e8f0;
-          border-radius:18px;
-          padding:16px;
-          min-height:88px;
-          display:grid;
-          gap:6px;
-          align-content:center;
-          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.05);
+          border-radius:22px;
+          padding:14px;
+          overflow:auto;
         }
-        .sankey-label {
-          font-size:0.76rem;
-          font-weight:800;
-          letter-spacing:0.05em;
+        .sankey-svg {
+          width:100%;
+          min-width:860px;
+          height:auto;
+          display:block;
+        }
+        .sankey-centerline {
+          stroke:#dbe6f2;
+          stroke-dasharray:4 6;
+          stroke-width:1.5;
+        }
+        .sankey-link {
+          fill:none;
+          stroke-linecap:round;
+          stroke-linejoin:round;
+        }
+        .sankey-node-group {
+          filter:url(#sankeyShadow);
+        }
+        .sankey-node-title {
+          fill:#516075;
+          font-size:12px;
+          font-weight:900;
+          letter-spacing:0.04em;
           text-transform:uppercase;
-          color:#64748b;
         }
-        .sankey-value {
-          font-size:1.2rem;
+        .sankey-node-value {
+          fill:#0f172a;
+          font-size:22px;
+          font-weight:900;
+        }
+        .sankey-node-sub {
+          fill:#64748b;
+          font-size:12px;
+          font-weight:700;
+        }
+        .sankey-summary-grid {
+          display:grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap:10px;
+        }
+        .sankey-summary {
+          border-radius:14px;
+          border:1px solid #dbe3ec;
+          background:#fff;
+          padding:12px 14px;
+          box-shadow: inset 0 3px 0 0 transparent;
+          display:grid;
+          gap:4px;
+        }
+        .sankey-summary-label {
+          font-size:0.76rem;
+          font-weight:900;
+          letter-spacing:0.04em;
+          text-transform:uppercase;
+          color:#516075;
+        }
+        .sankey-summary-value {
+          font-size:1rem;
           font-weight:900;
           color:#0f172a;
         }
-        .sankey-sub {
-          color:#64748b;
-          font-size:0.86rem;
-          font-weight:700;
-        }
-        .node-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
-        .node-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
-        .node-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
-        .node-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
-        .node-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
-        .sankey-flow-list {
-          display:grid;
-          gap:10px;
-        }
-        .sankey-flow {
-          background:#fff;
-          border-radius:14px;
-          border:1px solid #e2e8f0;
-          padding:12px 14px;
-          display:grid;
-          gap:8px;
-        }
-        .sankey-flow span {
-          font-size:0.84rem;
-          font-weight:800;
-          color:#475569;
-        }
-        .sankey-flow strong {
-          font-size:1rem;
-          color:#0f172a;
-        }
-        .sankey-bar {
-          height:10px;
-          border-radius:999px;
-          background:linear-gradient(90deg, rgba(47,155,232,0.18), rgba(47,155,232,0.4));
-        }
-        .flow-solar-load .sankey-bar { background:linear-gradient(90deg, var(--bw-solar), #f7da61); }
-        .flow-solar-battery .sankey-bar { background:linear-gradient(90deg, var(--bw-battery), #78dd95); }
-        .flow-grid-battery .sankey-bar { background:linear-gradient(90deg, var(--bw-grid), #b2bac0); }
-        .flow-battery-load .sankey-bar { background:linear-gradient(90deg, var(--bw-load), #7cc0f0); }
+        .sankey-summary-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
+        .sankey-summary-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
+        .sankey-summary-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
+        .sankey-summary-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
+        .sankey-summary-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
         .chart-header { margin-bottom:18px; }
         .panel-tabs { display:flex; gap:10px; }
         .chart-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
