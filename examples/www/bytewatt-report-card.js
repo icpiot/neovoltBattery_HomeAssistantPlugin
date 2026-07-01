@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "103";
+const BYTEWATT_REPORT_CARD_BUILD = "104";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -675,11 +675,20 @@ class ByteWattReportCard extends HTMLElement {
     const feedIn = Number(today.feed_in) || 0;
     const batteryCharge = Number(today.battery_charge) || 0;
     const batteryDischarge = Number(today.battery_discharge) || 0;
-    const pvToHouse = Number(totals.pv_power_house) || Math.max(load - grid - batteryDischarge, 0);
-    const pvToBattery = Number(totals.pv_charging_battery) || Math.max(batteryCharge - grid, 0);
-    const gridToBattery = Number(totals.grid_battery_charge) || 0;
+    const pvToHouse =
+      Number(today.pv_power_house) ||
+      Number(totals.pv_power_house) ||
+      Math.max(load - grid - batteryDischarge, 0);
+    const pvToBattery =
+      Number(today.pv_charging_battery) ||
+      Number(totals.pv_charging_battery) ||
+      Math.max(batteryCharge - grid, 0);
+    const gridToBattery =
+      Number(today.grid_battery_charge) ||
+      Number(totals.grid_battery_charge) ||
+      0;
 
-    const solarScale = Math.max(solar, load, 1);
+    const solarScale = Math.max(solar, load, pvToHouse, pvToBattery, 1);
     const gridScale = Math.max(grid, gridToBattery, 1);
     const batteryScale = Math.max(batteryCharge, batteryDischarge, 1);
 
