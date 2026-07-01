@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "104";
+const BYTEWATT_REPORT_CARD_BUILD = "105";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -16,6 +16,8 @@ class ByteWattReportCard extends HTMLElement {
       feed_in: true,
       consumed: true,
     };
+    this._reportPeriod = this._reportPeriod || "day";
+    this._reportAnchorDate = this._reportAnchorDate || "";
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -201,6 +203,248 @@ class ByteWattReportCard extends HTMLElement {
     return records.filter((record) => allowed.has(record.record_date));
   }
 
+  _reportPeriodLabel(value = this._reportPeriod) {
+    return { day: "Day", week: "Week", month: "Month" }[value] || "Day";
+  }
+
+  _parseLocalDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const text = String(value).trim();
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  _formatLocalDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  _historyRange(records) {
+    const dates = (records || [])
+      .map((record) => this._parseLocalDate(record?.record_date))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    if (!dates.length) return { first: "", latest: "" };
+    return {
+      first: this._formatLocalDate(dates[0]),
+      latest: this._formatLocalDate(dates[dates.length - 1]),
+    };
+  }
+
+  _periodWindow(anchor, period = this._reportPeriod) {
+    const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    const end = new Date(start.getTime());
+    if (period === "week") {
+      const mondayOffset = (start.getDay() + 6) % 7;
+      start.setDate(start.getDate() - mondayOffset);
+      end.setDate(start.getDate() + 6);
+    } else if (period === "month") {
+      start.setDate(1);
+      end.setMonth(start.getMonth() + 1, 0);
+    }
+    return { start, end };
+  }
+
+  _shiftAnchor(anchor, period, step) {
+    const shifted = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    if (period === "week") {
+      shifted.setDate(shifted.getDate() + step * 7);
+    } else if (period === "month") {
+      shifted.setMonth(shifted.getMonth() + step);
+    } else {
+      shifted.setDate(shifted.getDate() + step);
+    }
+    return shifted;
+  }
+
+  _clampAnchor(anchor, records) {
+    const dates = (records || [])
+      .map((record) => this._parseLocalDate(record?.record_date))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    if (!dates.length) return anchor;
+    const earliest = dates[0];
+    const latest = dates[dates.length - 1];
+    if (anchor < earliest) return earliest;
+    if (anchor > latest) return latest;
+    return anchor;
+  }
+
+  _recordsForPeriod(records, anchor, period = this._reportPeriod) {
+    if (!anchor) return records || [];
+    const window = this._periodWindow(anchor, period);
+    return (records || []).filter((record) => {
+      const date = this._parseLocalDate(record?.record_date);
+      return date && date >= window.start && date <= window.end;
+    });
+  }
+
+  _periodSummary(records) {
+    return this._aggregateHistoryRecords(records || []);
+  }
+
+  _periodStatus(records, loading, error) {
+    if (loading) return "Downloading local archive...";
+    if (error) return `Archive unavailable: ${error}`;
+    const range = this._historyRange(records);
+    if (range.first && range.latest) return `Loaded ${range.first} to ${range.latest}`;
+    if (range.latest) return `Loaded ${range.latest}`;
+    return "Archive ready";
+  }
+
+  _buildPeriodPowerDiagram(records, summary, latestReporting, period, anchor, window) {
+    if (period === "day") {
+      const source = latestReporting?.power_diagram || {};
+      return {
+        ...source,
+        date: source.date || this._formatLocalDate(anchor) || "",
+      };
+    }
+
+    const rows = (records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const time = rows.map((record) => record.record_date || "");
+    const series = {
+      bat: rows.map((record) => this._parseFloat(record.live_soc)),
+      load: rows.map((record) => this._parseFloat(record.load_consumption_today)),
+      solar: rows.map((record) => this._parseFloat(record.solar_generation_today)),
+      feed_in: rows.map((record) => this._parseFloat(record.feed_in_today)),
+      consumed: rows.map((record) => this._parseFloat(record.grid_consumption_today)),
+    };
+    const latest = rows[rows.length - 1] || {};
+    return {
+      date: `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`,
+      time,
+      series,
+      summary: {
+        soc: this._parseFloat(latest.live_soc),
+        solar_generation: summary.total_solar_generation,
+        load_consumption: summary.total_house_consumption,
+        feed_in: summary.total_feed_in,
+        grid_consumption: summary.total_grid_consumption,
+        battery_charge: summary.total_battery_charge,
+        battery_discharge: summary.total_battery_discharge,
+      },
+    };
+  }
+
+  _buildPeriodReporting(baseReporting) {
+    const records = this._historyRecords();
+    const sorted = records.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const availableRange = this._historyRange(sorted);
+    const fallbackDate = baseReporting?.power_diagram?.date || availableRange.latest || availableRange.first || "";
+    if (!this._reportAnchorDate && fallbackDate) {
+      this._reportAnchorDate = fallbackDate;
+    }
+
+    const anchor = this._clampAnchor(this._parseLocalDate(this._reportAnchorDate || fallbackDate) || new Date(), sorted);
+    this._reportAnchorDate = this._formatLocalDate(anchor);
+    const period = this._reportPeriod || "day";
+    const selected = this._recordsForPeriod(sorted, anchor, period);
+    if (!selected.length) {
+      const fallbackWindow = this._periodWindow(anchor, period);
+      const periodLabel = this._reportPeriodLabel(period);
+      return {
+        reporting: {
+          ...(baseReporting || {}),
+          aggregate: period !== "day",
+          label: baseReporting?.label || "ByteWatt",
+          meta: {
+            ...(baseReporting?.meta || {}),
+            aggregate: period !== "day",
+            label: baseReporting?.label || "ByteWatt",
+            period,
+            period_label: periodLabel,
+            period_start: this._formatLocalDate(fallbackWindow.start),
+            period_end: this._formatLocalDate(fallbackWindow.end),
+            saved_at: baseReporting?.meta?.saved_at || "",
+          },
+          power_diagram: {
+            ...(baseReporting?.power_diagram || {}),
+            date:
+              period === "day"
+                ? this._formatLocalDate(anchor)
+                : `${this._formatLocalDate(fallbackWindow.start)} -> ${this._formatLocalDate(fallbackWindow.end)}`,
+          },
+        },
+        records: sorted,
+        anchor,
+        period,
+        window: fallbackWindow,
+        availableRange,
+      };
+    }
+
+    const summary = this._periodSummary(selected);
+    const latest = selected[selected.length - 1] || {};
+    const window = this._periodWindow(anchor, period);
+    const live = latest.live || baseReporting?.live || {};
+    const baseToday = baseReporting?.today || {};
+    const totalSolar = summary.total_solar_generation || 0;
+    const totalLoad = summary.total_house_consumption || 0;
+    const totalFeed = summary.total_feed_in || 0;
+    const periodToday = {
+      solar_generation: summary.solar_generation_today,
+      load_consumption: summary.load_consumption_today,
+      feed_in: summary.feed_in_today,
+      grid_consumption: summary.grid_consumption_today,
+      battery_charge: summary.battery_charged_today,
+      battery_discharge: summary.battery_discharged_today,
+      self_consumption: totalSolar > 0 ? Math.max(((totalSolar - totalFeed) / totalSolar) * 100, 0) : baseToday.self_consumption,
+      self_sufficiency:
+        totalLoad > 0 ? Math.max(((totalLoad - summary.total_grid_consumption) / totalLoad) * 100, 0) : baseToday.self_sufficiency,
+      trees_planted: latest.trees_planted ?? baseToday.trees_planted,
+      co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
+      today_income: selected.reduce((acc, record) => acc + this._parseFloat(record.today_income), 0),
+      total_income: latest.total_income ?? baseToday.total_income,
+    };
+    const periodTotals = {
+      solar_generation: summary.total_solar_generation,
+      feed_in: summary.total_feed_in,
+      battery_charge: summary.total_battery_charge,
+      battery_discharge: summary.total_battery_discharge,
+      house_consumption: summary.total_house_consumption,
+      grid_consumption: summary.total_grid_consumption,
+      pv_power_house: summary.pv_power_house,
+      pv_charging_battery: summary.pv_charging_battery,
+      grid_battery_charge: summary.grid_battery_charge,
+    };
+    const powerDiagram = this._buildPeriodPowerDiagram(selected, summary, latest, period, anchor, window);
+
+    return {
+      reporting: {
+        ...(baseReporting || {}),
+        aggregate: period !== "day",
+        label: latest.label || baseReporting?.label || "ByteWatt",
+        meta: {
+          ...(latest.meta || baseReporting?.meta || {}),
+          aggregate: period !== "day",
+          label: latest.label || baseReporting?.label || "ByteWatt",
+          period,
+          period_label: this._reportPeriodLabel(period),
+          period_start: this._formatLocalDate(window.start),
+          period_end: this._formatLocalDate(window.end),
+          saved_at: latest.saved_at || baseReporting?.meta?.saved_at || "",
+        },
+        live,
+        today: periodToday,
+        totals: periodTotals,
+        power_diagram: powerDiagram,
+      },
+      records: selected,
+      anchor,
+      period,
+      window,
+      availableRange,
+      summary,
+    };
+  }
+
   _renderHistoryPanel() {
     const history = this._historyMeta();
     if (!history.enabled) return "";
@@ -320,7 +564,7 @@ class ByteWattReportCard extends HTMLElement {
     return text;
   }
 
-  _buildCsv(reporting) {
+  _buildCsv(reporting, periodContext = null) {
     const powerDiagram = reporting?.power_diagram || {};
     const summary = powerDiagram.summary || {};
     const live = reporting?.live || {};
@@ -328,9 +572,13 @@ class ByteWattReportCard extends HTMLElement {
     const totals = reporting?.totals || {};
     const series = powerDiagram.series || {};
     const times = powerDiagram.time || [];
+    const period = reporting?.meta?.period || periodContext?.period || this._reportPeriod || "day";
+    const records = periodContext?.records || [];
+    const periodLabel = this._reportPeriodLabel(period);
 
     const rows = [
       ["Label", reporting?.label || "ByteWatt"],
+      ["Period", this._reportPeriodLabel(period)],
       ["Date", powerDiagram.date || ""],
       ["Live SOC", live.soc ?? ""],
       ["Live Battery Power", live.battery_power ?? ""],
@@ -339,7 +587,7 @@ class ByteWattReportCard extends HTMLElement {
       ["Live PV Power", live.pv_power ?? ""],
       ["Power Source", live.power_source ?? ""],
       [],
-      ["Today Summary"],
+      ["Summary"],
       ["Solar Generation", today.solar_generation ?? ""],
       ["Load Consumption", today.load_consumption ?? ""],
       ["Battery Charged", today.battery_charge ?? ""],
@@ -348,8 +596,8 @@ class ByteWattReportCard extends HTMLElement {
       ["Grid Consumption", today.grid_consumption ?? ""],
       ["Self Consumption", today.self_consumption ?? ""],
       ["Self Sufficiency", today.self_sufficiency ?? ""],
-      ["Today Income", today.today_income ?? ""],
-      ["Total Income", today.total_income ?? ""],
+      [`${periodLabel} Income`, today.today_income ?? ""],
+      ["Cumulative Income", today.total_income ?? ""],
       [],
       ["Totals"],
       ["Solar Generation", totals.solar_generation ?? ""],
@@ -371,19 +619,52 @@ class ByteWattReportCard extends HTMLElement {
       ["Battery Charge", summary.battery_charge ?? ""],
       ["Battery Discharge", summary.battery_discharge ?? ""],
       [],
-      ["Time", "BAT", "Load", "Solar", "Feed-in", "Consumed"],
     ];
 
-    times.forEach((time, index) => {
+    if (period === "day") {
+      rows.push(["Time", "BAT", "Load", "Solar", "Feed-in", "Consumed"]);
+      times.forEach((time, index) => {
+        rows.push([
+          time,
+          series.bat?.[index] ?? "",
+          series.load?.[index] ?? "",
+          series.solar?.[index] ?? "",
+          series.feed_in?.[index] ?? "",
+          series.consumed?.[index] ?? "",
+        ]);
+      });
+    } else {
       rows.push([
-        time,
-        series.bat?.[index] ?? "",
-        series.load?.[index] ?? "",
-        series.solar?.[index] ?? "",
-        series.feed_in?.[index] ?? "",
-        series.consumed?.[index] ?? "",
+        "Date",
+        "SOC",
+        "Solar Generation",
+        "Load Consumption",
+        "Battery Charged",
+        "Battery Discharged",
+        "Feed-in",
+        "Grid Consumption",
+        "PV to House",
+        "PV to Battery",
+        "Grid to Battery",
+        `${periodLabel} Income`,
       ]);
-    });
+      records.forEach((record) => {
+        rows.push([
+          record.record_date || "",
+          record.live_soc ?? "",
+          record.solar_generation_today ?? "",
+          record.load_consumption_today ?? "",
+          record.battery_charged_today ?? "",
+          record.battery_discharged_today ?? "",
+          record.feed_in_today ?? "",
+          record.grid_consumption_today ?? "",
+          record.pv_power_house ?? "",
+          record.pv_charging_battery ?? "",
+          record.grid_battery_charge ?? "",
+          record.today_income ?? "",
+        ]);
+      });
+    }
 
     return rows
       .map((row) => row.map((value) => this._csvSafe(value)).join(","))
@@ -391,13 +672,16 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _downloadCsv() {
-    const reporting = this._reporting();
+    const periodContext = this._buildPeriodReporting(this._reporting());
+    const reporting = periodContext.reporting;
     if (!reporting) return;
-    const csv = this._buildCsv(reporting);
+    const csv = this._buildCsv(reporting, periodContext);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    const stamp = (reporting?.power_diagram?.date || "today").replaceAll("/", "-");
+    const stamp = (reporting?.meta?.period_start && reporting?.meta?.period_end)
+      ? `${reporting.meta.period_start}_to_${reporting.meta.period_end}`
+      : (reporting?.power_diagram?.date || "day").replaceAll("/", "-");
     const label = (reporting?.label || "bytewatt").replaceAll(/[^a-zA-Z0-9_-]+/g, "_");
     link.href = url;
     link.download = `bytewatt-report-${label}-${stamp}.csv`;
@@ -423,6 +707,49 @@ class ByteWattReportCard extends HTMLElement {
             .join("")}
         </select>
       </div>
+    `;
+  }
+
+  _renderReportControls(periodContext) {
+    const period = periodContext?.period || this._reportPeriod || "day";
+    const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
+    const anchorValue = this._formatLocalDate(anchor);
+    const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError);
+    const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : "loaded";
+    const startLabel = periodContext?.window?.start ? this._formatLocalDate(periodContext.window.start) : "";
+    const endLabel = periodContext?.window?.end ? this._formatLocalDate(periodContext.window.end) : "";
+    return `
+      <div class="report-controls">
+        <div class="report-control-row">
+          <div class="report-control-label">Period</div>
+          <div class="report-period-group">
+            ${this._reportPeriodButton("Day", "day", period)}
+            ${this._reportPeriodButton("Week", "week", period)}
+            ${this._reportPeriodButton("Month", "month", period)}
+          </div>
+        </div>
+        <div class="report-control-row">
+          <button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>
+          <input class="report-date-input" type="date" data-report-date value="${this._escape(anchorValue)}" />
+          <button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>
+          <div class="report-status ${statusClass}">
+            ${this._escape(status)}
+            ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _reportPeriodButton(label, value, current) {
+    return `
+      <button
+        class="report-period-button ${value === current ? "active" : ""}"
+        type="button"
+        data-report-period="${value}"
+      >
+        ${label}
+      </button>
     `;
   }
 
@@ -529,10 +856,12 @@ class ByteWattReportCard extends HTMLElement {
   _renderOverviewBands(reporting) {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
+    const periodLabel = reporting?.meta?.period_label || "Day";
+    const incomeLabel = `${periodLabel} Income`;
     return `
       <div class="overview-grid">
         <section class="overview-panel">
-          <div class="overview-kicker">Today</div>
+          <div class="overview-kicker">${this._escape(periodLabel)}</div>
           <div class="overview-metrics">
             ${this._metric("Home & Solar Consumed", this._fmtEnergy(today.load_consumption))}
             ${this._metric("Generation", this._fmtEnergy(today.solar_generation))}
@@ -558,8 +887,8 @@ class ByteWattReportCard extends HTMLElement {
           <div class="overview-metrics">
             ${this._metric("Self-Consumed", this._fmtPercent(today.self_consumption))}
             ${this._metric("Self-Sufficiency", this._fmtPercent(today.self_sufficiency))}
-            ${this._metric("Today Income", this._fmtCurrency(today.today_income))}
-            ${this._metric("Total Income", this._fmtCurrency(today.total_income))}
+            ${this._metric(incomeLabel, this._fmtCurrency(today.today_income))}
+            ${this._metric("Cumulative Income", this._fmtCurrency(today.total_income))}
           </div>
         </section>
         <section class="overview-panel">
@@ -587,13 +916,14 @@ class ByteWattReportCard extends HTMLElement {
 
   _renderSummaryTiles(reporting) {
     const today = reporting?.today || {};
+    const periodLabel = reporting?.meta?.period_label || "Day";
     return `
       <div class="summary-grid">
-        ${this._summaryTile("Today's Generation", this._fmtEnergy(today.solar_generation), "solar")}
-        ${this._summaryTile("Today's Consumption", this._fmtEnergy(today.load_consumption), "load")}
+        ${this._summaryTile(`${periodLabel} Generation`, this._fmtEnergy(today.solar_generation), "solar")}
+        ${this._summaryTile(`${periodLabel} Consumption`, this._fmtEnergy(today.load_consumption), "load")}
         ${this._summaryTile("BAT SOC", this._fmtPercent(reporting?.live?.soc), "bat")}
-        ${this._summaryTile("Today's Feed-in", this._fmtEnergy(today.feed_in), "feed")}
-        ${this._summaryTile("Today's Grid Consumption", this._fmtEnergy(today.grid_consumption), "grid")}
+        ${this._summaryTile(`${periodLabel} Feed-in`, this._fmtEnergy(today.feed_in), "feed")}
+        ${this._summaryTile(`${periodLabel} Grid Consumption`, this._fmtEnergy(today.grid_consumption), "grid")}
       </div>
     `;
   }
@@ -828,6 +1158,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _renderChart(reporting) {
     const powerDiagram = reporting?.power_diagram || {};
+    const periodLabel = reporting?.meta?.period_label || "Day";
     const series = powerDiagram.series || {};
     const times = powerDiagram.time || [];
     const activeKeys = Object.entries(this._activeSeries)
@@ -901,11 +1232,11 @@ class ByteWattReportCard extends HTMLElement {
           this._view === "power"
             ? `
           <div class="ring-grid">
-            ${this._ring("Today's Generation", this._fmtEnergy(powerSummary.solar_generation), "solar")}
-            ${this._ring("Today's Consumption", this._fmtEnergy(powerSummary.load_consumption), "load")}
+            ${this._ring(`${periodLabel} Generation`, this._fmtEnergy(powerSummary.solar_generation), "solar")}
+            ${this._ring(`${periodLabel} Consumption`, this._fmtEnergy(powerSummary.load_consumption), "load")}
             ${this._ring("BAT SOC", this._fmtPercent(powerSummary.soc), "bat")}
-            ${this._ring("Today's Feed-in", this._fmtEnergy(powerSummary.feed_in), "feed")}
-            ${this._ring("Today's Grid Consumption", this._fmtEnergy(powerSummary.grid_consumption), "grid")}
+            ${this._ring(`${periodLabel} Feed-in`, this._fmtEnergy(powerSummary.feed_in), "feed")}
+            ${this._ring(`${periodLabel} Grid Consumption`, this._fmtEnergy(powerSummary.grid_consumption), "grid")}
           </div>
           <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="ByteWatt power diagram chart">
             <line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" class="axis"></line>
@@ -1012,11 +1343,13 @@ class ByteWattReportCard extends HTMLElement {
   render() {
     if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    const reporting = this._reporting();
+    const baseReporting = this._reporting();
+    const periodContext = this._buildPeriodReporting(baseReporting);
+    const reporting = periodContext.reporting;
     const historyKey = [
       this._historyUrl(),
       this._historyScopeKey(),
-      reporting?.meta?.saved_at || reporting?.power_diagram?.date || "",
+      baseReporting?.meta?.saved_at || baseReporting?.power_diagram?.date || "",
     ].join("|");
     if (historyKey !== this._historySourceKey) {
       this._historySourceKey = historyKey;
@@ -1075,6 +1408,83 @@ class ByteWattReportCard extends HTMLElement {
         }
         .selector-row {
           display:grid; grid-template-columns: 160px minmax(0, 1fr); gap:16px; align-items:center;
+        }
+        .report-controls {
+          display:grid;
+          gap:10px;
+          margin-top:4px;
+        }
+        .report-control-row {
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+          align-items:center;
+        }
+        .report-control-label {
+          font-size:0.84rem;
+          font-weight:800;
+          color:#4d6787;
+          text-transform:uppercase;
+          letter-spacing:0.05em;
+        }
+        .report-period-group {
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+        }
+        .report-period-button,
+        .report-shift-button,
+        .report-date-input {
+          border:1px solid rgba(51, 92, 140, 0.18);
+          border-radius:14px;
+          background:#fff;
+          color:#17263a;
+          font-weight:800;
+        }
+        .report-period-button,
+        .report-shift-button {
+          padding:8px 14px;
+          cursor:pointer;
+        }
+        .report-period-button.active {
+          background:#2f75d8;
+          color:#fff;
+          border-color:#2f75d8;
+          box-shadow:0 8px 18px rgba(47,117,216,0.18);
+        }
+        .report-shift-button {
+          min-width:42px;
+        }
+        .report-date-input {
+          min-width: 170px;
+          padding:8px 12px;
+        }
+        .report-status {
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          padding:7px 12px;
+          border-radius:999px;
+          background:#eef4fb;
+          border:1px solid rgba(51, 92, 140, 0.12);
+          color:#355377;
+          font-size:0.84rem;
+          font-weight:800;
+        }
+        .report-status.loading {
+          background:#fff4de;
+          border-color:rgba(239, 169, 61, 0.28);
+          color:#9a651d;
+        }
+        .report-status.loaded {
+          background:#e8f7ee;
+          border-color:rgba(74, 167, 98, 0.24);
+          color:#2e7d46;
+        }
+        .report-status.error {
+          background:#fdecec;
+          border-color:rgba(198, 82, 82, 0.22);
+          color:#a04646;
         }
         .label { font-size:0.95rem; font-weight:700; color:#31435d; }
         select {
@@ -1746,6 +2156,7 @@ class ByteWattReportCard extends HTMLElement {
             <button class="cache-button" type="button" data-clear-cache>Clear Cache</button>
           </div>
           ${this._renderSelector()}
+          ${this._renderReportControls(periodContext)}
           ${
             reporting
               ? `
@@ -1800,6 +2211,27 @@ class ByteWattReportCard extends HTMLElement {
         this.render();
       });
     });
+    this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._reportPeriod = button.dataset.reportPeriod || "day";
+        this._reportAnchorDate = "";
+        this.render();
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-report-shift]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const step = Number(button.dataset.reportShift || 0) || 0;
+        const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+        const fallback = this._parseLocalDate(this._reportAnchorDate) || this._parseLocalDate(this._reporting()?.power_diagram?.date) || null;
+        const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records);
+        this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
+        this.render();
+      });
+    });
+    this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", (event) => {
+      this._reportAnchorDate = String(event.target.value || "").trim();
+      this.render();
+    });
     this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
       try {
         if ("caches" in window && window.caches?.keys) {
@@ -1838,3 +2270,4 @@ window.customCards.push({
 });
 
 window.bytewattReportCardBuild = BYTEWATT_REPORT_CARD_BUILD;
+
