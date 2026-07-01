@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "112";
+const BYTEWATT_REPORT_CARD_BUILD = "113";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -204,7 +204,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _reportPeriodLabel(value = this._reportPeriod) {
-    return { day: "Day", week: "Week", month: "Month" }[value] || "Day";
+    return { today: "Today", day: "Day", week: "Week", month: "Month" }[value] || "Day";
   }
 
   _parseLocalDate(value) {
@@ -299,13 +299,15 @@ class ByteWattReportCard extends HTMLElement {
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
     const range = this._historyRange(records);
-    if (range.first && range.latest) return `Loaded ${range.first} to ${range.latest}`;
-    if (range.latest) return `Loaded ${range.latest}`;
+    const first = range.first ? this._formatDisplayDate(this._parseLocalDate(range.first)) : "";
+    const latest = range.latest ? this._formatDisplayDate(this._parseLocalDate(range.latest)) : "";
+    if (first && latest) return `Archive ready (${first} to ${latest})`;
+    if (latest) return `Archive ready (${latest})`;
     return "Archive ready";
   }
 
   _buildPeriodPowerDiagram(records, summary, latestReporting, period, anchor, window) {
-    if (period === "day") {
+    if (period === "day" || period === "today") {
       const source = latestReporting?.power_diagram || {};
       return {
         ...source,
@@ -355,6 +357,7 @@ class ByteWattReportCard extends HTMLElement {
     if (!selected.length) {
       const fallbackWindow = this._periodWindow(anchor, period);
       const periodLabel = this._reportPeriodLabel(period);
+      this._reportAnchorDate = this._formatLocalDate(period === "day" || period === "today" ? anchor : fallbackWindow.start);
       return {
         reporting: {
           ...(baseReporting || {}),
@@ -389,6 +392,7 @@ class ByteWattReportCard extends HTMLElement {
     const summary = this._periodSummary(selected);
     const latest = selected[selected.length - 1] || {};
     const window = this._periodWindow(anchor, period);
+    this._reportAnchorDate = this._formatLocalDate(period === "day" || period === "today" ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
     const totalSolar = summary.total_solar_generation || 0;
@@ -719,9 +723,10 @@ class ByteWattReportCard extends HTMLElement {
   _renderReportControls(periodContext) {
     const period = periodContext?.period || this._reportPeriod || "day";
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
-    const anchorValue = this._formatLocalDate(anchor);
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError);
     const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : "loaded";
+    const windowStart = periodContext?.window?.start || anchor;
+    const displayDate = this._formatLocalDate(windowStart);
     const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
     const endLabel = periodContext?.window?.end ? this._formatDisplayDate(periodContext.window.end) : "";
     return `
@@ -729,6 +734,7 @@ class ByteWattReportCard extends HTMLElement {
         <div class="report-control-row">
           <div class="report-control-label">Period</div>
           <div class="report-period-group">
+            ${this._reportPeriodButton("Today", "today", period)}
             ${this._reportPeriodButton("Day", "day", period)}
             ${this._reportPeriodButton("Week", "week", period)}
             ${this._reportPeriodButton("Month", "month", period)}
@@ -736,7 +742,7 @@ class ByteWattReportCard extends HTMLElement {
         </div>
         <div class="report-control-row">
           <button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>
-          <input class="report-date-input" type="date" data-report-date value="${this._escape(anchorValue)}" />
+          <input class="report-date-input" type="date" data-report-date value="${this._escape(displayDate)}" />
           <button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>
           <div class="report-status ${statusClass}">
             ${this._escape(status)}
