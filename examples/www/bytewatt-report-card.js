@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "109";
+const BYTEWATT_REPORT_CARD_BUILD = "110";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -225,6 +225,12 @@ class ByteWattReportCard extends HTMLElement {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   }
 
+  _formatDisplayDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  }
+
   _historyRange(records) {
     const dates = (records || [])
       .map((record) => this._parseLocalDate(record?.record_date))
@@ -303,7 +309,7 @@ class ByteWattReportCard extends HTMLElement {
       const source = latestReporting?.power_diagram || {};
       return {
         ...source,
-        date: source.date || this._formatLocalDate(anchor) || "",
+        date: source.date || this._formatDisplayDate(anchor) || "",
       };
     }
 
@@ -318,7 +324,7 @@ class ByteWattReportCard extends HTMLElement {
     };
     const latest = rows[rows.length - 1] || {};
     return {
-      date: `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`,
+      date: `${this._formatDisplayDate(window.start)} -> ${this._formatDisplayDate(window.end)}`,
       time,
       series,
       summary: {
@@ -716,8 +722,8 @@ class ByteWattReportCard extends HTMLElement {
     const anchorValue = this._formatLocalDate(anchor);
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError);
     const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : "loaded";
-    const startLabel = periodContext?.window?.start ? this._formatLocalDate(periodContext.window.start) : "";
-    const endLabel = periodContext?.window?.end ? this._formatLocalDate(periodContext.window.end) : "";
+    const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
+    const endLabel = periodContext?.window?.end ? this._formatDisplayDate(periodContext.window.end) : "";
     return `
       <div class="report-controls">
         <div class="report-control-row">

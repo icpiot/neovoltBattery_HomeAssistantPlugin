@@ -66,7 +66,7 @@ type: module
 Reporting card:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-report-card.js?v=109
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=110
 type: module
 ```
 
@@ -89,7 +89,7 @@ type: module
 Reporting card next iteration:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-report-card.js?v=109
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=110
 type: module
 ```
 
