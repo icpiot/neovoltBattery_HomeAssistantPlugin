@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "107";
+const BYTEWATT_REPORT_CARD_BUILD = "108";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -942,18 +942,18 @@ class ByteWattReportCard extends HTMLElement {
     const powerSource = live.power_source || "Idle";
     return `
       <div class="live-grid">
-        ${this._liveTile("Solar", this._fmtPower(live.pv_power))}
-        ${this._liveTile("Battery", this._fmtPower(live.battery_power))}
-        ${this._liveTile("Load", this._fmtPower(live.house_consumption))}
-        ${this._liveTile("Grid", this._fmtPower(live.grid_power))}
-        ${this._liveTile("Mode", this._escape(powerSource))}
+        ${this._liveTile("Solar", this._fmtPower(live.pv_power), "solar")}
+        ${this._liveTile("Battery", this._fmtPower(live.battery_power), "battery")}
+        ${this._liveTile("Load", this._fmtPower(live.house_consumption), "load")}
+        ${this._liveTile("Grid", this._fmtPower(live.grid_power), "grid")}
+        ${this._liveTile("Mode", this._escape(powerSource), "mode")}
       </div>
     `;
   }
 
-  _liveTile(label, value) {
+  _liveTile(label, value, kind = "") {
     return `
-      <div class="live-tile">
+      <div class="live-tile ${kind ? `live-${kind}` : ""}">
         <div class="live-label">${label}</div>
         <div class="live-value">${value}</div>
       </div>
@@ -1255,11 +1255,11 @@ class ByteWattReportCard extends HTMLElement {
     };
 
     const palette = {
-      bat: ["rgba(152, 211, 91, 0.45)", "#98d35b"],
-      load: ["rgba(111, 214, 235, 0.38)", "#6fd6eb"],
-      solar: ["rgba(255, 209, 60, 0.42)", "#ffd13c"],
-      feed_in: ["rgba(255, 143, 62, 0.34)", "#ff8f3e"],
-      consumed: ["rgba(211, 157, 108, 0.28)", "#d39d6c"],
+      bat: ["rgba(47, 201, 110, 0.28)", "#2fc96e"],
+      load: ["rgba(47, 155, 232, 0.28)", "#2f9be8"],
+      solar: ["rgba(240, 196, 25, 0.30)", "#f0c419"],
+      feed_in: ["rgba(240, 138, 36, 0.28)", "#f08a24"],
+      consumed: ["rgba(152, 162, 168, 0.24)", "#98a2a8"],
     };
 
     const xTicks = [0, 0.17, 0.34, 0.51, 0.68, 0.85, 1];
@@ -1769,6 +1769,55 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:800;
           color:#0f172a;
         }
+        .summary-tile,
+        .live-tile {
+          position:relative;
+          overflow:hidden;
+        }
+        .summary-tile::before,
+        .live-tile::before {
+          content:"";
+          position:absolute;
+          left:0;
+          top:0;
+          width:100%;
+          height:4px;
+          background:var(--bw-border);
+        }
+        .summary-label,
+        .live-label {
+          color:#516075;
+        }
+        .summary-solar::before,
+        .live-solar::before { background:var(--bw-solar); }
+        .summary-load::before,
+        .live-load::before { background:var(--bw-load); }
+        .summary-bat::before,
+        .live-battery::before { background:var(--bw-battery); }
+        .summary-feed::before,
+        .live-feed::before { background:var(--bw-feed); }
+        .summary-grid::before,
+        .live-grid::before { background:var(--bw-grid); }
+        .summary-solar .summary-value,
+        .summary-solar .summary-label,
+        .live-solar .live-value,
+        .live-solar .live-label { color:#9a7b00; }
+        .summary-load .summary-value,
+        .summary-load .summary-label,
+        .live-load .live-value,
+        .live-load .live-label { color:#1f6ea6; }
+        .summary-bat .summary-value,
+        .summary-bat .summary-label,
+        .live-battery .live-value,
+        .live-battery .live-label { color:#208f52; }
+        .summary-feed .summary-value,
+        .summary-feed .summary-label,
+        .live-feed .live-value,
+        .live-feed .live-label { color:#b25f11; }
+        .summary-grid .summary-value,
+        .summary-grid .summary-label,
+        .live-grid .live-value,
+        .live-grid .live-label { color:#65727a; }
         .summary-grid,
         .live-grid,
         .stats-grid {
@@ -2157,10 +2206,10 @@ class ByteWattReportCard extends HTMLElement {
           border-radius:999px;
         }
         .tone-solar { background:linear-gradient(90deg, var(--bw-solar), #f7da61); }
-        .tone-load { background:linear-gradient(90deg, var(--bw-load), #7cc0f0); }
-        .tone-battery { background:linear-gradient(90deg, var(--bw-battery), #78dd95); }
-        .tone-feed { background:linear-gradient(90deg, var(--bw-feed), #f7ad5b); }
-        .tone-grid { background:linear-gradient(90deg, var(--bw-grid), #b2bac0); }
+        .tone-load { background:linear-gradient(90deg, var(--bw-load), #78bdf4); }
+        .tone-battery { background:linear-gradient(90deg, var(--bw-battery), #66d98b); }
+        .tone-feed { background:linear-gradient(90deg, var(--bw-feed), #f0a15c); }
+        .tone-grid { background:linear-gradient(90deg, var(--bw-grid), #b1bac0); }
         .tone-info { background:linear-gradient(90deg, #4b8fff, #6ca7ff); }
         .empty {
           padding:24px;
