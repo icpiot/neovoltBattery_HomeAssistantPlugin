@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "101";
+const BYTEWATT_REPORT_CARD_BUILD = "102";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1720,12 +1720,12 @@ class ByteWattReportCard extends HTMLElement {
           ${
             reporting
               ? `
+            ${this._renderSankeyPanel(reporting)}
             ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
             ${this._renderOverviewBands(reporting)}
-            ${this._renderSankeyPanel(reporting)}
             ${this._renderSummaryTiles(reporting)}
             ${this._renderLiveStrip(reporting)}
             <div class="body-grid">
