@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "102";
+const BYTEWATT_REPORT_CARD_BUILD = "103";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1045,6 +1045,25 @@ class ByteWattReportCard extends HTMLElement {
           border-radius:999px; background:#e5f1ff; color:#205ca8; font-size:0.78rem; font-weight:800;
           border:1px solid rgba(45, 104, 180, 0.18);
         }
+        .cache-button {
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          padding:5px 10px;
+          border-radius:999px;
+          border:1px solid rgba(45, 104, 180, 0.24);
+          background:linear-gradient(180deg, #f7fbff, #e7f2ff);
+          color:#205ca8;
+          font-size:0.76rem;
+          font-weight:800;
+          cursor:pointer;
+        }
+        .cache-button:hover {
+          filter:brightness(0.98);
+        }
+        .cache-button:active {
+          transform:translateY(1px);
+        }
         .selector-row {
           display:grid; grid-template-columns: 160px minmax(0, 1fr); gap:16px; align-items:center;
         }
@@ -1715,6 +1734,7 @@ class ByteWattReportCard extends HTMLElement {
             <div class="title-icon">&#9889;</div>
             <div class="title">ByteWatt Report</div>
             <div class="version-badge">v${BYTEWATT_REPORT_CARD_BUILD}</div>
+            <button class="cache-button" type="button" data-clear-cache>Clear Cache</button>
           </div>
           ${this._renderSelector()}
           ${
@@ -1770,6 +1790,17 @@ class ByteWattReportCard extends HTMLElement {
         this._historyPeriod = button.dataset.historyPeriod;
         this.render();
       });
+    });
+    this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
+      try {
+        if ("caches" in window && window.caches?.keys) {
+          const keys = await window.caches.keys();
+          await Promise.all(keys.map((key) => window.caches.delete(key)));
+        }
+      } catch (error) {
+        console.warn("ByteWatt report cache clear failed:", error);
+      }
+      window.location.reload();
     });
     this.shadowRoot.querySelector("[data-download-report]")?.addEventListener("click", () => {
       this._downloadCsv();
