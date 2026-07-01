@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "100";
+const BYTEWATT_REPORT_CARD_BUILD = "101";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1428,6 +1428,7 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
         }
         .sankey-panel {
+          width:100%;
           display:grid;
           gap:14px;
         }
@@ -1724,13 +1725,13 @@ class ByteWattReportCard extends HTMLElement {
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
             ${this._renderOverviewBands(reporting)}
+            ${this._renderSankeyPanel(reporting)}
             ${this._renderSummaryTiles(reporting)}
             ${this._renderLiveStrip(reporting)}
             <div class="body-grid">
               <div class="stack-grid">
                 ${this._renderRealtimePanel(reporting)}
                 ${this._renderEnergyDiagram(reporting)}
-                ${this._renderSankeyPanel(reporting)}
                 ${this._renderDetailsPanel(reporting)}
               </div>
               ${this._renderChart(reporting)}
