@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "105";
+const BYTEWATT_REPORT_CARD_BUILD = "106";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -9,7 +9,7 @@ class ByteWattReportCard extends HTMLElement {
       ...config,
     };
     this._view = this._view || "power";
-    this._activeSeries = this._activeSeries || {
+      this._activeSeries = this._activeSeries || {
       bat: true,
       load: true,
       solar: true,
@@ -1363,29 +1363,40 @@ class ByteWattReportCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display:block; width:100%; }
+        :host {
+          display:block;
+          width:100%;
+          --bw-solar:#f0c419;
+          --bw-load:#2f9be8;
+          --bw-battery:#2fc96e;
+          --bw-feed:#f08a24;
+          --bw-grid:#98a2a8;
+          --bw-surface:#f4f5f7;
+          --bw-surface-2:#ffffff;
+          --bw-border:#d6dbe1;
+          --bw-text:#17212f;
+          --bw-muted:#6b7280;
+        }
         ha-card {
-          background:
-            radial-gradient(circle at top right, rgba(76, 149, 255, 0.18), transparent 28%),
-            linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+          background: linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%);
           border-radius: 24px;
-          border: 1px solid rgba(51, 92, 140, 0.12);
-          color: #162334;
-          box-shadow: 0 24px 48px rgba(20, 44, 78, 0.12);
+          border: 1px solid var(--bw-border);
+          color: var(--bw-text);
+          box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
           overflow: hidden;
         }
         .shell { display:grid; gap:18px; padding:20px; }
         .title-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
         .title-icon {
           width:34px; height:34px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-          background:linear-gradient(180deg, #4ba4ff, #2f75d8); color:#fff; font-weight:800;
-          box-shadow:0 12px 24px rgba(47,117,216,0.22);
+          background:linear-gradient(180deg, #5ab4ff, #2f9be8); color:#fff; font-weight:800;
+          box-shadow:0 10px 20px rgba(47,155,232,0.18);
         }
-        .title { font-size:1.4rem; font-weight:800; }
+        .title { font-size:1.4rem; font-weight:800; color:#0f172a; }
         .version-badge {
           display:inline-flex; align-items:center; justify-content:center; padding:4px 8px;
-          border-radius:999px; background:#e5f1ff; color:#205ca8; font-size:0.78rem; font-weight:800;
-          border:1px solid rgba(45, 104, 180, 0.18);
+          border-radius:999px; background:#eef1f4; color:#4b5563; font-size:0.78rem; font-weight:800;
+          border:1px solid #d7dce2;
         }
         .cache-button {
           display:inline-flex;
@@ -1393,9 +1404,9 @@ class ByteWattReportCard extends HTMLElement {
           justify-content:center;
           padding:5px 10px;
           border-radius:999px;
-          border:1px solid rgba(45, 104, 180, 0.24);
-          background:linear-gradient(180deg, #f7fbff, #e7f2ff);
-          color:#205ca8;
+          border:1px solid #cfd6de;
+          background:#fff;
+          color:#475569;
           font-size:0.76rem;
           font-weight:800;
           cursor:pointer;
@@ -1491,9 +1502,9 @@ class ByteWattReportCard extends HTMLElement {
           width:min(360px, 100%);
           padding:12px 14px;
           border-radius:14px;
-          border:1px solid rgba(51, 92, 140, 0.18);
+          border:1px solid var(--bw-border);
           background:#fff;
-          color:#17263a;
+          color:var(--bw-text);
           font-size:0.95rem;
         }
         .aggregate-strip {
@@ -1507,11 +1518,11 @@ class ByteWattReportCard extends HTMLElement {
         .stat-card,
         .overview-panel,
         .hero-banner {
-          background:#fff;
+          background:var(--bw-surface-2);
           border-radius:18px;
-          border:1px solid rgba(51, 92, 140, 0.12);
+          border:1px solid var(--bw-border);
           padding:16px 18px;
-          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.06);
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
         }
         .hero-banner {
           display:grid;
@@ -1531,21 +1542,21 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:800;
           letter-spacing:0.08em;
           text-transform:uppercase;
-          color:#5c7897;
+          color:#4b5563;
         }
         .hero-title {
           font-size:1.35rem;
           font-weight:900;
-          color:#14243a;
+          color:#0f172a;
         }
         .hero-subtitle {
-          color:#486782;
+          color:#475569;
           font-size:0.96rem;
           font-weight:700;
         }
         .hero-history {
           margin-top:6px;
-          color:#2c69b2;
+          color:#2f9be8;
           font-size:0.8rem;
           font-weight:700;
           word-break:break-all;
@@ -1553,9 +1564,9 @@ class ByteWattReportCard extends HTMLElement {
         .history-panel {
           background:#fff;
           border-radius:18px;
-          border:1px solid rgba(51, 92, 140, 0.12);
+          border:1px solid var(--bw-border);
           padding:16px 18px;
-          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.06);
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
           display:grid;
           gap:14px;
         }
@@ -1570,11 +1581,11 @@ class ByteWattReportCard extends HTMLElement {
           padding:8px 14px;
           font-weight:800;
           cursor:pointer;
-          background:#e8eff8;
-          color:#476687;
+          background:#eef1f4;
+          color:#475569;
         }
         .history-pill.active {
-          background:#2f75d8;
+          background:#111827;
           color:#fff;
         }
         .history-summary {
@@ -1588,8 +1599,8 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
         }
         .hero-chip {
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          background:#f8fafc;
+          border:1px solid var(--bw-border);
           border-radius:14px;
           padding:12px 14px;
           display:grid;
@@ -1600,19 +1611,19 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:800;
           letter-spacing:0.05em;
           text-transform:uppercase;
-          color:#5a7592;
+          color:#64748b;
         }
         .hero-chip-value {
           font-size:1rem;
           font-weight:900;
-          color:#17263a;
+          color:#0f172a;
         }
         .aggregate-table-panel {
           background:#fff;
           border-radius:18px;
-          border:1px solid rgba(51, 92, 140, 0.12);
+          border:1px solid var(--bw-border);
           padding:16px 18px;
-          box-shadow: 0 10px 20px rgba(20, 44, 78, 0.06);
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
           display:grid;
           gap:14px;
         }
@@ -1626,11 +1637,11 @@ class ByteWattReportCard extends HTMLElement {
         .aggregate-table-title {
           font-size:1rem;
           font-weight:900;
-          color:#16253a;
+          color:#0f172a;
         }
         .aggregate-table-subtitle {
           font-size:0.84rem;
-          color:#587491;
+          color:#64748b;
           font-weight:700;
         }
         .aggregate-table {
@@ -1644,22 +1655,22 @@ class ByteWattReportCard extends HTMLElement {
           align-items:center;
           padding:12px 14px;
           border-radius:14px;
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.08);
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
           color:#22354d;
           font-size:0.92rem;
           font-weight:700;
         }
         .aggregate-header {
-          background:#edf4fc;
-          color:#55718f;
+          background:#eef2f7;
+          color:#516075;
           font-size:0.78rem;
           letter-spacing:0.05em;
           text-transform:uppercase;
         }
         .aggregate-cell-title {
           font-weight:900;
-          color:#17263a;
+          color:#0f172a;
         }
         .aggregate-title,
         .summary-label,
@@ -1671,11 +1682,11 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           letter-spacing:0.04em;
           text-transform:uppercase;
-          color:#597291;
+          color:#64748b;
         }
         .aggregate-metric {
           margin-top:6px;
-          color:#31435d;
+          color:#334155;
           font-size:0.9rem;
         }
         .overview-grid {
@@ -1704,7 +1715,7 @@ class ByteWattReportCard extends HTMLElement {
         .stat-value {
           font-size:1.2rem;
           font-weight:800;
-          color:#14243a;
+          color:#0f172a;
         }
         .summary-grid,
         .live-grid,
@@ -1728,9 +1739,9 @@ class ByteWattReportCard extends HTMLElement {
         .panel {
           background:#fff;
           border-radius:22px;
-          border:1px solid rgba(51, 92, 140, 0.12);
+          border:1px solid var(--bw-border);
           padding:18px;
-          box-shadow: 0 12px 24px rgba(20, 44, 78, 0.08);
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
         }
         .panel-header {
           display:flex;
@@ -1742,13 +1753,13 @@ class ByteWattReportCard extends HTMLElement {
         .panel-title {
           font-size:1.1rem;
           font-weight:800;
-          color:#17263a;
+          color:#0f172a;
         }
         .panel-date {
           padding:8px 12px;
           border-radius:999px;
-          background:#eef5ff;
-          color:#36567b;
+          background:#eef1f4;
+          color:#475569;
           font-size:0.9rem;
           font-weight:700;
         }
@@ -1758,8 +1769,8 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
         }
         .detail-cell {
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
           border-radius:16px;
           padding:14px 16px;
           display:grid;
@@ -1770,12 +1781,12 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           letter-spacing:0.04em;
           text-transform:uppercase;
-          color:#5a7592;
+          color:#64748b;
         }
         .detail-value {
           font-size:1rem;
           font-weight:800;
-          color:#16253a;
+          color:#0f172a;
           word-break:break-word;
         }
         .flow-grid {
@@ -1784,8 +1795,8 @@ class ByteWattReportCard extends HTMLElement {
           gap:14px;
         }
         .flow-card {
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
           border-radius:18px;
           padding:16px;
           display:grid;
@@ -1798,15 +1809,15 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           letter-spacing:0.04em;
           text-transform:uppercase;
-          color:#5a7592;
+          color:#64748b;
         }
         .flow-value {
           font-size:1.35rem;
           font-weight:800;
-          color:#17263a;
+          color:#0f172a;
         }
         .flow-sub {
-          color:#496681;
+          color:#475569;
           font-size:0.92rem;
           font-weight:700;
         }
@@ -1814,15 +1825,15 @@ class ByteWattReportCard extends HTMLElement {
           width:max-content;
           padding:5px 10px;
           border-radius:999px;
-          background:#eaf3ff;
-          color:#1f5ca8;
+          background:#eef1f4;
+          color:#475569;
           font-size:0.82rem;
           font-weight:800;
         }
-        .flow-solar { box-shadow: inset 0 0 0 1px rgba(242, 166, 58, 0.14); }
-        .flow-battery { box-shadow: inset 0 0 0 1px rgba(152, 211, 91, 0.14); }
-        .flow-grid-node { box-shadow: inset 0 0 0 1px rgba(239, 143, 62, 0.14); }
-        .flow-load { box-shadow: inset 0 0 0 1px rgba(111, 214, 235, 0.14); }
+        .flow-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
+        .flow-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
+        .flow-grid-node { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
+        .flow-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
         .energy-layout {
           display:grid;
           grid-template-columns: 1fr 1fr 1fr;
@@ -1830,8 +1841,8 @@ class ByteWattReportCard extends HTMLElement {
           align-items:center;
         }
         .energy-node {
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
           border-radius:18px;
           padding:16px;
           text-align:center;
@@ -1847,19 +1858,19 @@ class ByteWattReportCard extends HTMLElement {
         .energy-node-title {
           font-size:0.92rem;
           font-weight:800;
-          color:#355377;
+          color:#475569;
           text-transform:uppercase;
           letter-spacing:0.05em;
         }
         .energy-node-value {
           font-size:1.5rem;
           font-weight:800;
-          color:#15253d;
+          color:#0f172a;
         }
         .energy-node-sub,
         .energy-bridge {
           font-size:0.88rem;
-          color:#4d6787;
+          color:#64748b;
         }
         .energy-bridge {
           text-align:center;
@@ -1884,8 +1895,8 @@ class ByteWattReportCard extends HTMLElement {
           align-content:start;
         }
         .sankey-node {
-          background:#f8fbff;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          background:#f8fafc;
+          border:1px solid #e2e8f0;
           border-radius:18px;
           padding:16px;
           min-height:88px;
@@ -1899,23 +1910,23 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:800;
           letter-spacing:0.05em;
           text-transform:uppercase;
-          color:#5a7592;
+          color:#64748b;
         }
         .sankey-value {
           font-size:1.2rem;
           font-weight:900;
-          color:#16253a;
+          color:#0f172a;
         }
         .sankey-sub {
-          color:#4d6787;
+          color:#64748b;
           font-size:0.86rem;
           font-weight:700;
         }
-        .node-solar { box-shadow: inset 0 0 0 1px rgba(242, 166, 58, 0.18); }
-        .node-grid { box-shadow: inset 0 0 0 1px rgba(122, 138, 151, 0.18); }
-        .node-battery { box-shadow: inset 0 0 0 1px rgba(152, 211, 91, 0.18); }
-        .node-load { box-shadow: inset 0 0 0 1px rgba(111, 214, 235, 0.18); }
-        .node-feed { box-shadow: inset 0 0 0 1px rgba(255, 143, 62, 0.18); }
+        .node-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
+        .node-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
+        .node-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
+        .node-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
+        .node-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
         .sankey-flow-list {
           display:grid;
           gap:10px;
@@ -1923,7 +1934,7 @@ class ByteWattReportCard extends HTMLElement {
         .sankey-flow {
           background:#fff;
           border-radius:14px;
-          border:1px solid rgba(51, 92, 140, 0.1);
+          border:1px solid #e2e8f0;
           padding:12px 14px;
           display:grid;
           gap:8px;
@@ -1931,21 +1942,21 @@ class ByteWattReportCard extends HTMLElement {
         .sankey-flow span {
           font-size:0.84rem;
           font-weight:800;
-          color:#355377;
+          color:#475569;
         }
         .sankey-flow strong {
           font-size:1rem;
-          color:#16253a;
+          color:#0f172a;
         }
         .sankey-bar {
           height:10px;
           border-radius:999px;
-          background:linear-gradient(90deg, rgba(47,117,216,0.18), rgba(47,117,216,0.4));
+          background:linear-gradient(90deg, rgba(47,155,232,0.18), rgba(47,155,232,0.4));
         }
-        .flow-solar-load .sankey-bar { background:linear-gradient(90deg, #f0b343, #ffd552); }
-        .flow-solar-battery .sankey-bar { background:linear-gradient(90deg, #88cd4a, #b8e078); }
-        .flow-grid-battery .sankey-bar { background:linear-gradient(90deg, #7b8d99, #a9b7c3); }
-        .flow-battery-load .sankey-bar { background:linear-gradient(90deg, #2f75d8, #6ca7ff); }
+        .flow-solar-load .sankey-bar { background:linear-gradient(90deg, var(--bw-solar), #f7da61); }
+        .flow-solar-battery .sankey-bar { background:linear-gradient(90deg, var(--bw-battery), #78dd95); }
+        .flow-grid-battery .sankey-bar { background:linear-gradient(90deg, var(--bw-grid), #b2bac0); }
+        .flow-battery-load .sankey-bar { background:linear-gradient(90deg, var(--bw-load), #7cc0f0); }
         .chart-header { margin-bottom:18px; }
         .panel-tabs { display:flex; gap:10px; }
         .chart-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
@@ -1959,17 +1970,39 @@ class ByteWattReportCard extends HTMLElement {
           cursor:pointer;
         }
         .panel-tabs button {
-          background:#e8eff8;
-          color:#476687;
+          background:#ffffff;
+          color:#475569;
+          border:1px solid #d6dbe1;
         }
         .panel-tabs button.active {
-          background:#2f75d8;
+          background:#111827;
           color:#fff;
         }
         .download-btn {
-          background:#2f75d8;
+          background:#ffffff;
+          color:#0f172a;
+          border:1px solid #d6dbe1;
+          box-shadow:none;
+        }
+        .download-btn:hover,
+        .panel-tabs button:hover,
+        .legend-chip:hover,
+        .history-pill:hover,
+        .report-period-button:hover,
+        .report-shift-button:hover {
+          filter:brightness(0.98);
+        }
+        .download-btn:hover {
+          background:#f8fafc;
+        }
+        .legend-chip,
+        .panel-tabs button,
+        .download-btn {
+          transition:background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+        }
+        .download-btn {
+          background:#ffffff;
           color:#fff;
-          box-shadow:0 10px 20px rgba(47,117,216,0.2);
         }
         .ring-grid {
           display:grid;
@@ -1982,21 +2015,21 @@ class ByteWattReportCard extends HTMLElement {
           padding:16px 14px;
           text-align:center;
           border:2px solid transparent;
-          background:#fbfdff;
+          background:#ffffff;
         }
-        .ring-solar { border-color:#f2a63a; }
-        .ring-load { border-color:#7ad0df; }
-        .ring-bat { border-color:#9acc54; }
-        .ring-feed { border-color:#ef8d3a; }
-        .ring-grid { border-color:#d9a26d; }
+        .ring-solar { border-color:var(--bw-solar); }
+        .ring-load { border-color:var(--bw-load); }
+        .ring-bat { border-color:var(--bw-battery); }
+        .ring-feed { border-color:var(--bw-feed); }
+        .ring-grid { border-color:var(--bw-grid); }
         .ring-value {
           font-size:1.1rem;
           font-weight:800;
-          color:#17263a;
+          color:#0f172a;
         }
         .ring-label {
           margin-top:8px;
-          color:#506884;
+          color:#64748b;
           font-size:0.88rem;
         }
         .chart {
@@ -2024,11 +2057,12 @@ class ByteWattReportCard extends HTMLElement {
           margin-top:14px;
         }
         .legend-chip {
-          background:#eef4fb;
-          color:#4a6787;
+          background:#ffffff;
+          color:#475569;
+          border:1px solid #d6dbe1;
         }
         .legend-chip.active {
-          background:#1f2e43;
+          background:#111827;
           color:#fff;
         }
         .stats-diagram {
@@ -2053,12 +2087,12 @@ class ByteWattReportCard extends HTMLElement {
         .stats-row-label {
           font-size:0.95rem;
           font-weight:700;
-          color:#30445e;
+          color:#334155;
         }
         .stats-row-value {
           font-size:0.95rem;
           font-weight:800;
-          color:#16253a;
+          color:#0f172a;
           text-align:right;
         }
         .stats-bar-track {
@@ -2066,24 +2100,24 @@ class ByteWattReportCard extends HTMLElement {
           overflow:hidden;
           height:14px;
           border-radius:999px;
-          background:#edf3fa;
+          background:#edf2f7;
         }
         .stats-bar-fill {
           height:100%;
           border-radius:999px;
         }
-        .tone-solar { background:linear-gradient(90deg, #f0b343, #ffd552); }
-        .tone-load { background:linear-gradient(90deg, #64cfe0, #83e6f2); }
-        .tone-battery { background:linear-gradient(90deg, #9ecf57, #b8e078); }
-        .tone-feed { background:linear-gradient(90deg, #ff8f3e, #ffb066); }
-        .tone-grid { background:linear-gradient(90deg, #d7a16c, #e8bc92); }
+        .tone-solar { background:linear-gradient(90deg, var(--bw-solar), #f7da61); }
+        .tone-load { background:linear-gradient(90deg, var(--bw-load), #7cc0f0); }
+        .tone-battery { background:linear-gradient(90deg, var(--bw-battery), #78dd95); }
+        .tone-feed { background:linear-gradient(90deg, var(--bw-feed), #f7ad5b); }
+        .tone-grid { background:linear-gradient(90deg, var(--bw-grid), #b2bac0); }
         .tone-info { background:linear-gradient(90deg, #4b8fff, #6ca7ff); }
         .empty {
           padding:24px;
           border-radius:18px;
           background:#fff;
-          border:1px dashed rgba(51, 92, 140, 0.24);
-          color:#496681;
+          border:1px dashed #cbd5e1;
+          color:#64748b;
         }
         @media (max-width: 1260px) {
           .hero-banner {
