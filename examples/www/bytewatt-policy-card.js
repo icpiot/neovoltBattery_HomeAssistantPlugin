@@ -1,4 +1,4 @@
-const BYTEWATT_POLICY_CARD_BUILD = "048";
+const BYTEWATT_POLICY_CARD_BUILD = "049";
 
 class ByteWattPolicyCard extends HTMLElement {
   setConfig(config) {
@@ -161,6 +161,22 @@ class ByteWattPolicyCard extends HTMLElement {
           border: 1px solid rgba(108, 180, 255, 0.34);
           box-shadow: 0 6px 14px rgba(26, 70, 136, 0.2);
         }
+        .cache-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 0.76rem;
+          font-weight: 800;
+          color: #e9f5ff;
+          background: linear-gradient(180deg, rgba(68, 134, 230, 0.3), rgba(50, 102, 184, 0.18));
+          border: 1px solid rgba(108, 180, 255, 0.34);
+          box-shadow: 0 6px 14px rgba(26, 70, 136, 0.2);
+          cursor: pointer;
+        }
+        .cache-button:hover { filter: brightness(1.03); }
+        .cache-button:active { transform: translateY(1px); }
         .selector-row {
           display: grid;
           grid-template-columns: 140px minmax(0, 1fr);
@@ -989,6 +1005,7 @@ class ByteWattPolicyCard extends HTMLElement {
               <div class="title-wrap">
                 <div class="title">${cardTitle}</div>
                 <div class="version-badge">v${BYTEWATT_POLICY_CARD_BUILD}</div>
+                <button class="cache-button" type="button" data-clear-cache>Clear Cache</button>
               </div>
             </div>
             ${this._renderSelector()}
@@ -2964,6 +2981,17 @@ class ByteWattPolicyCard extends HTMLElement {
 
     this.shadowRoot.querySelectorAll("[data-service]").forEach((node) => {
       node.addEventListener("click", () => this._runNow(node.dataset.service));
+    });
+    this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
+      try {
+        if ("caches" in window && window.caches?.keys) {
+          const keys = await window.caches.keys();
+          await Promise.all(keys.map((key) => window.caches.delete(key)));
+        }
+      } catch (error) {
+        console.warn("ByteWatt policy cache clear failed:", error);
+      }
+      window.location.reload();
     });
 
     this.shadowRoot.querySelectorAll("[data-immediate-kind]").forEach((node) => {
