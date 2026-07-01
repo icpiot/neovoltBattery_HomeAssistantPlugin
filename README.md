@@ -144,7 +144,7 @@ type: module
 ```
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-report-card.js?v=110
+url: /local/community/bytewatt-card/bytewatt-report-card.js?v=111
 type: module
 ```
 

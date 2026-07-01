@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "110";
+const BYTEWATT_REPORT_CARD_BUILD = "111";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1024,7 +1024,10 @@ class ByteWattReportCard extends HTMLElement {
       Number(totals.grid_battery_charge) ||
       0;
     const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
-    const thickness = (value) => Math.max(6, Math.round((Math.max(value, 0) / flowScale) * 28));
+    const thickness = (value) => {
+      const ratio = Math.max(value, 0) / Math.max(flowScale, 1);
+      return Math.max(4, Math.round(Math.pow(ratio, 0.65) * 38));
+    };
     const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1 + 115} ${y1}, ${x2 - 115} ${y2}, ${x2} ${y2}`;
 
     const nodes = {
@@ -1120,7 +1123,6 @@ class ByteWattReportCard extends HTMLElement {
                 <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.07"></feDropShadow>
               </filter>
             </defs>
-            <line x1="470" y1="36" x2="470" y2="334" class="sankey-centerline"></line>
             ${links}
             ${nodeHtml(nodes.solar)}
             ${nodeHtml(nodes.grid)}
@@ -1994,17 +1996,13 @@ class ByteWattReportCard extends HTMLElement {
           border-radius:22px;
           padding:14px;
           overflow:auto;
+          position:relative;
         }
         .sankey-svg {
           width:100%;
           min-width:860px;
           height:auto;
           display:block;
-        }
-        .sankey-centerline {
-          stroke:#dbe6f2;
-          stroke-dasharray:4 6;
-          stroke-width:1.5;
         }
         .sankey-link {
           fill:none;
@@ -2035,6 +2033,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap:10px;
+          margin-top:2px;
         }
         .sankey-summary {
           border-radius:14px;
@@ -2042,8 +2041,10 @@ class ByteWattReportCard extends HTMLElement {
           background:#fff;
           padding:12px 14px;
           box-shadow: inset 0 3px 0 0 transparent;
-          display:grid;
-          gap:4px;
+          display:flex;
+          flex-direction:column;
+          gap:5px;
+          min-height:72px;
         }
         .sankey-summary-label {
           font-size:0.76rem;
@@ -2051,11 +2052,15 @@ class ByteWattReportCard extends HTMLElement {
           letter-spacing:0.04em;
           text-transform:uppercase;
           color:#516075;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
         }
         .sankey-summary-value {
           font-size:1rem;
           font-weight:900;
           color:#0f172a;
+          white-space:nowrap;
         }
         .sankey-summary-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
         .sankey-summary-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
