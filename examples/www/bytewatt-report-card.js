@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "114";
+const BYTEWATT_REPORT_CARD_BUILD = "116";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1101,6 +1101,12 @@ class ByteWattReportCard extends HTMLElement {
       </defs>
     `;
 
+    const periodRecords = Number(reporting?.records?.length) || 0;
+    const periodLabel = reporting?.meta?.period_label || "Day";
+    const periodRange =
+      reporting?.meta?.period_start && reporting?.meta?.period_end
+        ? `${reporting.meta.period_start} â†’ ${reporting.meta.period_end}`
+        : reporting?.power_diagram?.date || "";
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
       ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
@@ -1113,10 +1119,10 @@ class ByteWattReportCard extends HTMLElement {
       <section class="panel sankey-panel">
         <div class="panel-header">
           <div class="panel-title">Energy Flow Sankey</div>
-          <div class="panel-date">${this._escape(reporting?.power_diagram?.date || "")}</div>
+          <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` â€¢ ${this._escape(periodRange)}` : ""}${periodRecords ? ` â€¢ ${periodRecords} records` : ""}</div>
         </div>
         <div class="sankey-stage">
-          <svg class="sankey-svg" viewBox="0 0 940 520" role="img" aria-label="ByteWatt energy Sankey diagram">
+          <svg class="sankey-svg" viewBox="0 0 940 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
             <defs>
               <filter id="sankeyShadow" x="-10%" y="-10%" width="120%" height="120%">
                 <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"></feDropShadow>
@@ -1142,7 +1148,7 @@ class ByteWattReportCard extends HTMLElement {
           ${summaryCards
             .map(
               ([label, value, kind]) => `
-                <div class="sankey-summary sankey-summary-${kind}">
+                <div class="sankey-summary sankey-summary-kind-${kind}">
                   <div class="sankey-summary-label">${label}</div>
                   <div class="sankey-summary-value">${value}</div>
                 </div>
@@ -2088,11 +2094,11 @@ class ByteWattReportCard extends HTMLElement {
           color:#0f172a;
           white-space:nowrap;
         }
-        .sankey-summary-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
-        .sankey-summary-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
-        .sankey-summary-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
-        .sankey-summary-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
-        .sankey-summary-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
+        .sankey-summary-kind-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
+        .sankey-summary-kind-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
+        .sankey-summary-kind-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
+        .sankey-summary-kind-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
+        .sankey-summary-kind-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
         .chart-header { margin-bottom:18px; }
         .panel-tabs { display:flex; gap:10px; }
         .chart-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
@@ -2314,6 +2320,31 @@ class ByteWattReportCard extends HTMLElement {
           .energy-node.battery {
             grid-column:auto;
             grid-row:auto;
+          }
+        }
+        @media (max-width: 700px) {
+          .sankey-stage {
+            overflow:hidden;
+            padding:10px;
+          }
+          .sankey-svg {
+            min-width:0;
+            width:100%;
+          }
+          .sankey-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .sankey-summary-label {
+            white-space:normal;
+          }
+          .sankey-node-value {
+            font-size:20px;
+          }
+          .sankey-node-unit,
+          .sankey-node-meta,
+          .sankey-node-sub,
+          .sankey-chip {
+            font-size:11px;
           }
         }
       </style>
