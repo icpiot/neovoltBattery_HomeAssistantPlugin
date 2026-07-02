@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "120";
+const BYTEWATT_REPORT_CARD_BUILD = "121";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1396,41 +1396,6 @@ class ByteWattReportCard extends HTMLElement {
     `;
   }
 
-  _renderStatsDiagram(reporting) {
-    const today = reporting?.today || {};
-    const rows = [
-      { label: "Solar Generation", value: Number(today.solar_generation) || 0, display: this._fmtEnergy(today.solar_generation), tone: "solar" },
-      { label: "Load Consumption", value: Number(today.load_consumption) || 0, display: this._fmtEnergy(today.load_consumption), tone: "load" },
-      { label: "Battery Charged", value: Number(today.battery_charge) || 0, display: this._fmtEnergy(today.battery_charge), tone: "battery" },
-      { label: "Battery Discharge", value: Number(today.battery_discharge) || 0, display: this._fmtEnergy(today.battery_discharge), tone: "battery" },
-      { label: "Feed-in", value: Number(today.feed_in) || 0, display: this._fmtEnergy(today.feed_in), tone: "feed" },
-      { label: "Grid Consumption", value: Number(today.grid_consumption) || 0, display: this._fmtEnergy(today.grid_consumption), tone: "grid" },
-      { label: "Self Consumption", value: Number(today.self_consumption) || 0, display: this._fmtPercent(today.self_consumption), tone: "info", scaleLabel: "%" },
-      { label: "Self Sufficiency", value: Number(today.self_sufficiency) || 0, display: this._fmtPercent(today.self_sufficiency), tone: "info", scaleLabel: "%" },
-    ];
-    const maxValue = Math.max(...rows.map((row) => row.value), 1);
-    return `
-      <div class="stats-diagram">
-        ${rows.map((row) => this._statsBar(row, maxValue)).join("")}
-      </div>
-    `;
-  }
-
-  _statsBar(row, maxValue) {
-    const width = `${Math.max((row.value / maxValue) * 100, row.value > 0 ? 6 : 0)}%`;
-    return `
-      <div class="stats-row">
-        <div class="stats-row-head">
-          <div class="stats-row-label">${row.label}</div>
-          <div class="stats-row-value">${row.display}</div>
-        </div>
-        <div class="stats-bar-track">
-          <div class="stats-bar-fill tone-${row.tone}" style="width:${width}"></div>
-        </div>
-      </div>
-    `;
-  }
-
   _ring(label, value, kind) {
     return `
       <div class="ring-card ring-${kind}">
@@ -2224,10 +2189,6 @@ class ByteWattReportCard extends HTMLElement {
         .sankey-summary-kind-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
         .sankey-summary-kind-grid { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
         .sankey-summary-kind-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
-        .chart-header { margin-bottom:18px; }
-        .panel-tabs { display:flex; gap:10px; }
-        .chart-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
-        .panel-tabs button,
         .legend-chip,
         .download-btn {
           border:none;
@@ -2236,15 +2197,6 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           cursor:pointer;
         }
-        .panel-tabs button {
-          background:#ffffff;
-          color:#475569;
-          border:1px solid #d6dbe1;
-        }
-        .panel-tabs button.active {
-          background:#111827;
-          color:#fff;
-        }
         .download-btn {
           background:#ffffff;
           color:#0f172a;
@@ -2252,7 +2204,6 @@ class ByteWattReportCard extends HTMLElement {
           box-shadow:none;
         }
         .download-btn:hover,
-        .panel-tabs button:hover,
         .legend-chip:hover,
         .history-pill:hover,
         .report-period-button:hover,
@@ -2263,7 +2214,6 @@ class ByteWattReportCard extends HTMLElement {
           background:#f8fafc;
         }
         .legend-chip,
-        .panel-tabs button,
         .download-btn {
           transition:background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
         }
