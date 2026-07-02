@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "116";
+const BYTEWATT_REPORT_CARD_BUILD = "117";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1105,7 +1105,7 @@ class ByteWattReportCard extends HTMLElement {
     const periodLabel = reporting?.meta?.period_label || "Day";
     const periodRange =
       reporting?.meta?.period_start && reporting?.meta?.period_end
-        ? `${reporting.meta.period_start} â†’ ${reporting.meta.period_end}`
+        ? `${reporting.meta.period_start} -> ${reporting.meta.period_end}`
         : reporting?.power_diagram?.date || "";
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
@@ -1143,6 +1143,38 @@ class ByteWattReportCard extends HTMLElement {
             ${cardHtml(cards.load)}
             ${cardHtml(cards.feed)}
           </svg>
+          <div class="sankey-mobile">
+            <div class="sankey-mobile-card sankey-mobile-source solar">
+              <div class="sankey-mobile-label">Solar</div>
+              <div class="sankey-mobile-value">${this._fmtEnergy(solar)}</div>
+              <div class="sankey-mobile-sub">${pct(solar, sourceTotal)} produced</div>
+            </div>
+            <div class="sankey-mobile-card sankey-mobile-source battery">
+              <div class="sankey-mobile-label">Battery</div>
+              <div class="sankey-mobile-value">${this._fmtEnergy(batteryDischarge)}</div>
+              <div class="sankey-mobile-sub">${pct(batteryDischarge, sourceTotal)} discharged</div>
+            </div>
+            <div class="sankey-mobile-card sankey-mobile-source grid">
+              <div class="sankey-mobile-label">Grid</div>
+              <div class="sankey-mobile-value">${this._fmtEnergy(grid)}</div>
+              <div class="sankey-mobile-sub">${pct(grid, sourceTotal)} imported</div>
+            </div>
+            <div class="sankey-mobile-flow sankey-mobile-flow-solar-load">
+              <span>Solar â†’ Load</span><strong>${this._fmtEnergy(pvToHouse)}</strong>
+            </div>
+            <div class="sankey-mobile-flow sankey-mobile-flow-solar-battery">
+              <span>Solar â†’ Battery</span><strong>${this._fmtEnergy(pvToBattery)}</strong>
+            </div>
+            <div class="sankey-mobile-flow sankey-mobile-flow-grid-battery">
+              <span>Grid â†’ Battery</span><strong>${this._fmtEnergy(gridToBattery)}</strong>
+            </div>
+            <div class="sankey-mobile-flow sankey-mobile-flow-battery-load">
+              <span>Battery â†’ Load</span><strong>${this._fmtEnergy(batteryDischarge)}</strong>
+            </div>
+            <div class="sankey-mobile-flow sankey-mobile-flow-feed">
+              <span>Solar â†’ Feed-in</span><strong>${this._fmtEnergy(feedIn)}</strong>
+            </div>
+          </div>
         </div>
         <div class="sankey-summary-grid">
           ${summaryCards
@@ -1297,7 +1329,7 @@ class ByteWattReportCard extends HTMLElement {
             <button class="${this._view === "statistical" ? "active" : ""}" data-view="statistical">Statistical Diagram</button>
           </div>
           <div class="chart-tools">
-            <div class="panel-date">${this._escape(powerDiagram.date || "")}</div>
+            <div class="panel-date">${this._escape(periodLabel)}${powerDiagram.date ? ` â€¢ ${this._escape(powerDiagram.date)}` : ""}${powerDiagram.time?.length ? ` â€¢ ${powerDiagram.time.length} points` : ""}</div>
             <button class="download-btn" data-download-report>Download CSV</button>
           </div>
         </div>
@@ -2017,6 +2049,55 @@ class ByteWattReportCard extends HTMLElement {
           height:auto;
           display:block;
         }
+        .sankey-mobile {
+          display:none;
+          gap:10px;
+          margin-top:10px;
+        }
+        .sankey-mobile-card,
+        .sankey-mobile-flow {
+          border-radius:16px;
+          border:1px solid #dbe3ec;
+          background:#fff;
+          padding:12px 14px;
+        }
+        .sankey-mobile-card {
+          display:grid;
+          gap:4px;
+        }
+        .sankey-mobile-label {
+          font-size:0.72rem;
+          font-weight:900;
+          letter-spacing:0.04em;
+          text-transform:uppercase;
+          color:#516075;
+        }
+        .sankey-mobile-value {
+          font-size:1.2rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .sankey-mobile-sub {
+          font-size:0.8rem;
+          font-weight:700;
+          color:#64748b;
+        }
+        .sankey-mobile-flow {
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
+          font-weight:800;
+          color:#0f172a;
+        }
+        .sankey-mobile-flow span {
+          color:#516075;
+        }
+        .sankey-mobile-flow-solar-load { box-shadow: inset 0 3px 0 0 var(--bw-solar); }
+        .sankey-mobile-flow-solar-battery { box-shadow: inset 0 3px 0 0 var(--bw-battery); }
+        .sankey-mobile-flow-grid-battery { box-shadow: inset 0 3px 0 0 var(--bw-grid); }
+        .sankey-mobile-flow-battery-load { box-shadow: inset 0 3px 0 0 var(--bw-load); }
+        .sankey-mobile-flow-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed); }
         .sankey-link {
           fill:none;
           stroke-linecap:round;
@@ -2328,8 +2409,15 @@ class ByteWattReportCard extends HTMLElement {
             padding:10px;
           }
           .sankey-svg {
+            display:none;
             min-width:0;
             width:100%;
+          }
+          .sankey-mobile {
+            display:grid;
+          }
+          .sankey-mobile-flow {
+            padding:10px 12px;
           }
           .sankey-summary-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
