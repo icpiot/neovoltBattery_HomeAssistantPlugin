@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "118";
+const BYTEWATT_REPORT_CARD_BUILD = "119";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1266,124 +1266,138 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderChart(reporting) {
-    const powerDiagram = reporting?.power_diagram || {};
     const periodLabel = reporting?.meta?.period_label || "Day";
-    const series = powerDiagram.series || {};
-    const times = powerDiagram.time || [];
-    const activeKeys = Object.entries(this._activeSeries)
-      .filter(([, enabled]) => enabled)
-      .map(([key]) => key);
-    const powerKeys = activeKeys.filter((key) => key !== "bat");
-    const allPowerValues = powerKeys.flatMap((key) => (series[key] || []).map((value) => Number(value) || 0));
-    const powerMax = Math.max(...allPowerValues, 1);
-    const width = 900;
-    const height = 280;
-    const plotWidth = 760;
-    const plotHeight = 190;
-    const left = 64;
-    const top = 28;
+    const periodStart = reporting?.meta?.period_start || "";
+    const periodEnd = reporting?.meta?.period_end || periodStart;
+    const periodRecords = reporting?.records || [];
+    const formatDisplay = (value) => {
+      const parsed = this._parseLocalDate(value);
+      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
+    };
+    const periodRange =
+      periodStart && periodEnd
+        ? periodStart === periodEnd
+          ? formatDisplay(periodStart)
+          : `${formatDisplay(periodStart)} -> ${formatDisplay(periodEnd)}`
+        : formatDisplay(reporting?.power_diagram?.date || "");
+    const pad = (value) => String(value).padStart(2, "0");
+    const shortDate = (value) => {
+      const date = this._parseLocalDate(value);
+      return date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}` : String(value || "");
+    };
+    const bars = periodRecords
+      .slice()
+      .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
+      .map((record) => {
+        const load = Math.max(this._parseFloat(record.load_consumption_today), 0);
+        const solarRaw = Math.max(this._parseFloat(record.pv_power_house), 0);
+        const batteryRaw = Math.max(this._parseFloat(record.battery_discharged_today), 0);
+        const solar = Math.min(solarRaw, load);
+        const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
+        const grid = Math.max(load - solar - battery, 0);
+        return {
+          label: shortDate(record.record_date),
+          fullLabel: record.record_date || "",
+          load,
+          solar,
+          battery,
+          grid,
+        };
+      });
+    const maxLoad = Math.max(...bars.map((bar) => bar.load), 1);
+    const width = Math.max(760, bars.length * 74 + 110);
+    const height = 340;
+    const left = 56;
+    const top = 30;
+    const plotHeight = 200;
     const bottom = top + plotHeight;
-    const right = left + plotWidth;
+    const plotWidth = width - left - 32;
+    const barStep = plotWidth / Math.max(bars.length, 1);
+    const barWidth = Math.max(20, Math.min(34, barStep * 0.56));
+    const chartNote = "Total height = load. Stacks show solar, battery, and grid contributions.";
+    const yTicks = [0, 0.25, 0.5, 0.75, 1];
 
-    const area = (values, maxValue, fill, stroke) => {
-      if (!values.length) return "";
-      const points = values
-        .map((value, index) => {
-          const x = left + (plotWidth * index) / Math.max(values.length - 1, 1);
-          const y = bottom - ((Number(value) || 0) / Math.max(maxValue, 1)) * plotHeight;
-          return `${x},${y}`;
-        })
-        .join(" ");
-      const start = `${left},${bottom}`;
-      const end = `${right},${bottom}`;
-      return `<polygon points="${start} ${points} ${end}" fill="${fill}" stroke="${stroke}" stroke-width="2" fill-opacity="0.28"></polygon>`;
+    const segmentRect = (x, y, w, h, fill, radiusTop = false, radiusBottom = false) => {
+      if (!(h > 0)) return "";
+      const r = Math.min(8, w / 2, h / 2);
+      const topRadius = radiusTop ? r : 0;
+      const bottomRadius = radiusBottom ? r : 0;
+      return `
+        <rect
+          x="${x}"
+          y="${y}"
+          width="${w}"
+          height="${h}"
+          rx="${Math.max(topRadius, bottomRadius)}"
+          ry="${Math.max(topRadius, bottomRadius)}"
+          fill="${fill}"
+        ></rect>
+      `;
     };
 
-    const line = (values, maxValue, stroke) => {
-      if (!values.length) return "";
-      const points = values
-        .map((value, index) => {
-          const x = left + (plotWidth * index) / Math.max(values.length - 1, 1);
-          const y = bottom - ((Number(value) || 0) / Math.max(maxValue, 1)) * plotHeight;
-          return `${x},${y}`;
-        })
-        .join(" ");
-      return `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>`;
-    };
+    const barsHtml = bars
+      .map((bar, index) => {
+        const x = left + index * barStep + (barStep - barWidth) / 2;
+        const totalHeight = bar.load > 0 ? Math.max((bar.load / maxLoad) * plotHeight, 10) : 0;
+        const scale = bar.load > 0 ? totalHeight / bar.load : 0;
+        const solarHeight = bar.solar * scale;
+        const batteryHeight = bar.battery * scale;
+        const gridHeight = bar.grid * scale;
+        const totalLabelY = bottom - totalHeight - 10;
+        const barBottom = bottom;
+        const gridTop = barBottom - gridHeight;
+        const batteryTop = gridTop - batteryHeight;
+        const solarTop = batteryTop - solarHeight;
+        const textColor = totalHeight > 52 ? "#0f172a" : "#334155";
+        return `
+          <g class="stacked-bar">
+            <text x="${x + barWidth / 2}" y="${Math.max(18, totalLabelY)}" text-anchor="middle" class="stacked-total" fill="${textColor}">${this._fmtEnergy(bar.load)}</text>
+            ${segmentRect(x, gridTop, barWidth, gridHeight, "rgba(152,162,168,0.92)", false, true)}
+            ${segmentRect(x, batteryTop, barWidth, batteryHeight, "rgba(47,201,110,0.92)", false, false)}
+            ${segmentRect(x, solarTop, barWidth, solarHeight, "rgba(240,196,25,0.92)", true, false)}
+            <text x="${x + barWidth / 2}" y="${bottom + 24}" text-anchor="middle" class="stacked-label">${this._escape(bar.label)}</text>
+          </g>
+        `;
+      })
+      .join("");
 
-    const palette = {
-      bat: ["rgba(47, 201, 110, 0.28)", "#2fc96e"],
-      load: ["rgba(47, 155, 232, 0.28)", "#2f9be8"],
-      solar: ["rgba(240, 196, 25, 0.30)", "#f0c419"],
-      feed_in: ["rgba(240, 138, 36, 0.28)", "#f08a24"],
-      consumed: ["rgba(152, 162, 168, 0.24)", "#98a2a8"],
-    };
-
-    const xTicks = [0, 0.17, 0.34, 0.51, 0.68, 0.85, 1];
-    const tickLabels = xTicks.map(
-      (point) => times[Math.min(times.length - 1, Math.max(0, Math.round(point * (times.length - 1))))] || ""
-    );
-    const powerSummary = powerDiagram.summary || {};
+    const legend = `
+      <div class="stacked-legend">
+        <div class="legend-chip active" style="background:rgba(240,196,25,0.14); border-color:rgba(240,196,25,0.5); color:#7a6100;">Solar</div>
+        <div class="legend-chip active" style="background:rgba(47,201,110,0.14); border-color:rgba(47,201,110,0.5); color:#1f6b42;">Battery</div>
+        <div class="legend-chip active" style="background:rgba(152,162,168,0.14); border-color:rgba(152,162,168,0.5); color:#516075;">Grid</div>
+      </div>
+    `;
 
     return `
-      <section class="panel">
-        <div class="panel-header chart-header">
-          <div class="panel-tabs">
-            <button class="${this._view === "power" ? "active" : ""}" data-view="power">Power Diagram</button>
-            <button class="${this._view === "statistical" ? "active" : ""}" data-view="statistical">Statistical Diagram</button>
+      <section class="panel stacked-panel">
+        <div class="panel-header stacked-header">
+          <div>
+            <div class="panel-title">${this._escape(periodLabel)} Usage Mix</div>
+            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} rows` : ""}</div>
+            <div class="panel-note">${this._escape(chartNote)}</div>
           </div>
-          <div class="chart-tools">
-            <div class="panel-date">${this._escape(periodLabel)}${powerDiagram.date ? ` | ${this._escape(powerDiagram.date)}` : ""}${powerDiagram.time?.length ? ` | ${powerDiagram.time.length} points` : ""}</div>
-            <button class="download-btn" data-download-report>Download CSV</button>
-          </div>
+          <button class="download-btn" data-download-report>Download CSV</button>
         </div>
-        ${
-          this._view === "power"
-            ? `
-          <div class="ring-grid">
-            ${this._ring(`${periodLabel} Generation`, this._fmtEnergy(powerSummary.solar_generation), "solar")}
-            ${this._ring(`${periodLabel} Consumption`, this._fmtEnergy(powerSummary.load_consumption), "load")}
-            ${this._ring("BAT SOC", this._fmtPercent(powerSummary.soc), "bat")}
-            ${this._ring(`${periodLabel} Feed-in`, this._fmtEnergy(powerSummary.feed_in), "feed")}
-            ${this._ring(`${periodLabel} Grid Consumption`, this._fmtEnergy(powerSummary.grid_consumption), "grid")}
-          </div>
-          <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="ByteWatt power diagram chart">
-            <line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" class="axis"></line>
+        <div class="stacked-chart-wrap">
+          <svg class="stacked-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Stacked power usage chart by source">
+            <line x1="${left}" y1="${bottom}" x2="${width - 20}" y2="${bottom}" class="axis"></line>
             <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" class="axis"></line>
-            ${[0, 0.25, 0.5, 0.75, 1]
+            ${yTicks
               .map((point) => {
                 const y = bottom - point * plotHeight;
-                return `<line x1="${left}" y1="${y}" x2="${right}" y2="${y}" class="grid"></line>`;
+                return `
+                  <line x1="${left}" y1="${y}" x2="${width - 20}" y2="${y}" class="grid"></line>
+                  <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${this._fmtEnergy(maxLoad * point)}</text>
+                `;
               })
               .join("")}
-            ${activeKeys
-              .map((key) => {
-                const values = series[key] || [];
-                if (key === "bat") {
-                  return `${area(values, 100, palette[key][0], palette[key][1])}${line(values, 100, palette[key][1])}`;
-                }
-                return `${area(values, powerMax, palette[key][0], palette[key][1])}${line(values, powerMax, palette[key][1])}`;
-              })
-              .join("")}
-            ${tickLabels
-              .map((label, index) => {
-                const x = left + plotWidth * xTicks[index];
-                return `<text x="${x}" y="${bottom + 24}" class="tick" text-anchor="middle">${this._escape(label)}</text>`;
-              })
-              .join("")}
-            <text x="16" y="${top + 18}" class="axis-label">POWER</text>
-            <text x="${right + 24}" y="${top + 18}" class="axis-label">BAT</text>
+            ${barsHtml}
+            <text x="16" y="${top + 16}" class="axis-label">kWh</text>
+            <text x="${width - 56}" y="${top + 16}" class="axis-label">TOTAL</text>
           </svg>
-          <div class="legend-row">
-            ${this._legendButton("BAT", "bat")}
-            ${this._legendButton("Load", "load")}
-            ${this._legendButton("Solar", "solar")}
-            ${this._legendButton("Feed-in", "feed_in")}
-            ${this._legendButton("Consumed", "consumed")}
-          </div>
-        `
-            : this._renderStatsDiagram(reporting)
-        }
+        </div>
+        ${legend}
       </section>
     `;
   }
@@ -1921,6 +1935,46 @@ class ByteWattReportCard extends HTMLElement {
           font-size:0.9rem;
           font-weight:700;
         }
+        .panel-note {
+          margin-top:6px;
+          color:#64748b;
+          font-size:0.84rem;
+          font-weight:600;
+        }
+        .stacked-panel {
+          margin-bottom:18px;
+        }
+        .stacked-header {
+          align-items:flex-start;
+          margin-bottom:12px;
+        }
+        .stacked-chart-wrap {
+          overflow:auto;
+          border-radius:18px;
+          background:#fff;
+          border:1px solid #e2e8f0;
+        }
+        .stacked-chart {
+          display:block;
+          min-width:100%;
+          height:auto;
+          background:#fff;
+        }
+        .stacked-total {
+          font-size:12px;
+          font-weight:900;
+        }
+        .stacked-label {
+          fill:#516075;
+          font-size:12px;
+          font-weight:700;
+        }
+        .stacked-legend {
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+          margin-top:12px;
+        }
         .detail-grid {
           display:grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2229,7 +2283,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .download-btn {
           background:#ffffff;
-          color:#fff;
+          color:#0f172a;
         }
         .ring-grid {
           display:grid;
@@ -2406,6 +2460,12 @@ class ByteWattReportCard extends HTMLElement {
             grid-column:auto;
             grid-row:auto;
           }
+          .stacked-header {
+            flex-direction:column;
+          }
+          .stacked-chart-wrap {
+            overflow-x:auto;
+          }
         }
         @media (max-width: 700px) {
           .sankey-stage {
@@ -2444,6 +2504,13 @@ class ByteWattReportCard extends HTMLElement {
           .sankey-chip {
             font-size:11px;
           }
+          .stacked-total,
+          .stacked-label {
+            font-size:11px;
+          }
+          .stacked-chart {
+            min-width:720px;
+          }
         }
       </style>
       <ha-card>
@@ -2460,6 +2527,7 @@ class ByteWattReportCard extends HTMLElement {
             reporting
               ? `
             ${this._renderSankeyPanel(reporting)}
+            ${this._renderChart(reporting)}
             ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
             ${this._renderAggregateStrip(reporting)}
@@ -2473,7 +2541,6 @@ class ByteWattReportCard extends HTMLElement {
                 ${this._renderEnergyDiagram(reporting)}
                 ${this._renderDetailsPanel(reporting)}
               </div>
-              ${this._renderChart(reporting)}
             </div>
           `
               : `<div class="empty">Reporting data is not available yet. Select a battery target and wait for the next coordinator refresh.</div>`
