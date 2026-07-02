@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "119";
+const BYTEWATT_REPORT_CARD_BUILD = "120";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -7,14 +7,6 @@ class ByteWattReportCard extends HTMLElement {
       entity_prefix: prefix,
       settings_target: config?.settings_target || `select.${prefix}_settings_target`,
       ...config,
-    };
-    this._view = this._view || "power";
-      this._activeSeries = this._activeSeries || {
-      bat: true,
-      load: true,
-      solar: true,
-      feed_in: true,
-      consumed: true,
     };
     this._reportPeriod = this._reportPeriod || "day";
     this._reportAnchorDate = this._reportAnchorDate || "";
@@ -1302,6 +1294,7 @@ class ByteWattReportCard extends HTMLElement {
           solar,
           battery,
           grid,
+          tooltip: `${record.record_date || ""}: load ${this._fmtEnergy(load)} | solar ${this._fmtEnergy(solar)} | battery ${this._fmtEnergy(battery)} | grid ${this._fmtEnergy(grid)}`,
         };
       });
     const maxLoad = Math.max(...bars.map((bar) => bar.load), 1);
@@ -1351,6 +1344,7 @@ class ByteWattReportCard extends HTMLElement {
         const textColor = totalHeight > 52 ? "#0f172a" : "#334155";
         return `
           <g class="stacked-bar">
+            <title>${this._escape(bar.tooltip)}</title>
             <text x="${x + barWidth / 2}" y="${Math.max(18, totalLabelY)}" text-anchor="middle" class="stacked-total" fill="${textColor}">${this._fmtEnergy(bar.load)}</text>
             ${segmentRect(x, gridTop, barWidth, gridHeight, "rgba(152,162,168,0.92)", false, true)}
             ${segmentRect(x, batteryTop, barWidth, batteryHeight, "rgba(47,201,110,0.92)", false, false)}
@@ -1394,7 +1388,7 @@ class ByteWattReportCard extends HTMLElement {
               .join("")}
             ${barsHtml}
             <text x="16" y="${top + 16}" class="axis-label">kWh</text>
-            <text x="${width - 56}" y="${top + 16}" class="axis-label">TOTAL</text>
+            <text x="${width - 56}" y="${top + 16}" class="axis-label">LOAD</text>
           </svg>
         </div>
         ${legend}
@@ -1443,14 +1437,6 @@ class ByteWattReportCard extends HTMLElement {
         <div class="ring-value">${value}</div>
         <div class="ring-label">${label}</div>
       </div>
-    `;
-  }
-
-  _legendButton(label, key) {
-    return `
-      <button class="legend-chip ${this._activeSeries[key] ? "active" : ""}" data-series="${key}">
-        ${label}
-      </button>
     `;
   }
 
@@ -2556,19 +2542,6 @@ class ByteWattReportCard extends HTMLElement {
       await this._hass.callService("select", "select_option", {
         entity_id: this._config.settings_target,
         option: event.target.value,
-      });
-    });
-    this.shadowRoot.querySelectorAll("[data-view]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._view = button.dataset.view;
-        this.render();
-      });
-    });
-    this.shadowRoot.querySelectorAll("[data-series]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const key = button.dataset.series;
-        this._activeSeries[key] = !this._activeSeries[key];
-        this.render();
       });
     });
     this.shadowRoot.querySelectorAll("[data-history-period]").forEach((button) => {
