@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "113";
+const BYTEWATT_REPORT_CARD_BUILD = "114";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -207,6 +207,10 @@ class ByteWattReportCard extends HTMLElement {
     return { today: "Today", day: "Day", week: "Week", month: "Month" }[value] || "Day";
   }
 
+  _isDailyPeriod(period = this._reportPeriod) {
+    return period === "day" || period === "today";
+  }
+
   _parseLocalDate(value) {
     if (!value) return null;
     if (value instanceof Date) {
@@ -307,7 +311,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _buildPeriodPowerDiagram(records, summary, latestReporting, period, anchor, window) {
-    if (period === "day" || period === "today") {
+    if (this._isDailyPeriod(period)) {
       const source = latestReporting?.power_diagram || {};
       return {
         ...source,
@@ -357,15 +361,15 @@ class ByteWattReportCard extends HTMLElement {
     if (!selected.length) {
       const fallbackWindow = this._periodWindow(anchor, period);
       const periodLabel = this._reportPeriodLabel(period);
-      this._reportAnchorDate = this._formatLocalDate(period === "day" || period === "today" ? anchor : fallbackWindow.start);
+      this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : fallbackWindow.start);
       return {
         reporting: {
           ...(baseReporting || {}),
-          aggregate: period !== "day",
+          aggregate: !this._isDailyPeriod(period),
           label: baseReporting?.label || "ByteWatt",
           meta: {
             ...(baseReporting?.meta || {}),
-            aggregate: period !== "day",
+            aggregate: !this._isDailyPeriod(period),
             label: baseReporting?.label || "ByteWatt",
             period,
             period_label: periodLabel,
@@ -376,7 +380,7 @@ class ByteWattReportCard extends HTMLElement {
           power_diagram: {
             ...(baseReporting?.power_diagram || {}),
             date:
-              period === "day"
+              this._isDailyPeriod(period)
                 ? this._formatLocalDate(anchor)
                 : `${this._formatLocalDate(fallbackWindow.start)} -> ${this._formatLocalDate(fallbackWindow.end)}`,
           },
@@ -392,7 +396,7 @@ class ByteWattReportCard extends HTMLElement {
     const summary = this._periodSummary(selected);
     const latest = selected[selected.length - 1] || {};
     const window = this._periodWindow(anchor, period);
-    this._reportAnchorDate = this._formatLocalDate(period === "day" || period === "today" ? anchor : window.start);
+    this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
     const totalSolar = summary.total_solar_generation || 0;
@@ -429,11 +433,11 @@ class ByteWattReportCard extends HTMLElement {
     return {
       reporting: {
         ...(baseReporting || {}),
-        aggregate: period !== "day",
+        aggregate: !this._isDailyPeriod(period),
         label: latest.label || baseReporting?.label || "ByteWatt",
         meta: {
           ...(latest.meta || baseReporting?.meta || {}),
-          aggregate: period !== "day",
+          aggregate: !this._isDailyPeriod(period),
           label: latest.label || baseReporting?.label || "ByteWatt",
           period,
           period_label: this._reportPeriodLabel(period),
@@ -467,7 +471,7 @@ class ByteWattReportCard extends HTMLElement {
         <div class="panel-header">
           <div class="panel-title">Local Archive</div>
           <div class="panel-date">
-            ${this._escape(summary.first_date ? `${summary.first_date} → ${summary.latest_date || summary.first_date}` : history.base_url || "")}
+            ${this._escape(summary.first_date ? `${summary.first_date} â†’ ${summary.latest_date || summary.first_date}` : history.base_url || "")}
           </div>
         </div>
         <div class="history-controls">
@@ -631,7 +635,7 @@ class ByteWattReportCard extends HTMLElement {
       [],
     ];
 
-    if (period === "day") {
+    if (this._isDailyPeriod(period)) {
       rows.push(["Time", "BAT", "Load", "Solar", "Feed-in", "Consumed"]);
       times.forEach((time, index) => {
         rows.push([
