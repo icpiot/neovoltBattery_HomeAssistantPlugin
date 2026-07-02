@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "117";
+const BYTEWATT_REPORT_CARD_BUILD = "118";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -466,12 +466,16 @@ class ByteWattReportCard extends HTMLElement {
     const summary = this._aggregateHistoryRecords(records);
     const loading = this._historyLoading && !this._historyData;
     const error = this._historyLoadError;
+    const formatHistoryDate = (value) => {
+      const parsed = this._parseLocalDate(value);
+      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
+    };
     return `
       <section class="history-panel">
         <div class="panel-header">
           <div class="panel-title">Local Archive</div>
           <div class="panel-date">
-            ${this._escape(summary.first_date ? `${summary.first_date} â†’ ${summary.latest_date || summary.first_date}` : history.base_url || "")}
+            ${this._escape(summary.first_date ? `${formatHistoryDate(summary.first_date)} -> ${formatHistoryDate(summary.latest_date || summary.first_date)}` : history.base_url || "")}
           </div>
         </div>
         <div class="history-controls">
@@ -488,7 +492,7 @@ class ByteWattReportCard extends HTMLElement {
                 ? `
                   <div class="history-summary">
                     ${this._metric("Records", summary.count)}
-                    ${this._metric("Latest Date", this._escape(summary.latest_date || "Unavailable"))}
+                    ${this._metric("Latest Date", this._escape(summary.latest_date ? formatHistoryDate(summary.latest_date) : "Unavailable"))}
                     ${this._metric("Solar", this._fmtEnergy(summary.solar_generation_today))}
                     ${this._metric("Load", this._fmtEnergy(summary.load_consumption_today))}
                     ${this._metric("Feed-in", this._fmtEnergy(summary.feed_in_today))}
@@ -1119,7 +1123,7 @@ class ByteWattReportCard extends HTMLElement {
       <section class="panel sankey-panel">
         <div class="panel-header">
           <div class="panel-title">Energy Flow Sankey</div>
-          <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` â€¢ ${this._escape(periodRange)}` : ""}${periodRecords ? ` â€¢ ${periodRecords} records` : ""}</div>
+          <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""}${periodRecords ? ` | ${periodRecords} records` : ""}</div>
         </div>
         <div class="sankey-stage">
           <svg class="sankey-svg" viewBox="0 0 940 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
@@ -1160,19 +1164,19 @@ class ByteWattReportCard extends HTMLElement {
               <div class="sankey-mobile-sub">${pct(grid, sourceTotal)} imported</div>
             </div>
             <div class="sankey-mobile-flow sankey-mobile-flow-solar-load">
-              <span>Solar â†’ Load</span><strong>${this._fmtEnergy(pvToHouse)}</strong>
+              <span>Solar -> Load</span><strong>${this._fmtEnergy(pvToHouse)}</strong>
             </div>
             <div class="sankey-mobile-flow sankey-mobile-flow-solar-battery">
-              <span>Solar â†’ Battery</span><strong>${this._fmtEnergy(pvToBattery)}</strong>
+              <span>Solar -> Battery</span><strong>${this._fmtEnergy(pvToBattery)}</strong>
             </div>
             <div class="sankey-mobile-flow sankey-mobile-flow-grid-battery">
-              <span>Grid â†’ Battery</span><strong>${this._fmtEnergy(gridToBattery)}</strong>
+              <span>Grid -> Battery</span><strong>${this._fmtEnergy(gridToBattery)}</strong>
             </div>
             <div class="sankey-mobile-flow sankey-mobile-flow-battery-load">
-              <span>Battery â†’ Load</span><strong>${this._fmtEnergy(batteryDischarge)}</strong>
+              <span>Battery -> Load</span><strong>${this._fmtEnergy(batteryDischarge)}</strong>
             </div>
             <div class="sankey-mobile-flow sankey-mobile-flow-feed">
-              <span>Solar â†’ Feed-in</span><strong>${this._fmtEnergy(feedIn)}</strong>
+              <span>Solar -> Feed-in</span><strong>${this._fmtEnergy(feedIn)}</strong>
             </div>
           </div>
         </div>
@@ -1329,7 +1333,7 @@ class ByteWattReportCard extends HTMLElement {
             <button class="${this._view === "statistical" ? "active" : ""}" data-view="statistical">Statistical Diagram</button>
           </div>
           <div class="chart-tools">
-            <div class="panel-date">${this._escape(periodLabel)}${powerDiagram.date ? ` â€¢ ${this._escape(powerDiagram.date)}` : ""}${powerDiagram.time?.length ? ` â€¢ ${powerDiagram.time.length} points` : ""}</div>
+            <div class="panel-date">${this._escape(periodLabel)}${powerDiagram.date ? ` | ${this._escape(powerDiagram.date)}` : ""}${powerDiagram.time?.length ? ` | ${powerDiagram.time.length} points` : ""}</div>
             <button class="download-btn" data-download-report>Download CSV</button>
           </div>
         </div>
@@ -2405,7 +2409,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         @media (max-width: 700px) {
           .sankey-stage {
-            overflow:hidden;
+            overflow:visible;
             padding:10px;
           }
           .sankey-svg {
@@ -2415,9 +2419,15 @@ class ByteWattReportCard extends HTMLElement {
           }
           .sankey-mobile {
             display:grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items:stretch;
+          }
+          .sankey-mobile-source {
+            min-height: 92px;
           }
           .sankey-mobile-flow {
             padding:10px 12px;
+            grid-column: 1 / -1;
           }
           .sankey-summary-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
