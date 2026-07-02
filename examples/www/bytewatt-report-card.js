@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "121";
+const BYTEWATT_REPORT_CARD_BUILD = "122";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -10,6 +10,14 @@ class ByteWattReportCard extends HTMLElement {
     };
     this._reportPeriod = this._reportPeriod || "day";
     this._reportAnchorDate = this._reportAnchorDate || "";
+    this._chartSeries = this._chartSeries || {
+      bat: true,
+      load: true,
+      solar: true,
+      feed_in: true,
+      consumed: true,
+    };
+    this._powerHoverIndex = this._powerHoverIndex ?? null;
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -1396,6 +1404,248 @@ class ByteWattReportCard extends HTMLElement {
     `;
   }
 
+  _buildPowerChartData(reporting, periodContext) {
+    const period = periodContext?.period || reporting?.meta?.period || this._reportPeriod || "day";
+    const isDaily = this._isDailyPeriod(period);
+    const powerDiagram = reporting?.power_diagram || {};
+    const series = powerDiagram.series || {};
+    const times = powerDiagram.time || [];
+    const records = (periodContext?.records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const formatShortDate = (value) => {
+      const parsed = this._parseLocalDate(value);
+      return parsed ? `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}` : String(value || "");
+    };
+    const formatDisplayDate = (value) => {
+      const parsed = this._parseLocalDate(value);
+      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
+    };
+    const useEnergyUnits = !isDaily;
+    const points = isDaily
+      ? (times || []).map((time, index) => ({
+          key: `${index}:${time}`,
+          label: String(time || ""),
+          hoverLabel: String(time || ""),
+          bat: this._parseFloat(series.bat?.[index]),
+          load: this._parseFloat(series.load?.[index]),
+          solar: this._parseFloat(series.solar?.[index]),
+          feed_in: this._parseFloat(series.feed_in?.[index]),
+          consumed: this._parseFloat(series.consumed?.[index]),
+        }))
+      : records.map((record) => ({
+          key: record.record_date || "",
+          label: formatShortDate(record.record_date),
+          hoverLabel: formatDisplayDate(record.record_date),
+          bat: this._parseFloat(record.live_soc),
+          load: this._parseFloat(record.load_consumption_today),
+          solar: this._parseFloat(record.solar_generation_today),
+          feed_in: this._parseFloat(record.feed_in_today),
+          consumed: this._parseFloat(record.grid_consumption_today),
+        }));
+
+    const summary = periodContext?.summary || {};
+    const totals = isDaily
+      ? {
+          bat: this._parseFloat(reporting?.live?.soc ?? powerDiagram.summary?.soc ?? 0),
+          load: this._parseFloat(reporting?.today?.load_consumption ?? 0),
+          solar: this._parseFloat(reporting?.today?.solar_generation ?? 0),
+          feed_in: this._parseFloat(reporting?.today?.feed_in ?? 0),
+          consumed: this._parseFloat(reporting?.today?.grid_consumption ?? 0),
+        }
+      : {
+          bat: this._parseFloat(summary.live_soc ?? reporting?.live?.soc ?? 0),
+          load: this._parseFloat(summary.total_house_consumption ?? 0),
+          solar: this._parseFloat(summary.total_solar_generation ?? 0),
+          feed_in: this._parseFloat(summary.total_feed_in ?? 0),
+          consumed: this._parseFloat(summary.total_grid_consumption ?? 0),
+        };
+
+    return {
+      period,
+      isDaily,
+      useEnergyUnits,
+      points,
+      totals,
+      rangeLabel:
+        periodContext?.window?.start && periodContext?.window?.end
+          ? periodContext.window.start === periodContext.window.end
+            ? formatDisplayDate(periodContext.window.start)
+            : `${formatDisplayDate(periodContext.window.start)} -> ${formatDisplayDate(periodContext.window.end)}`
+          : formatDisplayDate(reporting?.power_diagram?.date || ""),
+    };
+  }
+
+  _renderPowerChart(reporting, periodContext) {
+    const chart = this._buildPowerChartData(reporting, periodContext);
+    const seriesLabels = {
+      bat: { label: "BAT", tone: "bat" },
+      load: { label: "Load", tone: "load" },
+      solar: { label: "Solar", tone: "solar" },
+      feed_in: { label: "Feed-in", tone: "feed" },
+      consumed: { label: "Consumed", tone: "grid" },
+    };
+    const points = chart.points || [];
+    const plotCount = Math.max(points.length - 1, 1);
+    const width = Math.max(860, points.length * 60 + 140);
+    const height = 340;
+    const left = 64;
+    const right = 64;
+    const top = 30;
+    const plotHeight = 190;
+    const bottom = top + plotHeight;
+    const plotWidth = width - left - right;
+    const xFor = (index) => left + (plotWidth * index) / plotCount;
+    const powerSeriesKeys = ["load", "solar", "feed_in", "consumed"];
+    const selectedPowerValues = powerSeriesKeys.flatMap((key) => (this._chartSeries?.[key] ? points.map((point) => this._parseFloat(point[key])) : []));
+    const selectedBatValues = this._chartSeries?.bat ? points.map((point) => this._parseFloat(point.bat)) : [];
+    const powerMax = Math.max(...selectedPowerValues, 1);
+    const batMax = Math.max(...selectedBatValues, 100);
+    const leftLabel = chart.useEnergyUnits ? "ENERGY (kWh)" : "POWER (kW)";
+    const rightLabel = "BAT (%)";
+    const formatPowerValue = chart.useEnergyUnits ? (value) => this._fmtEnergy(value) : (value) => this._fmtPower(value);
+    const formatAxisValue = chart.useEnergyUnits ? (value) => this._fmtEnergy(value) : (value) => this._fmtPower(value);
+    const hoverIndex =
+      points.length && this._powerHoverIndex !== null && this._powerHoverIndex !== undefined
+        ? Math.min(Math.max(Number(this._powerHoverIndex) || 0, 0), points.length - 1)
+        : -1;
+    const hoverPoint = hoverIndex >= 0 ? points[hoverIndex] : null;
+    const pointFor = (point, key) => (key === "bat" ? this._parseFloat(point.bat) : this._parseFloat(point[key]));
+    const yLeft = (value) => bottom - (this._parseFloat(value) / powerMax) * plotHeight;
+    const yRight = (value) => bottom - (this._parseFloat(value) / batMax) * plotHeight;
+    const areaPoints = (key, useRightAxis = false) => {
+      const yFn = useRightAxis ? yRight : yLeft;
+      const coords = points.map((point, index) => `${xFor(index)},${yFn(pointFor(point, key))}`);
+      if (!coords.length) return "";
+      return `${left},${bottom} ${coords.join(" ")} ${xFor(points.length - 1)},${bottom}`;
+    };
+    const linePoints = (key, useRightAxis = false) => {
+      const yFn = useRightAxis ? yRight : yLeft;
+      return points.map((point, index) => `${xFor(index)},${yFn(pointFor(point, key))}`).join(" ");
+    };
+    const chips = `
+      <div class="chart-toggle-row">
+        ${Object.entries(seriesLabels)
+          .map(
+            ([key, meta]) => `
+              <button class="legend-chip ${this._chartSeries?.[key] ? "active" : ""}" data-chart-series="${key}">
+                ${meta.label}
+              </button>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+    const periodSummary = periodContext?.summary || {};
+    const summaryBoxes = `
+      <div class="sankey-summary-grid power-summary-grid">
+        ${this._summaryTile("Solar > Load", formatPowerValue(periodSummary.pv_power_house ?? chart.totals.load), "solar")}
+        ${this._summaryTile("Solar > Battery", formatPowerValue(periodSummary.pv_charging_battery ?? chart.totals.solar), "battery")}
+        ${this._summaryTile("Solar > Feed-in", formatPowerValue(periodSummary.total_feed_in ?? chart.totals.feed_in), "feed")}
+        ${this._summaryTile("Grid > Battery", formatPowerValue(periodSummary.grid_battery_charge ?? chart.totals.consumed), "grid")}
+        ${this._summaryTile("Battery > Load", formatPowerValue(periodSummary.total_battery_discharge ?? chart.totals.load), "load")}
+      </div>
+    `;
+    const hoverLines = hoverPoint
+      ? `
+        <div class="chart-hover-value"><span class="hover-dot bat"></span>BAT: ${this._fmtPercent(hoverPoint.bat)}</div>
+        <div class="chart-hover-value"><span class="hover-dot load"></span>Load: ${formatPowerValue(hoverPoint.load)}</div>
+        <div class="chart-hover-value"><span class="hover-dot solar"></span>Solar: ${formatPowerValue(hoverPoint.solar)}</div>
+        <div class="chart-hover-value"><span class="hover-dot feed"></span>Feed-in: ${formatPowerValue(hoverPoint.feed_in)}</div>
+        <div class="chart-hover-value"><span class="hover-dot grid"></span>Consumed: ${formatPowerValue(hoverPoint.consumed)}</div>
+      `
+      : `<div class="chart-hover-empty">Hover a point to inspect values.</div>`;
+    const hoverTitle = hoverPoint ? hoverPoint.hoverLabel : chart.rangeLabel || chart.period;
+    const tickIndices = points.length <= 1 ? [0] : Array.from(new Set([0, Math.round(plotCount * 0.2), Math.round(plotCount * 0.4), Math.round(plotCount * 0.6), Math.round(plotCount * 0.8), plotCount])).sort((a, b) => a - b);
+    const svgLayers = `
+      <defs>
+        <linearGradient id="bwLoadFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="rgba(47,155,232,0.34)"></stop>
+          <stop offset="100%" stop-color="rgba(47,155,232,0.06)"></stop>
+        </linearGradient>
+        <linearGradient id="bwSolarFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="rgba(240,196,25,0.35)"></stop>
+          <stop offset="100%" stop-color="rgba(240,196,25,0.06)"></stop>
+        </linearGradient>
+        <linearGradient id="bwFeedFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="rgba(240,138,36,0.28)"></stop>
+          <stop offset="100%" stop-color="rgba(240,138,36,0.04)"></stop>
+        </linearGradient>
+        <linearGradient id="bwConsumedFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="rgba(152,162,168,0.28)"></stop>
+          <stop offset="100%" stop-color="rgba(152,162,168,0.04)"></stop>
+        </linearGradient>
+        <linearGradient id="bwBatFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="rgba(47,201,110,0.34)"></stop>
+          <stop offset="100%" stop-color="rgba(47,201,110,0.08)"></stop>
+        </linearGradient>
+      </defs>
+      <line x1="${left}" y1="${bottom}" x2="${width - right}" y2="${bottom}" class="axis"></line>
+      <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" class="axis"></line>
+      <line x1="${width - right}" y1="${top}" x2="${width - right}" y2="${bottom}" class="axis"></line>
+      ${[0, 0.25, 0.5, 0.75, 1]
+        .map((point) => {
+          const y = bottom - point * plotHeight;
+          const leftValue = formatAxisValue(powerMax * point);
+          const rightValue = this._fmtPercent(batMax * point);
+          return `
+            <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="grid"></line>
+            <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${leftValue}</text>
+            <text x="${width - right + 10}" y="${y + 4}" text-anchor="start" class="tick">${rightValue}</text>
+          `;
+        })
+        .join("")}
+      ${this._chartSeries?.load && points.length ? `<polygon class="series-area series-load" points="${areaPoints("load")}" fill="url(#bwLoadFill)"></polygon><polyline class="series-line series-load" points="${linePoints("load")}" stroke="var(--bw-load)"></polyline>` : ""}
+      ${this._chartSeries?.solar && points.length ? `<polygon class="series-area series-solar" points="${areaPoints("solar")}" fill="url(#bwSolarFill)"></polygon><polyline class="series-line series-solar" points="${linePoints("solar")}" stroke="var(--bw-solar)"></polyline>` : ""}
+      ${this._chartSeries?.feed_in && points.length ? `<polygon class="series-area series-feed" points="${areaPoints("feed_in")}" fill="url(#bwFeedFill)"></polygon><polyline class="series-line series-feed" points="${linePoints("feed_in")}" stroke="var(--bw-feed)"></polyline>` : ""}
+      ${this._chartSeries?.consumed && points.length ? `<polygon class="series-area series-consumed" points="${areaPoints("consumed")}" fill="url(#bwConsumedFill)"></polygon><polyline class="series-line series-consumed" points="${linePoints("consumed")}" stroke="var(--bw-grid)"></polyline>` : ""}
+      ${this._chartSeries?.bat && points.length ? `<polygon class="series-area series-bat" points="${areaPoints("bat", true)}" fill="url(#bwBatFill)"></polygon><polyline class="series-line series-bat" points="${linePoints("bat", true)}" stroke="var(--bw-battery)"></polyline>` : ""}
+      ${points
+        .map((point, index) => {
+          const x = xFor(index);
+          const zoneWidth = Math.max(14, Math.min(40, plotWidth / Math.max(points.length, 1)));
+          const markerY = hoverIndex === index ? bottom - 10 : bottom;
+          return `
+            <rect x="${x - zoneWidth / 2}" y="${top}" width="${zoneWidth}" height="${plotHeight}" fill="transparent" class="power-hover-zone" data-power-hover="${index}"></rect>
+            ${hoverIndex === index ? `<circle cx="${x}" cy="${markerY}" r="5.5" class="series-marker marker-bat"></circle>` : ""}
+          `;
+        })
+        .join("")}
+      ${tickIndices
+        .map((index) => {
+          const point = points[index];
+          if (!point) return "";
+          return `<text x="${xFor(index)}" y="${bottom + 24}" text-anchor="middle" class="tick power-x-tick">${this._escape(point.label)}</text>`;
+        })
+        .join("")}
+      <text x="12" y="${top + 16}" class="axis-label">${this._escape(leftLabel)}</text>
+      <text x="${width - 52}" y="${top + 16}" class="axis-label">${this._escape(rightLabel)}</text>
+    `;
+
+    return `
+      <section class="panel power-panel">
+        <div class="panel-header power-header">
+          <div>
+            <div class="panel-title">${this._escape(chart.period === "today" ? "Today" : chart.period === "day" ? "Day" : chart.period === "week" ? "Week" : "Month")} Power Diagram</div>
+            <div class="panel-date">${this._escape(chart.rangeLabel)}${points.length ? ` | ${points.length} points` : ""}</div>
+            <div class="panel-note">Hover a point to inspect values. Toggle any series on or off with the chips below.</div>
+          </div>
+          <div class="chart-hover-card">
+            <div class="chart-hover-title">${this._escape(hoverTitle || "Hover point")}</div>
+            ${hoverLines}
+          </div>
+        </div>
+        <div class="power-chart-shell">
+          <div class="power-chart-wrap">
+            <svg class="power-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Power chart for the selected period">
+              ${svgLayers}
+            </svg>
+          </div>
+          ${summaryBoxes}
+          ${chips}
+        </div>
+      </section>
+    `;
+  }
+
   _ring(label, value, kind) {
     return `
       <div class="ring-card ring-${kind}">
@@ -2256,6 +2506,99 @@ class ByteWattReportCard extends HTMLElement {
           background:#fff;
           border-radius:18px;
         }
+        .power-panel {
+          display:grid;
+          gap:14px;
+        }
+        .power-header {
+          display:grid;
+          grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+          gap:14px;
+          align-items:start;
+        }
+        .power-chart-shell {
+          display:grid;
+          gap:12px;
+        }
+        .power-chart-wrap {
+          overflow-x:auto;
+          overflow-y:hidden;
+          padding-bottom:4px;
+        }
+        .power-chart {
+          min-width:860px;
+          width:100%;
+          display:block;
+          background:#fff;
+          border-radius:18px;
+        }
+        .chart-hover-card {
+          border-radius:18px;
+          border:1px solid #dbe3ec;
+          background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+          padding:14px 16px;
+          display:grid;
+          gap:8px;
+        }
+        .chart-hover-title {
+          font-size:0.88rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .chart-hover-value,
+        .chart-hover-empty {
+          display:flex;
+          align-items:center;
+          gap:8px;
+          font-size:0.82rem;
+          font-weight:800;
+          color:#334155;
+        }
+        .chart-hover-empty {
+          color:#64748b;
+          font-weight:700;
+        }
+        .hover-dot {
+          width:10px;
+          height:10px;
+          border-radius:999px;
+          flex:0 0 auto;
+        }
+        .hover-dot.bat { background:var(--bw-battery); }
+        .hover-dot.load { background:var(--bw-load); }
+        .hover-dot.solar { background:var(--bw-solar); }
+        .hover-dot.feed { background:var(--bw-feed); }
+        .hover-dot.grid { background:var(--bw-grid); }
+        .chart-toggle-row {
+          display:flex;
+          flex-wrap:wrap;
+          gap:10px;
+        }
+        .series-area {
+          fill-opacity:1;
+        }
+        .series-line {
+          fill:none;
+          stroke-width:2.6;
+          stroke-linecap:round;
+          stroke-linejoin:round;
+        }
+        .series-marker {
+          fill:#fff;
+          stroke-width:2.6;
+        }
+        .marker-bat { stroke:var(--bw-battery); }
+        .marker-load { stroke:var(--bw-load); }
+        .marker-solar { stroke:var(--bw-solar); }
+        .marker-feed { stroke:var(--bw-feed); }
+        .marker-grid { stroke:var(--bw-grid); }
+        .power-hover-zone {
+          cursor:crosshair;
+        }
+        .power-summary-grid .sankey-summary {
+          min-height:76px;
+        }
         .axis,
         .grid {
           stroke:#d8e3ef;
@@ -2402,6 +2745,9 @@ class ByteWattReportCard extends HTMLElement {
           .stacked-chart-wrap {
             overflow-x:auto;
           }
+          .power-header {
+            grid-template-columns: 1fr;
+          }
         }
         @media (max-width: 700px) {
           .sankey-stage {
@@ -2447,6 +2793,9 @@ class ByteWattReportCard extends HTMLElement {
           .stacked-chart {
             min-width:720px;
           }
+          .power-chart {
+            min-width:720px;
+          }
         }
       </style>
       <ha-card>
@@ -2464,6 +2813,7 @@ class ByteWattReportCard extends HTMLElement {
               ? `
             ${this._renderSankeyPanel(reporting)}
             ${this._renderChart(reporting)}
+            ${this._renderPowerChart(reporting, periodContext)}
             ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
             ${this._renderAggregateStrip(reporting)}
@@ -2499,6 +2849,30 @@ class ByteWattReportCard extends HTMLElement {
         this._historyPeriod = button.dataset.historyPeriod;
         this.render();
       });
+    });
+    this.shadowRoot.querySelectorAll("[data-chart-series]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.chartSeries;
+        if (!key) return;
+        this._chartSeries = {
+          ...(this._chartSeries || {}),
+          [key]: !this._chartSeries?.[key],
+        };
+        this.render();
+      });
+    });
+    const powerWrap = this.shadowRoot.querySelector(".power-chart-wrap");
+    powerWrap?.querySelectorAll("[data-power-hover]").forEach((zone) => {
+      zone.addEventListener("mouseenter", () => {
+        this._powerHoverIndex = Number(zone.dataset.powerHover || 0);
+        this.render();
+      });
+    });
+    powerWrap?.addEventListener("mouseleave", () => {
+      if (this._powerHoverIndex !== null) {
+        this._powerHoverIndex = null;
+        this.render();
+      }
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
       button.addEventListener("click", () => {
