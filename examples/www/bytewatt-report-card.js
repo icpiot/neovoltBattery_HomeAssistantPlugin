@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "137";
+const BYTEWATT_REPORT_CARD_BUILD = "138";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1156,24 +1156,22 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting) {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
+    const source = Object.keys(totals).length ? totals : today;
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
-    const solar = Number(today.solar_generation) || 0;
-    const load = Number(today.load_consumption) || 0;
-    const grid = Number(today.grid_consumption) || 0;
-    const feedIn = Number(today.feed_in) || 0;
-    const batteryCharge = Number(today.battery_charge) || 0;
-    const batteryDischarge = Number(today.battery_discharge) || 0;
+    const solar = Number(source.solar_generation ?? today.solar_generation) || 0;
+    const load = Number(source.load_consumption ?? today.load_consumption) || 0;
+    const grid = Number(source.grid_consumption ?? today.grid_consumption) || 0;
+    const feedIn = Number(source.feed_in ?? today.feed_in) || 0;
+    const batteryCharge = Number(source.battery_charge ?? today.battery_charge) || 0;
+    const batteryDischarge = Number(source.battery_discharge ?? today.battery_discharge) || 0;
     const pvToHouse =
-      Number(today.pv_power_house) ||
-      Number(totals.pv_power_house) ||
+      Number(source.pv_power_house ?? today.pv_power_house) ||
       Math.max(load - grid - batteryDischarge, 0);
     const pvToBattery =
-      Number(today.pv_charging_battery) ||
-      Number(totals.pv_charging_battery) ||
+      Number(source.pv_charging_battery ?? today.pv_charging_battery) ||
       Math.max(batteryCharge - grid, 0);
     const gridToBattery =
-      Number(today.grid_battery_charge) ||
-      Number(totals.grid_battery_charge) ||
+      Number(source.grid_battery_charge ?? today.grid_battery_charge) ||
       0;
     const sourceTotal = Math.max(solar + batteryDischarge + grid, 1);
     const sinkTotal = Math.max(load + batteryCharge + feedIn, 1);
