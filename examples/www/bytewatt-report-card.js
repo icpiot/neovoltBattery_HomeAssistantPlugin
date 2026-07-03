@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "144";
+const BYTEWATT_REPORT_CARD_BUILD = "145";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1183,9 +1183,7 @@ class ByteWattReportCard extends HTMLElement {
     const totals = reporting?.totals || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
     const isDailyPeriod = this._isDailyPeriod(reporting?.meta?.period || this._reportPeriod || "day");
-    const periodLayers = isDailyPeriod
-      ? [periodSummary, reporting?.power_diagram?.summary || {}, today, totals]
-      : [periodSummary, reporting?.power_diagram?.summary || {}];
+    const periodLayers = [totals, periodSummary, reporting?.power_diagram?.summary || {}, today];
     const sourceNumber = (...keys) => {
       for (const layer of periodLayers) {
         if (!layer || !Object.keys(layer).length) continue;
