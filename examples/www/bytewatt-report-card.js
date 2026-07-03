@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "135";
+const BYTEWATT_REPORT_CARD_BUILD = "136";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1481,9 +1481,16 @@ class ByteWattReportCard extends HTMLElement {
       }
     }
     const maxLoad = this._niceChartMax(Math.max(...bars.map((bar) => bar.load), 0), 0.1);
+    const formatUsageMixEnergy = (value) => {
+      const number = Math.max(this._parseFloat(value), 0);
+      if (number >= 1000) {
+        return `${this._fmtNumber(number / 1000, 2)} MWh`;
+      }
+      return `${this._fmtNumber(number, 2)} kWh`;
+    };
     const width = Math.max(760, bars.length * 74 + 110);
     const height = 340;
-    const left = 56;
+    const left = 68;
     const top = 30;
     const plotHeight = 200;
     const bottom = top + plotHeight;
@@ -1519,7 +1526,7 @@ class ByteWattReportCard extends HTMLElement {
         const solarHeight = this._usageMixSeries?.solar ? bar.solar * scale : 0;
         const batteryHeight = this._usageMixSeries?.battery ? bar.battery * scale : 0;
         const gridHeight = this._usageMixSeries?.grid ? bar.grid * scale : 0;
-        const totalLabelY = bottom - totalHeight - 10;
+        const totalLabelY = Math.max(top + 20, bottom - totalHeight + 22);
         const barBottom = bottom;
         const gridTop = barBottom - gridHeight;
         const batteryTop = gridTop - batteryHeight;
@@ -1528,7 +1535,7 @@ class ByteWattReportCard extends HTMLElement {
         return `
           <g class="stacked-bar">
             <title>${this._escape(bar.tooltip)}</title>
-            <text x="${x + barWidth / 2}" y="${Math.max(18, totalLabelY)}" text-anchor="middle" class="stacked-total" fill="${textColor}">${this._fmtEnergy(bar.load)}</text>
+            <text x="${x + barWidth / 2}" y="${Math.max(20, totalLabelY)}" text-anchor="middle" class="stacked-total" fill="${textColor}">${formatUsageMixEnergy(bar.load)}</text>
             ${segmentRect(x, gridTop, barWidth, gridHeight, "rgba(152,162,168,0.92)", false, true)}
             ${segmentRect(x, batteryTop, barWidth, batteryHeight, "rgba(47,201,110,0.92)", false, false)}
             ${segmentRect(x, solarTop, barWidth, solarHeight, "rgba(240,196,25,0.92)", true, false)}
@@ -1557,7 +1564,7 @@ class ByteWattReportCard extends HTMLElement {
                 const y = bottom - point * plotHeight;
                 return `
                   <line x1="${left}" y1="${y}" x2="${width - 20}" y2="${y}" class="grid"></line>
-                  <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${this._fmtEnergy(maxLoad * point)}</text>
+                  <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${formatUsageMixEnergy(maxLoad * point)}</text>
                 `;
               })
               .join("")}
