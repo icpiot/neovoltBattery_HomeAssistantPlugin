@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "127";
+const BYTEWATT_REPORT_CARD_BUILD = "128";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1164,7 +1164,7 @@ class ByteWattReportCard extends HTMLElement {
     const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
     const thickness = (value) => {
       const ratio = Math.max(value, 0) / Math.max(flowScale, 1);
-      return Math.max(8, Math.round(Math.sqrt(ratio) * 48));
+      return Math.max(6, Math.round(ratio * 38 + 6));
     };
     const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1 + 140} ${y1}, ${x2 - 140} ${y2}, ${x2} ${y2}`;
     const pct = (value, total) => `${Math.max(0, Math.round((Math.max(value, 0) / Math.max(total, 1)) * 1000) / 10).toFixed(1)}%`;
@@ -1185,8 +1185,7 @@ class ByteWattReportCard extends HTMLElement {
         <rect x="10" y="12" width="92" height="28" rx="10" ry="10" fill="rgba(255,255,255,0.80)" stroke="rgba(15,23,42,0.05)" stroke-width="1"></rect>
         <text x="56" y="31" text-anchor="middle" class="sankey-chip">${this._escape(card.title)}</text>
         <text x="16" y="74" class="sankey-node-value">${this._escape(card.value)}</text>
-        <text x="16" y="108" class="sankey-node-unit">kWh</text>
-        <text x="16" y="${card.h - 18}" class="sankey-node-sub">${this._escape(card.sub)}</text>
+        <text x="16" y="${card.h - 22}" class="sankey-node-sub">${this._escape(card.sub)}</text>
         <text x="16" y="${card.h - 4}" class="sankey-node-meta">${this._escape(card.meta)}</text>
       </g>
     `;
