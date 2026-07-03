@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "130";
+const BYTEWATT_REPORT_CARD_BUILD = "131";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1491,12 +1491,14 @@ class ByteWattReportCard extends HTMLElement {
 
     const legend = `
       <div class="stacked-legend">
-        <button class="legend-chip ${this._usageMixSeries?.solar ? "active" : ""}" data-usage-series="solar" style="background:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.solar ? "#7a6100" : "#64748b"};">Solar</button>
-        <button class="legend-chip ${this._usageMixSeries?.battery ? "active" : ""}" data-usage-series="battery" style="background:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.battery ? "#1f6b42" : "#64748b"};">Battery</button>
-        <button class="legend-chip ${this._usageMixSeries?.grid ? "active" : ""}" data-usage-series="grid" style="background:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.grid ? "#516075" : "#64748b"};">Grid</button>
+        <button type="button" class="legend-chip ${this._usageMixSeries?.solar ? "active" : ""}" aria-pressed="${this._usageMixSeries?.solar ? "true" : "false"}" data-usage-series="solar" style="background:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.solar ? "#7a6100" : "#64748b"};">Solar</button>
+        <button type="button" class="legend-chip ${this._usageMixSeries?.battery ? "active" : ""}" aria-pressed="${this._usageMixSeries?.battery ? "true" : "false"}" data-usage-series="battery" style="background:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.battery ? "#1f6b42" : "#64748b"};">Battery</button>
+        <button type="button" class="legend-chip ${this._usageMixSeries?.grid ? "active" : ""}" aria-pressed="${this._usageMixSeries?.grid ? "true" : "false"}" data-usage-series="grid" style="background:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.grid ? "#516075" : "#64748b"};">Grid</button>
       </div>
     `;
+    const usageVisible = Object.values(this._usageMixSeries || {}).some(Boolean);
     const chartBody = bars.length
+      && usageVisible
       ? `
           <svg class="stacked-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Stacked power usage chart by source">
             <line x1="${left}" y1="${bottom}" x2="${width - 20}" y2="${bottom}" class="axis"></line>
@@ -1516,7 +1518,7 @@ class ByteWattReportCard extends HTMLElement {
             <text x="${left + plotWidth / 2}" y="${bottom + 50}" text-anchor="middle" class="axis-label">Date</text>
           </svg>
         `
-      : `<div class="empty stacked-empty">No usage mix data for the selected period yet.</div>`;
+      : `<div class="empty stacked-empty">${usageVisible ? "No usage mix data for the selected period yet." : "All usage mix series are hidden."}</div>`;
 
     return `
       <section class="panel stacked-panel">
