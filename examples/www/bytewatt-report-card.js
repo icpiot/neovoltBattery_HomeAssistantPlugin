@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "128";
+const BYTEWATT_REPORT_CARD_BUILD = "129";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1491,18 +1491,8 @@ class ByteWattReportCard extends HTMLElement {
         <div class="legend-chip active" style="background:rgba(152,162,168,0.14); border-color:rgba(152,162,168,0.5); color:#516075;">Grid</div>
       </div>
     `;
-
-    return `
-      <section class="panel stacked-panel">
-        <div class="panel-header stacked-header">
-          <div>
-            <div class="panel-title">${this._escape(periodLabel)} Usage Mix</div>
-            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} rows` : ""}</div>
-            <div class="panel-note">${this._escape(chartNote)}</div>
-          </div>
-          <button class="download-btn" data-download-report>Download CSV</button>
-        </div>
-        <div class="stacked-chart-wrap">
+    const chartBody = bars.length
+      ? `
           <svg class="stacked-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Stacked power usage chart by source">
             <line x1="${left}" y1="${bottom}" x2="${width - 20}" y2="${bottom}" class="axis"></line>
             <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" class="axis"></line>
@@ -1518,7 +1508,23 @@ class ByteWattReportCard extends HTMLElement {
             ${barsHtml}
             <text x="16" y="${top + 16}" class="axis-label">kWh</text>
             <text x="${width - 56}" y="${top + 16}" class="axis-label">LOAD</text>
+            <text x="${left + plotWidth / 2}" y="${bottom + 50}" text-anchor="middle" class="axis-label">Date</text>
           </svg>
+        `
+      : `<div class="empty stacked-empty">No usage mix data for the selected period yet.</div>`;
+
+    return `
+      <section class="panel stacked-panel">
+        <div class="panel-header stacked-header">
+          <div>
+            <div class="panel-title">${this._escape(periodLabel)} Usage Mix</div>
+            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} rows` : ""}</div>
+            <div class="panel-note">${this._escape(chartNote)}</div>
+          </div>
+          <button class="download-btn" data-download-report>Download CSV</button>
+        </div>
+        <div class="stacked-chart-wrap">
+          ${chartBody}
         </div>
         ${legend}
       </section>
@@ -1739,6 +1745,9 @@ class ByteWattReportCard extends HTMLElement {
       <text x="12" y="${top + 16}" class="axis-label">${this._escape(leftLabel)}</text>
       <text x="${width - 52}" y="${top + 16}" class="axis-label">${this._escape(rightLabel)}</text>
     `;
+    const chartBody = points.length
+      ? `<svg class="power-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Power chart for the selected period">${svgLayers}</svg>`
+      : `<div class="empty power-empty">No power samples are available for this period yet.</div>`;
 
     return `
       <section class="panel power-panel">
@@ -1755,9 +1764,7 @@ class ByteWattReportCard extends HTMLElement {
         </div>
         <div class="power-chart-shell">
           <div class="power-chart-wrap">
-            <svg class="power-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Power chart for the selected period">
-              ${svgLayers}
-            </svg>
+            ${chartBody}
           </div>
           ${summaryBoxes}
           ${chips}
@@ -2271,6 +2278,8 @@ class ByteWattReportCard extends HTMLElement {
         }
         .stacked-chart-wrap {
           overflow:auto;
+          display:grid;
+          gap:10px;
           border-radius:18px;
           background:#fff;
           border:1px solid #e2e8f0;
@@ -2644,6 +2653,8 @@ class ByteWattReportCard extends HTMLElement {
           overflow-x:auto;
           overflow-y:hidden;
           padding-bottom:4px;
+          display:grid;
+          gap:10px;
         }
         .power-chart {
           min-width:860px;
@@ -2798,6 +2809,14 @@ class ByteWattReportCard extends HTMLElement {
           background:#fff;
           border:1px dashed #cbd5e1;
           color:#64748b;
+        }
+        .stacked-empty,
+        .power-empty {
+          min-height:220px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          text-align:center;
         }
         @media (max-width: 1260px) {
           .hero-banner {
