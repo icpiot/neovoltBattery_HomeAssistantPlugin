@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "145";
+const BYTEWATT_REPORT_CARD_BUILD = "146";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
