@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "122";
+const BYTEWATT_REPORT_CARD_BUILD = "123";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2863,12 +2863,14 @@ class ByteWattReportCard extends HTMLElement {
     });
     const powerWrap = this.shadowRoot.querySelector(".power-chart-wrap");
     powerWrap?.querySelectorAll("[data-power-hover]").forEach((zone) => {
-      zone.addEventListener("mouseenter", () => {
+      const setHover = () => {
         this._powerHoverIndex = Number(zone.dataset.powerHover || 0);
         this.render();
-      });
+      };
+      zone.addEventListener("pointerenter", setHover);
+      zone.addEventListener("click", setHover);
     });
-    powerWrap?.addEventListener("mouseleave", () => {
+    powerWrap?.addEventListener("pointerleave", () => {
       if (this._powerHoverIndex !== null) {
         this._powerHoverIndex = null;
         this.render();
