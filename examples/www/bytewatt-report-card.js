@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "139";
+const BYTEWATT_REPORT_CARD_BUILD = "140";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1156,22 +1156,42 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting) {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
-    const source = Object.keys(today).length ? today : totals;
+    const periodSummary = reporting?.power_diagram?.summary || {};
+    const sourceLayers = [periodSummary, today, totals].filter((layer) => layer && Object.keys(layer).length);
+    const sourceNumber = (...keys) => {
+      for (const layer of sourceLayers) {
+        for (const key of keys) {
+          const value = Number(layer?.[key]);
+          if (Number.isFinite(value) && value !== 0) {
+            return value;
+          }
+        }
+      }
+      for (const layer of sourceLayers) {
+        for (const key of keys) {
+          const value = Number(layer?.[key]);
+          if (Number.isFinite(value)) {
+            return value;
+          }
+        }
+      }
+      return 0;
+    };
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
-    const solar = Number(source.solar_generation ?? today.solar_generation) || 0;
-    const load = Number(source.load_consumption ?? today.load_consumption) || 0;
-    const grid = Number(source.grid_consumption ?? today.grid_consumption) || 0;
-    const feedIn = Number(source.feed_in ?? today.feed_in) || 0;
-    const batteryCharge = Number(source.battery_charge ?? today.battery_charge) || 0;
-    const batteryDischarge = Number(source.battery_discharge ?? today.battery_discharge) || 0;
+    const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
+    const load = sourceNumber("load_consumption", "total_house_consumption", "house_consumption", "load_consumption_today");
+    const grid = sourceNumber("grid_consumption", "total_grid_consumption", "grid_consumption_today");
+    const feedIn = sourceNumber("feed_in", "total_feed_in", "feed_in_today");
+    const batteryCharge = sourceNumber("battery_charge", "total_battery_charge", "battery_charged_today");
+    const batteryDischarge = sourceNumber("battery_discharge", "total_battery_discharge", "battery_discharged_today");
     const pvToHouse =
-      Number(source.pv_power_house ?? today.pv_power_house) ||
+      sourceNumber("pv_power_house", "pv_power_house_today") ||
       Math.max(load - grid - batteryDischarge, 0);
     const pvToBattery =
-      Number(source.pv_charging_battery ?? today.pv_charging_battery) ||
+      sourceNumber("pv_charging_battery", "pv_charging_battery_today") ||
       Math.max(batteryCharge - grid, 0);
     const gridToBattery =
-      Number(source.grid_battery_charge ?? today.grid_battery_charge) ||
+      sourceNumber("grid_battery_charge", "grid_battery_charge_today") ||
       0;
     const sourceTotal = Math.max(solar + batteryDischarge + grid, 1);
     const sinkTotal = Math.max(load + batteryCharge + feedIn, 1);
