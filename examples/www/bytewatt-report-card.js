@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "144";
+const BYTEWATT_REPORT_CARD_BUILD = "145";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -467,10 +467,13 @@ class ByteWattReportCard extends HTMLElement {
     this._reportAnchorDate = this._formatLocalDate(anchor);
     const period = this._reportPeriod || "day";
     const selected = this._recordsForPeriod(sorted, anchor, period);
+    const window = this._periodWindow(anchor, period);
+    const chartRecords = this._isDailyPeriod(period)
+      ? selected
+      : this._expandDailyRecords(selected, window);
     if (!selected.length) {
-      const fallbackWindow = this._periodWindow(anchor, period);
       const periodLabel = this._reportPeriodLabel(period);
-      this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : fallbackWindow.start);
+      this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
       return {
         reporting: {
           ...(baseReporting || {}),
@@ -482,8 +485,8 @@ class ByteWattReportCard extends HTMLElement {
             label: baseReporting?.label || "ByteWatt",
             period,
             period_label: periodLabel,
-            period_start: this._formatLocalDate(fallbackWindow.start),
-            period_end: this._formatLocalDate(fallbackWindow.end),
+            period_start: this._formatLocalDate(window.start),
+            period_end: this._formatLocalDate(window.end),
             saved_at: baseReporting?.meta?.saved_at || "",
           },
           power_diagram: {
@@ -491,20 +494,20 @@ class ByteWattReportCard extends HTMLElement {
             date:
               this._isDailyPeriod(period)
                 ? this._formatLocalDate(anchor)
-                : `${this._formatLocalDate(fallbackWindow.start)} -> ${this._formatLocalDate(fallbackWindow.end)}`,
+                : `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`,
           },
         },
         records: sorted,
+        chart_records: this._isDailyPeriod(period) ? sorted : this._expandDailyRecords(sorted, window),
         anchor,
         period,
-        window: fallbackWindow,
+        window,
         availableRange,
       };
     }
 
     const summary = this._periodSummary(selected);
     const latest = selected[selected.length - 1] || {};
-    const window = this._periodWindow(anchor, period);
     this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
@@ -585,7 +588,7 @@ class ByteWattReportCard extends HTMLElement {
           grid_battery_charge: periodTotals.grid_battery_charge,
         }
       : summary;
-    const powerDiagram = this._buildPeriodPowerDiagram(selected, powerSummary, latest, period, anchor, window);
+    const powerDiagram = this._buildPeriodPowerDiagram(chartRecords, powerSummary, latest, period, anchor, window);
 
     return {
       reporting: {
@@ -609,6 +612,7 @@ class ByteWattReportCard extends HTMLElement {
         summary,
       },
       records: selected,
+      chart_records: chartRecords,
       anchor,
       period,
       window,
@@ -1455,7 +1459,7 @@ class ByteWattReportCard extends HTMLElement {
     const periodLabel = reporting?.meta?.period_label || "Day";
     const periodStart = reporting?.meta?.period_start || "";
     const periodEnd = reporting?.meta?.period_end || periodStart;
-    const periodRecords = reporting?.records || [];
+    const periodRecords = reporting?.chart_records || reporting?.records || [];
     const chartWindow =
       periodStart && periodEnd
         ? {
@@ -1478,7 +1482,7 @@ class ByteWattReportCard extends HTMLElement {
       const date = this._parseLocalDate(value);
       return date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}` : String(value || "");
     };
-    const chartRecords = !this._isDailyPeriod(period) && chartWindow?.start && chartWindow?.end ? this._expandDailyRecords(periodRecords, chartWindow) : periodRecords;
+    const chartRecords = periodRecords;
     const bars = chartRecords
       .slice()
       .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
@@ -1648,8 +1652,9 @@ class ByteWattReportCard extends HTMLElement {
     const powerDiagram = reporting?.power_diagram || {};
     const series = powerDiagram.series || {};
     const times = powerDiagram.time || [];
-    const records = (periodContext?.records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
-    const chartRecords = !isDaily && periodContext?.window?.start && periodContext?.window?.end ? this._expandDailyRecords(records, periodContext.window) : records;
+    const sourceRecords = periodContext?.chart_records || periodContext?.records || [];
+    const records = sourceRecords.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const chartRecords = !isDaily && !periodContext?.chart_records && periodContext?.window?.start && periodContext?.window?.end ? this._expandDailyRecords(records, periodContext.window) : records;
     const formatShortDate = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}` : String(value || "");
