@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "132";
+const BYTEWATT_REPORT_CARD_BUILD = "133";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1668,8 +1668,19 @@ class ByteWattReportCard extends HTMLElement {
       consumed: { label: "Consumed", tone: "grid" },
     };
     const points = chart.points || [];
-    const plotCount = Math.max(points.length - 1, 1);
-    const width = Math.max(860, points.length * 60 + 140);
+    const fallbackPoint = {
+      key: chart.rangeLabel || chart.period || "selected",
+      label: chart.rangeLabel ? String(chart.rangeLabel).split(" -> ")[0] : "Selected",
+      hoverLabel: chart.rangeLabel || chart.period || "Selected period",
+      bat: this._parseFloat(chart.totals.bat ?? reporting?.live?.soc ?? reporting?.power_diagram?.summary?.soc ?? 0),
+      load: this._parseFloat(chart.totals.load ?? reporting?.today?.load_consumption ?? reporting?.totals?.house_consumption ?? 0),
+      solar: this._parseFloat(chart.totals.solar ?? reporting?.today?.solar_generation ?? reporting?.totals?.solar_generation ?? 0),
+      feed_in: this._parseFloat(chart.totals.feed_in ?? reporting?.today?.feed_in ?? reporting?.totals?.feed_in ?? 0),
+      consumed: this._parseFloat(chart.totals.consumed ?? reporting?.today?.grid_consumption ?? reporting?.totals?.grid_consumption ?? 0),
+    };
+    const renderPoints = points.length ? points : [fallbackPoint];
+    const plotCount = Math.max(renderPoints.length - 1, 1);
+    const width = Math.max(860, renderPoints.length * 60 + 140);
     const height = 340;
     const left = 64;
     const right = 64;
@@ -1679,8 +1690,8 @@ class ByteWattReportCard extends HTMLElement {
     const plotWidth = width - left - right;
     const xFor = (index) => left + (plotWidth * index) / plotCount;
     const powerSeriesKeys = ["load", "solar", "feed_in", "consumed"];
-    const selectedPowerValues = powerSeriesKeys.flatMap((key) => (this._chartSeries?.[key] ? points.map((point) => this._parseFloat(point[key])) : []));
-    const selectedBatValues = this._chartSeries?.bat ? points.map((point) => this._parseFloat(point.bat)) : [];
+    const selectedPowerValues = powerSeriesKeys.flatMap((key) => (this._chartSeries?.[key] ? renderPoints.map((point) => this._parseFloat(point[key])) : []));
+    const selectedBatValues = this._chartSeries?.bat ? renderPoints.map((point) => this._parseFloat(point.bat)) : [];
     const powerMax = this._niceChartMax(Math.max(...selectedPowerValues, renderPoints.length ? Math.max(...renderPoints.map((point) => this._parseFloat(point.load || point.solar || point.feed_in || point.consumed)), 0) : 0), 0.1);
     const batMax = Math.max(...selectedBatValues, 100);
     const leftLabel = chart.useEnergyUnits ? "ENERGY (kWh)" : "POWER (kW)";
