@@ -1207,9 +1207,9 @@ class ByteWattReportCard extends HTMLElement {
     const feedIn = sourceNumber("feed_in", "total_feed_in", "feed_in_today");
     const batteryCharge = sourceNumber("battery_charge", "total_battery_charge", "battery_charged_today");
     const batteryDischarge = sourceNumber("battery_discharge", "total_battery_discharge", "battery_discharged_today");
-    const pvPowerHouse = sourceValue("pv_power_house", "pv_power_house_today");
-    const pvChargingBattery = sourceValue("pv_charging_battery", "pv_charging_battery_today");
-    const gridBatteryCharge = sourceValue("grid_battery_charge", "grid_battery_charge_today");
+    const pvPowerHouse = sourceNumber("pv_power_house", "pv_power_house_today", "pv_power_house");
+    const pvChargingBattery = sourceNumber("pv_charging_battery", "pv_charging_battery_today", "pv_charging_battery");
+    const gridBatteryCharge = sourceNumber("grid_battery_charge", "grid_battery_charge_today", "grid_battery_charge");
     const pvToHouse =
       (Number.isFinite(pvPowerHouse) ? pvPowerHouse : undefined) ??
       Math.max(load - grid - batteryDischarge, 0);
