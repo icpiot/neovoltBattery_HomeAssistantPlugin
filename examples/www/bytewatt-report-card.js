@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "134";
+const BYTEWATT_REPORT_CARD_BUILD = "135";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1156,6 +1156,7 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting) {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
+    const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = Number(today.solar_generation) || 0;
     const load = Number(today.load_consumption) || 0;
     const grid = Number(today.grid_consumption) || 0;
@@ -1184,14 +1185,23 @@ class ByteWattReportCard extends HTMLElement {
     const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1 + 140} ${y1}, ${x2 - 140} ${y2}, ${x2} ${y2}`;
     const pct = (value, total) => `${Math.max(0, Math.round((Math.max(value, 0) / Math.max(total, 1)) * 1000) / 10).toFixed(1)}%`;
 
-    const cards = {
-      solar: { x: 18, y: 24, w: 176, h: 190, accent: "var(--bw-solar)", title: "SOLAR", value: this._fmtEnergy(solar), sub: pct(solar, sourceTotal), meta: "Produced" },
-      batteryOut: { x: 18, y: 228, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryDischarge), sub: pct(batteryDischarge, sourceTotal), meta: "Discharged" },
-      grid: { x: 18, y: 370, w: 176, h: 118, accent: "var(--bw-grid)", title: "GRID", value: this._fmtEnergy(grid), sub: pct(grid, sourceTotal), meta: "Imported" },
-      batteryIn: { x: 746, y: 24, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryCharge), sub: pct(batteryCharge, sinkTotal), meta: "Charged" },
-      load: { x: 746, y: 166, w: 176, h: 190, accent: "var(--bw-load)", title: "LOAD", value: this._fmtEnergy(load), sub: pct(load, sinkTotal), meta: "Consumed" },
-      feed: { x: 746, y: 370, w: 176, h: 118, accent: "var(--bw-feed)", title: "GRID", value: this._fmtEnergy(feedIn), sub: pct(feedIn, sinkTotal), meta: "Feed-in" },
-    };
+    const cards = compactSankey
+      ? {
+          solar: { x: 18, y: 18, w: 168, h: 168, accent: "var(--bw-solar)", title: "SOLAR", value: this._fmtEnergy(solar), sub: pct(solar, sourceTotal), meta: "Produced" },
+          batteryOut: { x: 18, y: 202, w: 168, h: 112, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryDischarge), sub: pct(batteryDischarge, sourceTotal), meta: "Discharged" },
+          grid: { x: 18, y: 326, w: 168, h: 96, accent: "var(--bw-grid)", title: "GRID", value: this._fmtEnergy(grid), sub: pct(grid, sourceTotal), meta: "Imported" },
+          batteryIn: { x: 754, y: 18, w: 168, h: 112, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryCharge), sub: pct(batteryCharge, sinkTotal), meta: "Charged" },
+          load: { x: 754, y: 146, w: 168, h: 168, accent: "var(--bw-load)", title: "LOAD", value: this._fmtEnergy(load), sub: pct(load, sinkTotal), meta: "Consumed" },
+          feed: { x: 754, y: 326, w: 168, h: 96, accent: "var(--bw-feed)", title: "GRID", value: this._fmtEnergy(feedIn), sub: pct(feedIn, sinkTotal), meta: "Feed-in" },
+        }
+      : {
+          solar: { x: 18, y: 24, w: 176, h: 190, accent: "var(--bw-solar)", title: "SOLAR", value: this._fmtEnergy(solar), sub: pct(solar, sourceTotal), meta: "Produced" },
+          batteryOut: { x: 18, y: 228, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryDischarge), sub: pct(batteryDischarge, sourceTotal), meta: "Discharged" },
+          grid: { x: 18, y: 370, w: 176, h: 118, accent: "var(--bw-grid)", title: "GRID", value: this._fmtEnergy(grid), sub: pct(grid, sourceTotal), meta: "Imported" },
+          batteryIn: { x: 746, y: 24, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryCharge), sub: pct(batteryCharge, sinkTotal), meta: "Charged" },
+          load: { x: 746, y: 166, w: 176, h: 190, accent: "var(--bw-load)", title: "LOAD", value: this._fmtEnergy(load), sub: pct(load, sinkTotal), meta: "Consumed" },
+          feed: { x: 746, y: 370, w: 176, h: 118, accent: "var(--bw-feed)", title: "GRID", value: this._fmtEnergy(feedIn), sub: pct(feedIn, sinkTotal), meta: "Feed-in" },
+        };
 
     const cardHtml = (card) => `
       <g class="sankey-node-group" transform="translate(${card.x}, ${card.y})">
@@ -1205,12 +1215,12 @@ class ByteWattReportCard extends HTMLElement {
       </g>
     `;
 
-    const pathHtml = (source, target, value, sourceY, targetY, gradientId) => {
+    const pathHtml = (source, target, value, sourceRatio, targetRatio, gradientId) => {
       if (!(value > 0)) return "";
       const startX = cards[source].x + cards[source].w;
       const endX = cards[target].x;
-      const startY = cards[source].y + sourceY;
-      const endY = cards[target].y + targetY;
+      const startY = cards[source].y + Math.round(cards[source].h * sourceRatio);
+      const endY = cards[target].y + Math.round(cards[target].h * targetRatio);
       return `
         <path class="sankey-link" d="${curve(startX, startY, endX, endY)}" stroke="url(#${gradientId})" stroke-width="${thickness(value)}" opacity="0.92"></path>
       `;
@@ -1256,13 +1266,13 @@ class ByteWattReportCard extends HTMLElement {
     ];
 
     return `
-      <section class="panel sankey-panel">
-        <div class="panel-header">
-          <div class="panel-title">Energy Flow Sankey</div>
-          <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""}${periodRecords ? ` | ${periodRecords} records` : ""}</div>
-        </div>
+        <section class="panel sankey-panel">
+          <div class="panel-header">
+            <div class="panel-title">Energy Flow Sankey</div>
+            <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""}${periodRecords ? ` | ${periodRecords} records` : ""}</div>
+          </div>
         <div class="sankey-stage">
-          <svg class="sankey-svg" viewBox="0 0 940 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
+          <svg class="sankey-svg" viewBox="${compactSankey ? "0 0 940 440" : "0 0 940 520"}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
             <defs>
               <filter id="sankeyShadow" x="-10%" y="-10%" width="120%" height="120%">
                 <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"></feDropShadow>
@@ -1270,11 +1280,11 @@ class ByteWattReportCard extends HTMLElement {
             </defs>
             ${defs}
             <g class="sankey-links">
-              ${pathHtml("solar", "load", pvToHouse, 98, 88, "sankey-solar-load")}
-              ${pathHtml("solar", "batteryIn", pvToBattery, 132, 54, "sankey-solar-battery")}
-              ${pathHtml("solar", "feed", feedIn, 156, 42, "sankey-solar-feed")}
-              ${pathHtml("grid", "batteryIn", gridToBattery, 50, 80, "sankey-grid-battery")}
-              ${pathHtml("batteryOut", "load", batteryDischarge, 62, 138, "sankey-battery-load")}
+              ${pathHtml("solar", "load", pvToHouse, 0.52, 0.46, "sankey-solar-load")}
+              ${pathHtml("solar", "batteryIn", pvToBattery, 0.70, 0.42, "sankey-solar-battery")}
+              ${pathHtml("solar", "feed", feedIn, 0.82, 0.36, "sankey-solar-feed")}
+              ${pathHtml("grid", "batteryIn", gridToBattery, 0.42, 0.62, "sankey-grid-battery")}
+              ${pathHtml("batteryOut", "load", batteryDischarge, 0.48, 0.73, "sankey-battery-load")}
             </g>
             ${cardHtml(cards.solar)}
             ${cardHtml(cards.batteryOut)}
@@ -2898,6 +2908,26 @@ class ByteWattReportCard extends HTMLElement {
           }
           .detail-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 1440px) {
+          .sankey-stage {
+            padding:12px;
+          }
+          .sankey-summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .sankey-summary {
+            min-height:64px;
+            padding:10px 12px;
+          }
+          .sankey-node-value {
+            font-size:20px;
+          }
+          .sankey-node-meta,
+          .sankey-node-sub,
+          .sankey-chip {
+            font-size:11px;
           }
         }
         @media (max-width: 860px) {
