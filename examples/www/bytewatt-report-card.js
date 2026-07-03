@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "133";
+const BYTEWATT_REPORT_CARD_BUILD = "134";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1614,17 +1614,6 @@ class ByteWattReportCard extends HTMLElement {
           feed_in: this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
           consumed: this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
         }));
-    const fallbackPoint = {
-      key: chart.rangeLabel || chart.period || "selected",
-      label: this._isDailyPeriod(period) ? (chart.rangeLabel ? String(chart.rangeLabel).split(" -> ")[0] : "Selected") : formatDisplayDate(periodContext?.window?.start || periodContext?.anchor || reporting?.meta?.period_start || ""),
-      hoverLabel: chart.rangeLabel || periodContext?.window?.start || chart.period || "Selected period",
-      bat: this._parseFloat(chart.totals.bat ?? reporting?.live?.soc ?? reporting?.power_diagram?.summary?.soc ?? 0),
-      load: this._parseFloat(chart.totals.load ?? reporting?.today?.load_consumption ?? reporting?.totals?.house_consumption ?? 0),
-      solar: this._parseFloat(chart.totals.solar ?? reporting?.today?.solar_generation ?? reporting?.totals?.solar_generation ?? 0),
-      feed_in: this._parseFloat(chart.totals.feed_in ?? reporting?.today?.feed_in ?? reporting?.totals?.feed_in ?? 0),
-      consumed: this._parseFloat(chart.totals.consumed ?? reporting?.today?.grid_consumption ?? reporting?.totals?.grid_consumption ?? 0),
-    };
-    const renderPoints = points.length ? points : [fallbackPoint];
 
     const summary = periodContext?.summary || {};
     const totals = isDaily
