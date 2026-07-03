@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "143";
+const BYTEWATT_REPORT_CARD_BUILD = "144";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1178,9 +1178,13 @@ class ByteWattReportCard extends HTMLElement {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
-    const sourceLayers = [periodSummary, reporting?.power_diagram?.summary || {}, today, totals].filter((layer) => layer && Object.keys(layer).length);
-    const sourceValue = (...keys) => {
-      for (const layer of sourceLayers) {
+    const isDailyPeriod = this._isDailyPeriod(reporting?.meta?.period || this._reportPeriod || "day");
+    const periodLayers = isDailyPeriod
+      ? [periodSummary, reporting?.power_diagram?.summary || {}, today, totals]
+      : [periodSummary, reporting?.power_diagram?.summary || {}];
+    const sourceNumber = (...keys) => {
+      for (const layer of periodLayers) {
+        if (!layer || !Object.keys(layer).length) continue;
         for (const key of keys) {
           if (Object.prototype.hasOwnProperty.call(layer, key)) {
             const value = Number(layer?.[key]);
@@ -1190,11 +1194,7 @@ class ByteWattReportCard extends HTMLElement {
           }
         }
       }
-      return undefined;
-    };
-    const sourceNumber = (...keys) => {
-      const value = sourceValue(...keys);
-      return Number.isFinite(value) ? value : 0;
+      return 0;
     };
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
@@ -1786,11 +1786,11 @@ class ByteWattReportCard extends HTMLElement {
     `;
     const summaryBoxes = `
       <div class="sankey-summary-grid power-summary-grid">
-        ${this._summaryTile("BAT SOC", this._fmtPercent(((hoverPoint || renderPoints[renderPoints.length - 1] || renderPoints[0] || {}).bat ?? chart.totals.bat)), "bat")}
-        ${this._summaryTile("Load", formatPowerValue((hoverPoint || renderPoints[renderPoints.length - 1] || renderPoints[0] || {}).load ?? chart.totals.load), "load")}
-        ${this._summaryTile("Solar", formatPowerValue((hoverPoint || renderPoints[renderPoints.length - 1] || renderPoints[0] || {}).solar ?? chart.totals.solar), "solar")}
-        ${this._summaryTile("Feed-in", formatPowerValue((hoverPoint || renderPoints[renderPoints.length - 1] || renderPoints[0] || {}).feed_in ?? chart.totals.feed_in), "feed")}
-        ${this._summaryTile("Grid", formatPowerValue((hoverPoint || renderPoints[renderPoints.length - 1] || renderPoints[0] || {}).consumed ?? chart.totals.consumed), "grid")}
+        ${this._summaryTile("BAT SOC", this._fmtPercent(chart.totals.bat), "bat")}
+        ${this._summaryTile("Load", formatPowerValue(chart.totals.load), "load")}
+        ${this._summaryTile("Solar", formatPowerValue(chart.totals.solar), "solar")}
+        ${this._summaryTile("Feed-in", formatPowerValue(chart.totals.feed_in), "feed")}
+        ${this._summaryTile("Grid", formatPowerValue(chart.totals.consumed), "grid")}
       </div>
     `;
     const hoverLines = hoverPoint
