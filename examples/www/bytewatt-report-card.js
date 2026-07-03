@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "145";
+const BYTEWATT_REPORT_CARD_BUILD = "146";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -574,6 +574,29 @@ class ByteWattReportCard extends HTMLElement {
         ? periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], [])
         : summary.grid_battery_charge,
     };
+    const sankey = this._isDailyPeriod(period)
+      ? {
+          solar_generation: summary.solar_generation_today,
+          load_consumption: summary.load_consumption_today,
+          feed_in: summary.feed_in_today,
+          grid_consumption: summary.grid_consumption_today,
+          battery_charge: summary.battery_charged_today,
+          battery_discharge: summary.battery_discharged_today,
+          pv_power_house: periodAbsolute([["pv_power_house"], ["totals", "pv_power_house"]], []),
+          pv_charging_battery: periodAbsolute([["pv_charging_battery"], ["totals", "pv_charging_battery"]], []),
+          grid_battery_charge: periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], []),
+        }
+      : {
+          solar_generation: summary.total_solar_generation,
+          load_consumption: summary.total_house_consumption,
+          feed_in: summary.total_feed_in,
+          grid_consumption: summary.total_grid_consumption,
+          battery_charge: summary.total_battery_charge,
+          battery_discharge: summary.total_battery_discharge,
+          pv_power_house: summary.pv_power_house,
+          pv_charging_battery: summary.pv_charging_battery,
+          grid_battery_charge: summary.grid_battery_charge,
+        };
     const powerSummary = this._isDailyPeriod(period)
       ? {
           ...summary,
@@ -608,6 +631,7 @@ class ByteWattReportCard extends HTMLElement {
         live,
         today: periodToday,
         totals: periodTotals,
+        sankey,
         power_diagram: powerDiagram,
         summary,
       },
@@ -1179,21 +1203,20 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderSankeyPanel(reporting) {
-    const today = reporting?.today || {};
-    const totals = reporting?.totals || {};
+    const sankey = reporting?.sankey || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
     const isDailyPeriod = this._isDailyPeriod(reporting?.meta?.period || this._reportPeriod || "day");
-    const periodLayers = [totals, periodSummary, reporting?.power_diagram?.summary || {}, today];
     const sourceNumber = (...keys) => {
-      for (const layer of periodLayers) {
-        if (!layer || !Object.keys(layer).length) continue;
-        for (const key of keys) {
-          if (Object.prototype.hasOwnProperty.call(layer, key)) {
-            const value = Number(layer?.[key]);
-            if (Number.isFinite(value)) {
-              return value;
-            }
-          }
+      for (const key of keys) {
+        const value = Number(sankey?.[key]);
+        if (Number.isFinite(value)) {
+          return value;
+        }
+      }
+      for (const key of keys) {
+        const value = Number(periodSummary?.[key]);
+        if (Number.isFinite(value)) {
+          return value;
         }
       }
       return 0;
