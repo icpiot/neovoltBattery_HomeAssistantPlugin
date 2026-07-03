@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "138";
+const BYTEWATT_REPORT_CARD_BUILD = "139";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1156,7 +1156,7 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting) {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
-    const source = Object.keys(totals).length ? totals : today;
+    const source = Object.keys(today).length ? today : totals;
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = Number(source.solar_generation ?? today.solar_generation) || 0;
     const load = Number(source.load_consumption ?? today.load_consumption) || 0;
