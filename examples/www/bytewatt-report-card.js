@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "129";
+const BYTEWATT_REPORT_CARD_BUILD = "130";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -16,6 +16,11 @@ class ByteWattReportCard extends HTMLElement {
       solar: true,
       feed_in: true,
       consumed: true,
+    };
+    this._usageMixSeries = this._usageMixSeries || {
+      solar: true,
+      battery: true,
+      grid: true,
     };
     this._powerHoverIndex = this._powerHoverIndex ?? null;
     this._historyPeriod = this._historyPeriod || "7d";
@@ -1462,9 +1467,9 @@ class ByteWattReportCard extends HTMLElement {
         const x = left + index * barStep + (barStep - barWidth) / 2;
         const totalHeight = bar.load > 0 ? Math.max((bar.load / maxLoad) * plotHeight, 10) : 0;
         const scale = bar.load > 0 ? totalHeight / bar.load : 0;
-        const solarHeight = bar.solar * scale;
-        const batteryHeight = bar.battery * scale;
-        const gridHeight = bar.grid * scale;
+        const solarHeight = this._usageMixSeries?.solar ? bar.solar * scale : 0;
+        const batteryHeight = this._usageMixSeries?.battery ? bar.battery * scale : 0;
+        const gridHeight = this._usageMixSeries?.grid ? bar.grid * scale : 0;
         const totalLabelY = bottom - totalHeight - 10;
         const barBottom = bottom;
         const gridTop = barBottom - gridHeight;
@@ -1486,9 +1491,9 @@ class ByteWattReportCard extends HTMLElement {
 
     const legend = `
       <div class="stacked-legend">
-        <div class="legend-chip active" style="background:rgba(240,196,25,0.14); border-color:rgba(240,196,25,0.5); color:#7a6100;">Solar</div>
-        <div class="legend-chip active" style="background:rgba(47,201,110,0.14); border-color:rgba(47,201,110,0.5); color:#1f6b42;">Battery</div>
-        <div class="legend-chip active" style="background:rgba(152,162,168,0.14); border-color:rgba(152,162,168,0.5); color:#516075;">Grid</div>
+        <button class="legend-chip ${this._usageMixSeries?.solar ? "active" : ""}" data-usage-series="solar" style="background:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.solar ? "#7a6100" : "#64748b"};">Solar</button>
+        <button class="legend-chip ${this._usageMixSeries?.battery ? "active" : ""}" data-usage-series="battery" style="background:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.battery ? "#1f6b42" : "#64748b"};">Battery</button>
+        <button class="legend-chip ${this._usageMixSeries?.grid ? "active" : ""}" data-usage-series="grid" style="background:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.grid ? "#516075" : "#64748b"};">Grid</button>
       </div>
     `;
     const chartBody = bars.length
@@ -2996,6 +3001,17 @@ class ByteWattReportCard extends HTMLElement {
         this._chartSeries = {
           ...(this._chartSeries || {}),
           [key]: !this._chartSeries?.[key],
+        };
+        this.render();
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-usage-series]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.usageSeries;
+        if (!key) return;
+        this._usageMixSeries = {
+          ...(this._usageMixSeries || {}),
+          [key]: !this._usageMixSeries?.[key],
         };
         this.render();
       });
