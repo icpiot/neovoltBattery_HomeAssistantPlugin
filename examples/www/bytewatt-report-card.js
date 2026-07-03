@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "125";
+const BYTEWATT_REPORT_CARD_BUILD = "126";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -473,6 +473,19 @@ class ByteWattReportCard extends HTMLElement {
     this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
+    const periodAbsolute = (paths, fallbackPaths = []) => {
+      const latestValue = this._recordValue(latest, paths);
+      if (latestValue !== undefined) {
+        return this._parseFloat(latestValue);
+      }
+      for (const fallbackPath of fallbackPaths) {
+        const fallbackValue = this._recordValue(baseReporting, [fallbackPath]);
+        if (fallbackValue !== undefined) {
+          return this._parseFloat(fallbackValue);
+        }
+      }
+      return 0;
+    };
     const totalSolar = summary.total_solar_generation || 0;
     const totalLoad = summary.total_house_consumption || 0;
     const totalFeed = summary.total_feed_in || 0;
@@ -495,17 +508,49 @@ class ByteWattReportCard extends HTMLElement {
       total_income: this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
     };
     const periodTotals = {
-      solar_generation: summary.total_solar_generation,
-      feed_in: summary.total_feed_in,
-      battery_charge: summary.total_battery_charge,
-      battery_discharge: summary.total_battery_discharge,
-      house_consumption: summary.total_house_consumption,
-      grid_consumption: summary.total_grid_consumption,
-      pv_power_house: summary.pv_power_house,
-      pv_charging_battery: summary.pv_charging_battery,
-      grid_battery_charge: summary.grid_battery_charge,
+      solar_generation: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_solar_generation"], ["totals", "solar_generation"]], [["today", "solar_generation"], ["solar_generation_today"]])
+        : summary.total_solar_generation,
+      feed_in: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_feed_in"], ["totals", "feed_in"]], [["today", "feed_in"], ["feed_in_today"]])
+        : summary.total_feed_in,
+      battery_charge: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_battery_charge"], ["totals", "battery_charge"]], [["today", "battery_charge"], ["battery_charged_today"]])
+        : summary.total_battery_charge,
+      battery_discharge: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_battery_discharge"], ["totals", "battery_discharge"]], [["today", "battery_discharge"], ["battery_discharged_today"]])
+        : summary.total_battery_discharge,
+      house_consumption: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_house_consumption"], ["totals", "house_consumption"]], [["today", "load_consumption"], ["load_consumption_today"]])
+        : summary.total_house_consumption,
+      grid_consumption: this._isDailyPeriod(period)
+        ? periodAbsolute([["total_grid_consumption"], ["totals", "grid_consumption"]], [["today", "grid_consumption"], ["grid_consumption_today"]])
+        : summary.total_grid_consumption,
+      pv_power_house: this._isDailyPeriod(period)
+        ? periodAbsolute([["pv_power_house"], ["totals", "pv_power_house"]], [])
+        : summary.pv_power_house,
+      pv_charging_battery: this._isDailyPeriod(period)
+        ? periodAbsolute([["pv_charging_battery"], ["totals", "pv_charging_battery"]], [])
+        : summary.pv_charging_battery,
+      grid_battery_charge: this._isDailyPeriod(period)
+        ? periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], [])
+        : summary.grid_battery_charge,
     };
-    const powerDiagram = this._buildPeriodPowerDiagram(selected, summary, latest, period, anchor, window);
+    const powerSummary = this._isDailyPeriod(period)
+      ? {
+          ...summary,
+          total_solar_generation: periodTotals.solar_generation,
+          total_feed_in: periodTotals.feed_in,
+          total_battery_charge: periodTotals.battery_charge,
+          total_battery_discharge: periodTotals.battery_discharge,
+          total_house_consumption: periodTotals.house_consumption,
+          total_grid_consumption: periodTotals.grid_consumption,
+          pv_power_house: periodTotals.pv_power_house,
+          pv_charging_battery: periodTotals.pv_charging_battery,
+          grid_battery_charge: periodTotals.grid_battery_charge,
+        }
+      : summary;
+    const powerDiagram = this._buildPeriodPowerDiagram(selected, powerSummary, latest, period, anchor, window);
 
     return {
       reporting: {
