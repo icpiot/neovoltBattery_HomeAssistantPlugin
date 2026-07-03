@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "136";
+const BYTEWATT_REPORT_CARD_BUILD = "137";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1412,10 +1412,10 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderChart(reporting) {
+    const period = reporting?.meta?.period || this._reportPeriod || "day";
     const periodLabel = reporting?.meta?.period_label || "Day";
     const periodStart = reporting?.meta?.period_start || "";
     const periodEnd = reporting?.meta?.period_end || periodStart;
-    const periodRecords = reporting?.records || [];
     const formatDisplay = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
@@ -1426,60 +1426,61 @@ class ByteWattReportCard extends HTMLElement {
           ? formatDisplay(periodStart)
           : `${formatDisplay(periodStart)} -> ${formatDisplay(periodEnd)}`
         : formatDisplay(reporting?.power_diagram?.date || "");
-    const pad = (value) => String(value).padStart(2, "0");
-    const shortDate = (value) => {
-      const date = this._parseLocalDate(value);
-      return date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}` : String(value || "");
-    };
-    const bars = periodRecords
-      .slice()
-      .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
-      .map((record) => {
-        const load = Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
-        const solarRaw = Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"], ["pv_power_house"]]), 0);
-        const batteryRaw = Math.max(this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]), 0);
-        const solar = Math.min(solarRaw, load);
-        const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
-        const grid = Math.max(load - solar - battery, 0);
-        return {
-          label: shortDate(record.record_date),
-          fullLabel: record.record_date || "",
-          load,
-          solar,
-          battery,
-          grid,
-          tooltip: `${record.record_date || ""}: load ${this._fmtEnergy(load)} | solar ${this._fmtEnergy(solar)} | battery ${this._fmtEnergy(battery)} | grid ${this._fmtEnergy(grid)}`,
-        };
-      });
-    if (!bars.length) {
-      const fallbackTotals = reporting?.totals || reporting?.today || {};
-      const fallbackLoad = Math.max(
-        this._parseFloat(
-          fallbackTotals.house_consumption ??
-            fallbackTotals.load_consumption ??
-            fallbackTotals.total_house_consumption ??
-            fallbackTotals.total_load ??
-            fallbackTotals.load ??
-            0
-        ),
-        0
-      );
-      const fallbackSolar = Math.max(this._parseFloat(fallbackTotals.solar_generation ?? fallbackTotals.total_solar_generation ?? fallbackTotals.solar ?? 0), 0);
-      const fallbackBattery = Math.max(this._parseFloat(fallbackTotals.battery_discharge ?? fallbackTotals.total_battery_discharge ?? fallbackTotals.battery ?? 0), 0);
-      const fallbackGrid = Math.max(this._parseFloat(fallbackTotals.grid_consumption ?? fallbackTotals.total_grid_consumption ?? fallbackTotals.grid ?? 0), 0);
-      if (fallbackLoad > 0 || fallbackSolar > 0 || fallbackBattery > 0 || fallbackGrid > 0) {
-        const fallbackLabel = shortDate(reporting?.meta?.period_end || reporting?.meta?.period_start || reporting?.power_diagram?.date || "");
-        bars.push({
-          label: fallbackLabel || periodLabel,
-          fullLabel: periodRange || periodLabel,
-          load: fallbackLoad,
-          solar: Math.min(fallbackSolar, fallbackLoad),
-          battery: Math.min(fallbackBattery, Math.max(fallbackLoad - fallbackSolar, 0)),
-          grid: Math.max(fallbackGrid, 0),
-          tooltip: `${periodRange || fallbackLabel || periodLabel}: load ${this._fmtEnergy(fallbackLoad)} | solar ${this._fmtEnergy(fallbackSolar)} | battery ${this._fmtEnergy(fallbackBattery)} | grid ${this._fmtEnergy(fallbackGrid)}`,
-        });
-      }
-    }
+    const fallbackTotals = reporting?.totals || reporting?.today || {};
+    const load = Math.max(
+      this._parseFloat(
+        fallbackTotals.house_consumption ??
+          fallbackTotals.load_consumption ??
+          fallbackTotals.total_house_consumption ??
+          fallbackTotals.total_load ??
+          fallbackTotals.load ??
+          0
+      ),
+      0
+    );
+    const solar = Math.max(
+      this._parseFloat(
+        fallbackTotals.pv_power_house ??
+          fallbackTotals.solar_generation ??
+          fallbackTotals.total_solar_generation ??
+          fallbackTotals.solar ??
+          0
+      ),
+      0
+    );
+    const battery = Math.max(
+      this._parseFloat(
+        fallbackTotals.battery_discharge ??
+          fallbackTotals.total_battery_discharge ??
+          fallbackTotals.battery ??
+          0
+      ),
+      0
+    );
+    const grid = Math.max(
+      this._parseFloat(
+        fallbackTotals.grid_consumption ??
+          fallbackTotals.total_grid_consumption ??
+          fallbackTotals.grid ??
+          0
+      ),
+      0
+    );
+    const resolvedLoad = Math.max(load, solar + battery + grid, 0);
+    const resolvedSolar = Math.min(solar || Math.max(resolvedLoad - battery - grid, 0), resolvedLoad);
+    const resolvedBattery = Math.min(battery || Math.max(resolvedLoad - resolvedSolar - grid, 0), Math.max(resolvedLoad - resolvedSolar, 0));
+    const resolvedGrid = Math.max(resolvedLoad - resolvedSolar - resolvedBattery, grid);
+    const bars = [
+      {
+        label: periodRange || periodLabel,
+        fullLabel: periodRange || periodLabel,
+        load: resolvedLoad,
+        solar: resolvedSolar,
+        battery: resolvedBattery,
+        grid: resolvedGrid,
+        tooltip: `${periodRange || periodLabel}: load ${this._fmtEnergy(resolvedLoad)} | solar ${this._fmtEnergy(resolvedSolar)} | battery ${this._fmtEnergy(resolvedBattery)} | grid ${this._fmtEnergy(resolvedGrid)}`,
+      },
+    ].filter((bar) => bar.load > 0 || bar.solar > 0 || bar.battery > 0 || bar.grid > 0);
     const maxLoad = this._niceChartMax(Math.max(...bars.map((bar) => bar.load), 0), 0.1);
     const formatUsageMixEnergy = (value) => {
       const number = Math.max(this._parseFloat(value), 0);
@@ -1488,7 +1489,7 @@ class ByteWattReportCard extends HTMLElement {
       }
       return `${this._fmtNumber(number, 2)} kWh`;
     };
-    const width = Math.max(760, bars.length * 74 + 110);
+    const width = Math.max(760, 220);
     const height = 340;
     const left = 68;
     const top = 30;
@@ -1496,8 +1497,8 @@ class ByteWattReportCard extends HTMLElement {
     const bottom = top + plotHeight;
     const plotWidth = width - left - 32;
     const barStep = plotWidth / Math.max(bars.length, 1);
-    const barWidth = Math.max(20, Math.min(34, barStep * 0.56));
-    const chartNote = "Total height = load. Stacks show solar, battery, and grid contributions.";
+    const barWidth = Math.max(42, Math.min(82, barStep * 0.42));
+    const chartNote = "Total height = load for the selected period. Stacks show solar, battery, and grid contributions.";
     const yTicks = [0, 0.25, 0.5, 0.75, 1];
 
     const segmentRect = (x, y, w, h, fill, radiusTop = false, radiusBottom = false) => {
@@ -1571,7 +1572,7 @@ class ByteWattReportCard extends HTMLElement {
             ${barsHtml}
             <text x="16" y="${top + 16}" class="axis-label">kWh</text>
             <text x="${width - 56}" y="${top + 16}" class="axis-label">LOAD</text>
-            <text x="${left + plotWidth / 2}" y="${bottom + 50}" text-anchor="middle" class="axis-label">Date</text>
+            <text x="${left + plotWidth / 2}" y="${bottom + 50}" text-anchor="middle" class="axis-label">${this._isDailyPeriod(period) ? "Date" : "Date Range"}</text>
           </svg>
         `
       : `<div class="empty stacked-empty">${usageVisible ? "No usage mix data for the selected period yet." : "All usage mix series are hidden."}</div>`;
@@ -1581,7 +1582,7 @@ class ByteWattReportCard extends HTMLElement {
         <div class="panel-header stacked-header">
           <div>
             <div class="panel-title">${this._escape(periodLabel)} Usage Mix</div>
-            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} rows` : ""}</div>
+            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} period total` : ""}</div>
             <div class="panel-note">${this._escape(chartNote)}</div>
           </div>
           <button class="download-btn" data-download-report>Download CSV</button>
