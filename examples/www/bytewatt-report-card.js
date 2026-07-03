@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "123";
+const BYTEWATT_REPORT_CARD_BUILD = "124";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -409,6 +409,9 @@ class ByteWattReportCard extends HTMLElement {
       grid_consumption: summary.grid_consumption_today,
       battery_charge: summary.battery_charged_today,
       battery_discharge: summary.battery_discharged_today,
+      pv_power_house: summary.pv_power_house,
+      pv_charging_battery: summary.pv_charging_battery,
+      grid_battery_charge: summary.grid_battery_charge,
       self_consumption: totalSolar > 0 ? Math.max(((totalSolar - totalFeed) / totalSolar) * 100, 0) : baseToday.self_consumption,
       self_sufficiency:
         totalLoad > 0 ? Math.max(((totalLoad - summary.total_grid_consumption) / totalLoad) * 100, 0) : baseToday.self_sufficiency,
@@ -1290,7 +1293,7 @@ class ByteWattReportCard extends HTMLElement {
       .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
       .map((record) => {
         const load = Math.max(this._parseFloat(record.load_consumption_today), 0);
-        const solarRaw = Math.max(this._parseFloat(record.pv_power_house), 0);
+        const solarRaw = Math.max(this._parseFloat(record.solar_generation_today ?? record.pv_power_house), 0);
         const batteryRaw = Math.max(this._parseFloat(record.battery_discharged_today), 0);
         const solar = Math.min(solarRaw, load);
         const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
@@ -1537,11 +1540,11 @@ class ByteWattReportCard extends HTMLElement {
     const periodSummary = periodContext?.summary || {};
     const summaryBoxes = `
       <div class="sankey-summary-grid power-summary-grid">
-        ${this._summaryTile("Solar > Load", formatPowerValue(periodSummary.pv_power_house ?? chart.totals.load), "solar")}
-        ${this._summaryTile("Solar > Battery", formatPowerValue(periodSummary.pv_charging_battery ?? chart.totals.solar), "battery")}
-        ${this._summaryTile("Solar > Feed-in", formatPowerValue(periodSummary.total_feed_in ?? chart.totals.feed_in), "feed")}
-        ${this._summaryTile("Grid > Battery", formatPowerValue(periodSummary.grid_battery_charge ?? chart.totals.consumed), "grid")}
-        ${this._summaryTile("Battery > Load", formatPowerValue(periodSummary.total_battery_discharge ?? chart.totals.load), "load")}
+        ${this._summaryTile("BAT SOC", this._fmtPercent(chart.totals.bat), "bat")}
+        ${this._summaryTile("Load", formatPowerValue(chart.totals.load), "load")}
+        ${this._summaryTile("Solar", formatPowerValue(chart.totals.solar), "solar")}
+        ${this._summaryTile("Feed-in", formatPowerValue(chart.totals.feed_in), "feed")}
+        ${this._summaryTile("Grid", formatPowerValue(chart.totals.consumed), "grid")}
       </div>
     `;
     const hoverLines = hoverPoint
