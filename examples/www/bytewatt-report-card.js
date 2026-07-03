@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "124";
+const BYTEWATT_REPORT_CARD_BUILD = "125";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -99,6 +99,69 @@ class ByteWattReportCard extends HTMLElement {
     return Number.isFinite(number) ? number : 0;
   }
 
+  _parseSeriesList(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => this._parseFloat(item));
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => this._parseFloat(item));
+        }
+      } catch (error) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  _parseList(value) {
+    if (Array.isArray(value)) {
+      return value.slice();
+    }
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.slice();
+        }
+      } catch (error) {
+        return [];
+      }
+    }
+    return [];
+  }
+
+  _sumSeries(value) {
+    return this._parseSeriesList(value).reduce((acc, item) => acc + this._parseFloat(item), 0);
+  }
+
+  _valueAtPath(value, path) {
+    let current = value;
+    for (const segment of path) {
+      if (current == null || typeof current !== "object" || !(segment in current)) {
+        return undefined;
+      }
+      current = current[segment];
+    }
+    return current;
+  }
+
+  _recordValue(record, paths = []) {
+    for (const path of paths) {
+      const value = this._valueAtPath(record, path);
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  _recordFloat(record, paths = []) {
+    return this._parseFloat(this._recordValue(record, paths));
+  }
+
   _aggregateHistoryRecords(records) {
     const aggregate = {
       count: 0,
@@ -133,33 +196,33 @@ class ByteWattReportCard extends HTMLElement {
       }
       aggregate.latest_date = record.reporting_date || record.record_date || aggregate.latest_date;
       aggregate.latest_saved_at = record.saved_at || aggregate.latest_saved_at;
-      aggregate.solar_generation_today += this._parseFloat(record.solar_generation_today);
-      aggregate.load_consumption_today += this._parseFloat(record.load_consumption_today);
-      aggregate.feed_in_today += this._parseFloat(record.feed_in_today);
-      aggregate.grid_consumption_today += this._parseFloat(record.grid_consumption_today);
-      aggregate.battery_charged_today += this._parseFloat(record.battery_charged_today);
-      aggregate.battery_discharged_today += this._parseFloat(record.battery_discharged_today);
+      aggregate.solar_generation_today += this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]);
+      aggregate.load_consumption_today += this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]);
+      aggregate.feed_in_today += this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]);
+      aggregate.grid_consumption_today += this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]);
+      aggregate.battery_charged_today += this._recordFloat(record, [["battery_charged_today"], ["today", "battery_charge"]]);
+      aggregate.battery_discharged_today += this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]);
     });
 
-    const periodDelta = (key) => {
-      const start = this._parseFloat(firstRecord?.[key]);
-      const end = this._parseFloat(latestRecord?.[key]);
+    const periodDelta = (paths) => {
+      const start = this._recordFloat(firstRecord, paths);
+      const end = this._recordFloat(latestRecord, paths);
       if (Number.isFinite(start) && Number.isFinite(end)) {
         return Math.max(end - start, 0);
       }
       return end || 0;
     };
 
-    aggregate.live_soc = this._parseFloat(latestRecord.live_soc);
-    aggregate.total_solar_generation = periodDelta("total_solar_generation");
-    aggregate.total_feed_in = periodDelta("total_feed_in");
-    aggregate.total_battery_charge = periodDelta("total_battery_charge");
-    aggregate.total_battery_discharge = periodDelta("total_battery_discharge");
-    aggregate.total_house_consumption = periodDelta("total_house_consumption");
-    aggregate.total_grid_consumption = periodDelta("total_grid_consumption");
-    aggregate.pv_power_house = periodDelta("pv_power_house");
-    aggregate.pv_charging_battery = periodDelta("pv_charging_battery");
-    aggregate.grid_battery_charge = periodDelta("grid_battery_charge");
+    aggregate.live_soc = this._recordFloat(latestRecord, [["live_soc"], ["live", "soc"]]);
+    aggregate.total_solar_generation = periodDelta([["total_solar_generation"], ["totals", "solar_generation"]]);
+    aggregate.total_feed_in = periodDelta([["total_feed_in"], ["totals", "feed_in"]]);
+    aggregate.total_battery_charge = periodDelta([["total_battery_charge"], ["totals", "battery_charge"]]);
+    aggregate.total_battery_discharge = periodDelta([["total_battery_discharge"], ["totals", "battery_discharge"]]);
+    aggregate.total_house_consumption = periodDelta([["total_house_consumption"], ["totals", "house_consumption"]]);
+    aggregate.total_grid_consumption = periodDelta([["total_grid_consumption"], ["totals", "grid_consumption"]]);
+    aggregate.pv_power_house = periodDelta([["pv_power_house"], ["totals", "pv_power_house"]]);
+    aggregate.pv_charging_battery = periodDelta([["pv_charging_battery"], ["totals", "pv_charging_battery"]]);
+    aggregate.grid_battery_charge = periodDelta([["grid_battery_charge"], ["totals", "grid_battery_charge"]]);
 
     return aggregate;
   }
@@ -313,8 +376,19 @@ class ByteWattReportCard extends HTMLElement {
   _buildPeriodPowerDiagram(records, summary, latestReporting, period, anchor, window) {
     if (this._isDailyPeriod(period)) {
       const source = latestReporting?.power_diagram || {};
+      const fallbackSeries = {
+        bat: this._parseSeriesList(this._recordValue(latestReporting, [["chart_bat"]])),
+        load: this._parseSeriesList(this._recordValue(latestReporting, [["chart_load"]])),
+        solar: this._parseSeriesList(this._recordValue(latestReporting, [["chart_solar"]])),
+        feed_in: this._parseSeriesList(this._recordValue(latestReporting, [["chart_feed_in"]])),
+        consumed: this._parseSeriesList(this._recordValue(latestReporting, [["chart_consumed"]])),
+      };
+      const series = source.series && Object.keys(source.series).length ? source.series : fallbackSeries;
+      const time = Array.isArray(source.time) && source.time.length ? source.time : this._parseList(this._recordValue(latestReporting, [["chart_time"]]));
       return {
         ...source,
+        time,
+        series,
         date: source.date || this._formatDisplayDate(anchor) || "",
       };
     }
@@ -322,11 +396,11 @@ class ByteWattReportCard extends HTMLElement {
     const rows = (records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const time = rows.map((record) => record.record_date || "");
     const series = {
-      bat: rows.map((record) => this._parseFloat(record.live_soc)),
-      load: rows.map((record) => this._parseFloat(record.load_consumption_today)),
-      solar: rows.map((record) => this._parseFloat(record.solar_generation_today)),
-      feed_in: rows.map((record) => this._parseFloat(record.feed_in_today)),
-      consumed: rows.map((record) => this._parseFloat(record.grid_consumption_today)),
+      bat: rows.map((record) => this._recordFloat(record, [["live_soc"], ["live", "soc"]])),
+      load: rows.map((record) => this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]])),
+      solar: rows.map((record) => this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]])),
+      feed_in: rows.map((record) => this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]])),
+      consumed: rows.map((record) => this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]])),
     };
     const latest = rows[rows.length - 1] || {};
     return {
@@ -334,7 +408,7 @@ class ByteWattReportCard extends HTMLElement {
       time,
       series,
       summary: {
-        soc: this._parseFloat(latest.live_soc),
+        soc: this._recordFloat(latest, [["live_soc"], ["live", "soc"]]),
         solar_generation: summary.total_solar_generation,
         load_consumption: summary.total_house_consumption,
         feed_in: summary.total_feed_in,
@@ -417,8 +491,8 @@ class ByteWattReportCard extends HTMLElement {
         totalLoad > 0 ? Math.max(((totalLoad - summary.total_grid_consumption) / totalLoad) * 100, 0) : baseToday.self_sufficiency,
       trees_planted: latest.trees_planted ?? baseToday.trees_planted,
       co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
-      today_income: selected.reduce((acc, record) => acc + this._parseFloat(record.today_income), 0),
-      total_income: latest.total_income ?? baseToday.total_income,
+      today_income: selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
+      total_income: this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
     };
     const periodTotals = {
       solar_generation: summary.total_solar_generation,
@@ -672,17 +746,17 @@ class ByteWattReportCard extends HTMLElement {
       records.forEach((record) => {
         rows.push([
           record.record_date || "",
-          record.live_soc ?? "",
-          record.solar_generation_today ?? "",
-          record.load_consumption_today ?? "",
-          record.battery_charged_today ?? "",
-          record.battery_discharged_today ?? "",
-          record.feed_in_today ?? "",
-          record.grid_consumption_today ?? "",
-          record.pv_power_house ?? "",
-          record.pv_charging_battery ?? "",
-          record.grid_battery_charge ?? "",
-          record.today_income ?? "",
+          this._recordFloat(record, [["live_soc"], ["live", "soc"]]),
+          this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]),
+          this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]),
+          this._recordFloat(record, [["battery_charged_today"], ["today", "battery_charge"]]),
+          this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]),
+          this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
+          this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
+          this._recordFloat(record, [["pv_power_house"], ["totals", "pv_power_house"]]),
+          this._recordFloat(record, [["pv_charging_battery"], ["totals", "pv_charging_battery"]]),
+          this._recordFloat(record, [["grid_battery_charge"], ["totals", "grid_battery_charge"]]),
+          this._recordFloat(record, [["today_income"], ["today", "today_income"]]),
         ]);
       });
     }
@@ -1292,9 +1366,9 @@ class ByteWattReportCard extends HTMLElement {
       .slice()
       .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
       .map((record) => {
-        const load = Math.max(this._parseFloat(record.load_consumption_today), 0);
-        const solarRaw = Math.max(this._parseFloat(record.solar_generation_today ?? record.pv_power_house), 0);
-        const batteryRaw = Math.max(this._parseFloat(record.battery_discharged_today), 0);
+        const load = Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
+        const solarRaw = Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"], ["pv_power_house"]]), 0);
+        const batteryRaw = Math.max(this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]), 0);
         const solar = Math.min(solarRaw, load);
         const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
         const grid = Math.max(load - solar - battery, 0);
@@ -1438,11 +1512,11 @@ class ByteWattReportCard extends HTMLElement {
           key: record.record_date || "",
           label: formatShortDate(record.record_date),
           hoverLabel: formatDisplayDate(record.record_date),
-          bat: this._parseFloat(record.live_soc),
-          load: this._parseFloat(record.load_consumption_today),
-          solar: this._parseFloat(record.solar_generation_today),
-          feed_in: this._parseFloat(record.feed_in_today),
-          consumed: this._parseFloat(record.grid_consumption_today),
+          bat: this._recordFloat(record, [["live_soc"], ["live", "soc"]]),
+          load: this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]),
+          solar: this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]),
+          feed_in: this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
+          consumed: this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
         }));
 
     const summary = periodContext?.summary || {};
@@ -1537,14 +1611,13 @@ class ByteWattReportCard extends HTMLElement {
           .join("")}
       </div>
     `;
-    const periodSummary = periodContext?.summary || {};
     const summaryBoxes = `
       <div class="sankey-summary-grid power-summary-grid">
-        ${this._summaryTile("BAT SOC", this._fmtPercent(chart.totals.bat), "bat")}
-        ${this._summaryTile("Load", formatPowerValue(chart.totals.load), "load")}
-        ${this._summaryTile("Solar", formatPowerValue(chart.totals.solar), "solar")}
-        ${this._summaryTile("Feed-in", formatPowerValue(chart.totals.feed_in), "feed")}
-        ${this._summaryTile("Grid", formatPowerValue(chart.totals.consumed), "grid")}
+        ${this._summaryTile("BAT SOC", this._fmtPercent(((chart.points?.[chart.points.length - 1] || chart.points?.[0] || {}).bat ?? chart.totals.bat)), "bat")}
+        ${this._summaryTile("Load", formatPowerValue((chart.points?.[chart.points.length - 1] || chart.points?.[0] || {}).load ?? chart.totals.load), "load")}
+        ${this._summaryTile("Solar", formatPowerValue((chart.points?.[chart.points.length - 1] || chart.points?.[0] || {}).solar ?? chart.totals.solar), "solar")}
+        ${this._summaryTile("Feed-in", formatPowerValue((chart.points?.[chart.points.length - 1] || chart.points?.[0] || {}).feed_in ?? chart.totals.feed_in), "feed")}
+        ${this._summaryTile("Grid", formatPowerValue((chart.points?.[chart.points.length - 1] || chart.points?.[0] || {}).consumed ?? chart.totals.consumed), "grid")}
       </div>
     `;
     const hoverLines = hoverPoint
