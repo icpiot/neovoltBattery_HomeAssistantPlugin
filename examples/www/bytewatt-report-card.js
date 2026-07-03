@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "141";
+const BYTEWATT_REPORT_CARD_BUILD = "142";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1158,25 +1158,23 @@ class ByteWattReportCard extends HTMLElement {
     const today = reporting?.today || {};
     const totals = reporting?.totals || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
-    const sourceLayers = [periodSummary, today, totals].filter((layer) => layer && Object.keys(layer).length);
+    const sourceLayers = [periodSummary, reporting?.power_diagram?.summary || {}, today, totals].filter((layer) => layer && Object.keys(layer).length);
+    const sourceValue = (...keys) => {
+      for (const layer of sourceLayers) {
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(layer, key)) {
+            const value = Number(layer?.[key]);
+            if (Number.isFinite(value)) {
+              return value;
+            }
+          }
+        }
+      }
+      return undefined;
+    };
     const sourceNumber = (...keys) => {
-      for (const layer of sourceLayers) {
-        for (const key of keys) {
-          const value = Number(layer?.[key]);
-          if (Number.isFinite(value) && value !== 0) {
-            return value;
-          }
-        }
-      }
-      for (const layer of sourceLayers) {
-        for (const key of keys) {
-          const value = Number(layer?.[key]);
-          if (Number.isFinite(value)) {
-            return value;
-          }
-        }
-      }
-      return 0;
+      const value = sourceValue(...keys);
+      return Number.isFinite(value) ? value : 0;
     };
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
@@ -1185,15 +1183,17 @@ class ByteWattReportCard extends HTMLElement {
     const feedIn = sourceNumber("feed_in", "total_feed_in", "feed_in_today");
     const batteryCharge = sourceNumber("battery_charge", "total_battery_charge", "battery_charged_today");
     const batteryDischarge = sourceNumber("battery_discharge", "total_battery_discharge", "battery_discharged_today");
+    const pvPowerHouse = sourceValue("pv_power_house", "pv_power_house_today");
+    const pvChargingBattery = sourceValue("pv_charging_battery", "pv_charging_battery_today");
+    const gridBatteryCharge = sourceValue("grid_battery_charge", "grid_battery_charge_today");
     const pvToHouse =
-      sourceNumber("pv_power_house", "pv_power_house_today") ||
+      (Number.isFinite(pvPowerHouse) ? pvPowerHouse : undefined) ??
       Math.max(load - grid - batteryDischarge, 0);
     const pvToBattery =
-      sourceNumber("pv_charging_battery", "pv_charging_battery_today") ||
+      (Number.isFinite(pvChargingBattery) ? pvChargingBattery : undefined) ??
       Math.max(batteryCharge - grid, 0);
     const gridToBattery =
-      sourceNumber("grid_battery_charge", "grid_battery_charge_today") ||
-      0;
+      (Number.isFinite(gridBatteryCharge) ? gridBatteryCharge : undefined) ?? 0;
     const sourceTotal = Math.max(solar + batteryDischarge + grid, 1);
     const sinkTotal = Math.max(load + batteryCharge + feedIn, 1);
     const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
