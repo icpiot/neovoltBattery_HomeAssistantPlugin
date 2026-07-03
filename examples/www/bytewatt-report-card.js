@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "142";
+const BYTEWATT_REPORT_CARD_BUILD = "143";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -371,6 +371,26 @@ class ByteWattReportCard extends HTMLElement {
       const date = this._parseLocalDate(record?.record_date);
       return date && date >= window.start && date <= window.end;
     });
+  }
+
+  _expandDailyRecords(records, window) {
+    const start = window?.start instanceof Date ? new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate()) : null;
+    const end = window?.end instanceof Date ? new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate()) : null;
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      return records || [];
+    }
+    const mapped = new Map((records || []).map((record) => [String(record?.record_date || ""), record]));
+    const expanded = [];
+    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    while (cursor <= end) {
+      const key = this._formatLocalDate(cursor);
+      expanded.push({
+        record_date: key,
+        ...(mapped.get(key) || {}),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return expanded;
   }
 
   _periodSummary(records) {
@@ -1436,6 +1456,13 @@ class ByteWattReportCard extends HTMLElement {
     const periodStart = reporting?.meta?.period_start || "";
     const periodEnd = reporting?.meta?.period_end || periodStart;
     const periodRecords = reporting?.records || [];
+    const chartWindow =
+      periodStart && periodEnd
+        ? {
+            start: this._parseLocalDate(periodStart),
+            end: this._parseLocalDate(periodEnd),
+          }
+        : null;
     const formatDisplay = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
@@ -1451,7 +1478,8 @@ class ByteWattReportCard extends HTMLElement {
       const date = this._parseLocalDate(value);
       return date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}` : String(value || "");
     };
-    const bars = periodRecords
+    const chartRecords = !this._isDailyPeriod(period) && chartWindow?.start && chartWindow?.end ? this._expandDailyRecords(periodRecords, chartWindow) : periodRecords;
+    const bars = chartRecords
       .slice()
       .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
       .map((record) => {
@@ -1621,6 +1649,7 @@ class ByteWattReportCard extends HTMLElement {
     const series = powerDiagram.series || {};
     const times = powerDiagram.time || [];
     const records = (periodContext?.records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const chartRecords = !isDaily && periodContext?.window?.start && periodContext?.window?.end ? this._expandDailyRecords(records, periodContext.window) : records;
     const formatShortDate = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}` : String(value || "");
@@ -1641,7 +1670,7 @@ class ByteWattReportCard extends HTMLElement {
           feed_in: this._parseFloat(series.feed_in?.[index]),
           consumed: this._parseFloat(series.consumed?.[index]),
         }))
-      : records.map((record) => ({
+      : chartRecords.map((record) => ({
           key: record.record_date || "",
           label: formatShortDate(record.record_date),
           hoverLabel: formatDisplayDate(record.record_date),
