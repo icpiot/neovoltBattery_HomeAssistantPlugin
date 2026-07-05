@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "173";
+const BYTEWATT_REPORT_CARD_BUILD = "174";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -10,19 +10,6 @@ class ByteWattReportCard extends HTMLElement {
     };
     this._reportPeriod = this._reportPeriod || "day";
     this._reportAnchorDate = this._reportAnchorDate || "";
-    this._chartSeries = this._chartSeries || {
-      bat: true,
-      load: true,
-      solar: true,
-      feed_in: true,
-      consumed: true,
-    };
-    this._usageMixSeries = this._usageMixSeries || {
-      solar: true,
-      battery: true,
-      grid: true,
-    };
-    this._powerHoverIndex = this._powerHoverIndex ?? null;
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -799,52 +786,6 @@ class ByteWattReportCard extends HTMLElement {
     return "Archive ready";
   }
 
-  _buildPeriodPowerDiagram(records, summary, latestReporting, period, anchor, window) {
-    if (this._isDailyPeriod(period)) {
-      const source = latestReporting?.power_diagram || {};
-      const fallbackSeries = {
-        bat: this._parseSeriesList(this._recordValue(latestReporting, [["chart_bat"]])),
-        load: this._parseSeriesList(this._recordValue(latestReporting, [["chart_load"]])),
-        solar: this._parseSeriesList(this._recordValue(latestReporting, [["chart_solar"]])),
-        feed_in: this._parseSeriesList(this._recordValue(latestReporting, [["chart_feed_in"]])),
-        consumed: this._parseSeriesList(this._recordValue(latestReporting, [["chart_consumed"]])),
-      };
-      const series = source.series && Object.keys(source.series).length ? source.series : fallbackSeries;
-      const time = Array.isArray(source.time) && source.time.length ? source.time : this._parseList(this._recordValue(latestReporting, [["chart_time"]]));
-      return {
-        ...source,
-        time,
-        series,
-        date: source.date || this._formatDisplayDate(anchor) || "",
-      };
-    }
-
-    const rows = (records || []).slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
-    const time = rows.map((record) => record.record_date || "");
-    const series = {
-      bat: rows.map((record) => this._recordFloat(record, [["live_soc"], ["live", "soc"]])),
-      load: rows.map((record) => this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]])),
-      solar: rows.map((record) => this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]])),
-      feed_in: rows.map((record) => this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]])),
-      consumed: rows.map((record) => this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]])),
-    };
-    const latest = rows[rows.length - 1] || {};
-    return {
-      date: `${this._formatDisplayDate(window.start)} -> ${this._formatDisplayDate(window.end)}`,
-      time,
-      series,
-      summary: {
-        soc: this._recordFloat(latest, [["live_soc"], ["live", "soc"]]),
-        solar_generation: summary.total_solar_generation,
-        load_consumption: summary.total_house_consumption,
-        feed_in: summary.total_feed_in,
-        grid_consumption: summary.total_grid_consumption,
-        battery_charge: summary.total_battery_charge,
-        battery_discharge: summary.total_battery_discharge,
-      },
-    };
-  }
-
   _buildPeriodReporting(baseReporting) {
     this._storeLiveReportingSnapshot(baseReporting);
     const scopeInfo = this._historyScopeData();
@@ -947,11 +888,10 @@ class ByteWattReportCard extends HTMLElement {
               period_start: this._formatLocalDate(window.start),
               period_end: this._formatLocalDate(window.end),
             },
-            power_diagram: this._buildPeriodPowerDiagram(fallbackSelected, fallbackSummary, fallbackRecord, period, anchor, window),
+            power_diagram: fallbackRecord?.power_diagram || baseReporting?.power_diagram || {},
             summary: fallbackSummary,
           },
           records: fallbackSelected,
-          chart_records: fallbackSelected,
           anchor,
           period,
           window,
@@ -1020,7 +960,6 @@ class ByteWattReportCard extends HTMLElement {
           },
         },
         records: selected,
-        chart_records: this._isDailyPeriod(period) ? selected : this._expandDailyRecords(selected, window),
         anchor,
         period,
         window,
@@ -1069,22 +1008,6 @@ class ByteWattReportCard extends HTMLElement {
       ...periodToday,
     };
     const sankey = { ...energyModel };
-    const powerSummary = this._isDailyPeriod(period)
-      ? {
-          ...summary,
-          total_solar_generation: periodTotals.solar_generation,
-          total_feed_in: periodTotals.feed_in,
-          total_battery_charge: periodTotals.battery_charge,
-          total_battery_discharge: periodTotals.battery_discharge,
-          total_house_consumption: periodTotals.load_consumption,
-          total_grid_consumption: periodTotals.grid_consumption,
-          pv_power_house: periodTotals.pv_power_house,
-          pv_charging_battery: periodTotals.pv_charging_battery,
-          grid_battery_charge: periodTotals.grid_battery_charge,
-        }
-      : summary;
-    const powerDiagram = this._buildPeriodPowerDiagram(chartRecords, powerSummary, latest, period, anchor, window);
-
     return {
       reporting: {
         ...(baseReporting || {}),
@@ -1114,11 +1037,10 @@ class ByteWattReportCard extends HTMLElement {
           period_start: this._formatLocalDate(window.start),
           period_end: this._formatLocalDate(window.end),
         },
-        power_diagram: powerDiagram,
+        power_diagram: latest.power_diagram || baseReporting?.power_diagram || {},
         summary,
       },
       records: selected,
-      chart_records: chartRecords,
       anchor,
       period,
       window,
@@ -1298,15 +1220,6 @@ class ByteWattReportCard extends HTMLElement {
       ["PV to House", totals.pv_power_house ?? ""],
       ["PV to Battery", totals.pv_charging_battery ?? ""],
       ["Grid -> Battery", totals.grid_battery_charge ?? ""],
-      [],
-      ["Power Diagram Summary"],
-      ["SOC", summary.soc ?? ""],
-      ["Solar Generation", summary.solar_generation ?? ""],
-      ["Load Consumption", summary.load_consumption ?? ""],
-      ["Feed-in", summary.feed_in ?? ""],
-      ["Grid Consumption", summary.grid_consumption ?? ""],
-      ["Battery Charge", summary.battery_charge ?? ""],
-      ["Battery Discharge", summary.battery_discharge ?? ""],
       [],
     ];
 
@@ -1701,201 +1614,6 @@ class ByteWattReportCard extends HTMLElement {
     `;
   }
 
-  _renderSankeyPanel(reporting, periodContext = null) {
-    const periodReporting = periodContext?.reporting || reporting || {};
-    const selectedRecords = Array.isArray(periodContext?.records) ? periodContext.records : [];
-    const sankey = periodReporting?.sankey || {};
-    const sourceNumber = (...keys) => {
-      for (const key of keys) {
-        const scoped = Number(sankey?.[key]);
-        if (Number.isFinite(scoped)) return scoped;
-      }
-      return 0;
-    };
-    const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
-    const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
-    const load = sourceNumber("load_consumption", "total_house_consumption", "house_consumption", "load_consumption_today");
-    const grid = sourceNumber("grid_consumption", "total_grid_consumption", "grid_consumption_today");
-    const feedIn = sourceNumber("feed_in", "total_feed_in", "feed_in_today");
-    const batteryCharge = sourceNumber("battery_charge", "total_battery_charge", "battery_charged_today");
-    const batteryDischarge = sourceNumber("battery_discharge", "total_battery_discharge", "battery_discharged_today");
-    const pvToHouse = sourceNumber("pv_power_house");
-    const pvToBattery = sourceNumber("pv_charging_battery");
-    const gridToBattery = sourceNumber("grid_battery_charge");
-    const sourceTotal = Math.max(solar + batteryDischarge + grid, 1);
-    const sinkTotal = Math.max(load + batteryCharge + feedIn, 1);
-    const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
-    const thickness = (value) => {
-      const ratio = Math.max(value, 0) / Math.max(flowScale, 1);
-      return Math.max(6, Math.round(ratio * 38 + 6));
-    };
-    const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1 + 140} ${y1}, ${x2 - 140} ${y2}, ${x2} ${y2}`;
-    const pct = (value, total) => `${Math.max(0, Math.round((Math.max(value, 0) / Math.max(total, 1)) * 1000) / 10).toFixed(1)}%`;
-
-    const cards = compactSankey
-      ? {
-          solar: { x: 18, y: 18, w: 168, h: 168, accent: "var(--bw-solar)", title: "SOLAR", value: this._fmtEnergy(solar), sub: pct(solar, sourceTotal), meta: "Produced" },
-          batteryOut: { x: 18, y: 202, w: 168, h: 112, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryDischarge), sub: pct(batteryDischarge, sourceTotal), meta: "Discharged" },
-          grid: { x: 18, y: 326, w: 168, h: 96, accent: "var(--bw-grid)", title: "GRID", value: this._fmtEnergy(grid), sub: pct(grid, sourceTotal), meta: "Imported" },
-          batteryIn: { x: 754, y: 18, w: 168, h: 112, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryCharge), sub: pct(batteryCharge, sinkTotal), meta: "Charged" },
-          load: { x: 754, y: 146, w: 168, h: 168, accent: "var(--bw-load)", title: "LOAD", value: this._fmtEnergy(load), sub: pct(load, sinkTotal), meta: "Consumed" },
-          feed: { x: 754, y: 326, w: 168, h: 96, accent: "var(--bw-feed)", title: "GRID", value: this._fmtEnergy(feedIn), sub: pct(feedIn, sinkTotal), meta: "Feed-in" },
-        }
-      : {
-          solar: { x: 18, y: 24, w: 176, h: 190, accent: "var(--bw-solar)", title: "SOLAR", value: this._fmtEnergy(solar), sub: pct(solar, sourceTotal), meta: "Produced" },
-          batteryOut: { x: 18, y: 228, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryDischarge), sub: pct(batteryDischarge, sourceTotal), meta: "Discharged" },
-          grid: { x: 18, y: 370, w: 176, h: 118, accent: "var(--bw-grid)", title: "GRID", value: this._fmtEnergy(grid), sub: pct(grid, sourceTotal), meta: "Imported" },
-          batteryIn: { x: 746, y: 24, w: 176, h: 128, accent: "var(--bw-battery)", title: "BATTERY", value: this._fmtEnergy(batteryCharge), sub: pct(batteryCharge, sinkTotal), meta: "Charged" },
-          load: { x: 746, y: 166, w: 176, h: 190, accent: "var(--bw-load)", title: "LOAD", value: this._fmtEnergy(load), sub: pct(load, sinkTotal), meta: "Consumed" },
-          feed: { x: 746, y: 370, w: 176, h: 118, accent: "var(--bw-feed)", title: "GRID", value: this._fmtEnergy(feedIn), sub: pct(feedIn, sinkTotal), meta: "Feed-in" },
-        };
-
-    const cardHtml = (card) => `
-      <g class="sankey-node-group" transform="translate(${card.x}, ${card.y})">
-        <rect width="${card.w}" height="${card.h}" rx="16" ry="16" fill="rgba(255,255,255,0.92)" stroke="${card.accent}" stroke-width="2"></rect>
-        <rect x="0" y="0" width="${card.w}" height="6" rx="16" ry="16" fill="${card.accent}" opacity="0.92"></rect>
-        <rect x="10" y="12" width="92" height="28" rx="10" ry="10" fill="rgba(255,255,255,0.80)" stroke="rgba(15,23,42,0.05)" stroke-width="1"></rect>
-        <text x="56" y="31" text-anchor="middle" class="sankey-chip">${this._escape(card.title)}</text>
-        <text x="16" y="74" class="sankey-node-value">${this._escape(card.value)}</text>
-        <text x="16" y="${card.h - 22}" class="sankey-node-sub">${this._escape(card.sub)}</text>
-        <text x="16" y="${card.h - 4}" class="sankey-node-meta">${this._escape(card.meta)}</text>
-      </g>
-    `;
-
-    const pathHtml = (source, target, value, sourceRatio, targetRatio, gradientId) => {
-      if (!(value > 0)) return "";
-      const startX = cards[source].x + cards[source].w;
-      const endX = cards[target].x;
-      const startY = cards[source].y + Math.round(cards[source].h * sourceRatio);
-      const endY = cards[target].y + Math.round(cards[target].h * targetRatio);
-      return `
-        <path class="sankey-link" d="${curve(startX, startY, endX, endY)}" stroke="url(#${gradientId})" stroke-width="${thickness(value)}" opacity="0.92"></path>
-      `;
-    };
-
-    const defs = `
-      <defs>
-        <linearGradient id="sankey-solar-load" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#f0c419" stop-opacity="0.95"></stop>
-          <stop offset="100%" stop-color="#2f9be8" stop-opacity="0.72"></stop>
-        </linearGradient>
-        <linearGradient id="sankey-solar-battery" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#f0c419" stop-opacity="0.88"></stop>
-          <stop offset="100%" stop-color="#2fc96e" stop-opacity="0.86"></stop>
-        </linearGradient>
-        <linearGradient id="sankey-solar-feed" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#f0c419" stop-opacity="0.88"></stop>
-          <stop offset="100%" stop-color="#f08a24" stop-opacity="0.86"></stop>
-        </linearGradient>
-        <linearGradient id="sankey-grid-battery" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#98a2a8" stop-opacity="0.84"></stop>
-          <stop offset="100%" stop-color="#2fc96e" stop-opacity="0.84"></stop>
-        </linearGradient>
-        <linearGradient id="sankey-battery-load" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#2fc96e" stop-opacity="0.92"></stop>
-          <stop offset="100%" stop-color="#2f9be8" stop-opacity="0.92"></stop>
-        </linearGradient>
-      </defs>
-    `;
-
-    const debug = periodReporting?.sankey_debug || {};
-    const periodRecords = selectedRecords.length || Number(debug.selected_records ?? periodContext?.records?.length ?? 0) || 0;
-    const modelRows = Number(debug.rows ?? sankey.rows ?? 0) || 0;
-    const periodLabel = periodReporting?.meta?.period_label || "Day";
-    const periodRange =
-      periodReporting?.meta?.period_start && periodReporting?.meta?.period_end
-        ? `${periodReporting.meta.period_start} -> ${periodReporting.meta.period_end}`
-        : periodReporting?.power_diagram?.date || "";
-    const totalRecords = Number(debug.records_total ?? periodContext?.records_total ?? debug.archive_records_total ?? 0) || 0;
-    const scopeLabel = debug.history_scope ? ` | scope ${debug.history_scope}` : "";
-    const requestedLabel = debug.requested_scope && debug.requested_scope !== debug.history_scope ? ` (requested ${debug.requested_scope})` : "";
-    const liveLabel = debug.live_record_date ? ` | live ${debug.live_record_date}` : "";
-    const sourceLabel = `records ${periodRecords}/${totalRecords} | model rows ${modelRows} | ${sankey.source || debug.source || "period"}${scopeLabel}${requestedLabel}${liveLabel}`;
-    const summaryCards = [
-      ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
-      ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
-      ["Solar -> Feed-in", this._fmtEnergy(feedIn), "feed"],
-      ["Grid -> Battery", this._fmtEnergy(gridToBattery), "grid"],
-      ["Battery -> Load", this._fmtEnergy(batteryDischarge), "load"],
-    ];
-
-    return `
-        <section class="panel sankey-panel">
-          <div class="panel-header">
-            <div class="panel-title">Energy Flow Sankey</div>
-            <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""} | ${this._escape(sourceLabel)}</div>
-          </div>
-        <div class="sankey-stage">
-          <svg class="sankey-svg" viewBox="${compactSankey ? "0 0 940 440" : "0 0 940 520"}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
-            <defs>
-              <filter id="sankeyShadow" x="-10%" y="-10%" width="120%" height="120%">
-                <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08"></feDropShadow>
-              </filter>
-            </defs>
-            ${defs}
-            <g class="sankey-links">
-              ${pathHtml("solar", "load", pvToHouse, 0.52, 0.46, "sankey-solar-load")}
-              ${pathHtml("solar", "batteryIn", pvToBattery, 0.70, 0.42, "sankey-solar-battery")}
-              ${pathHtml("solar", "feed", feedIn, 0.82, 0.36, "sankey-solar-feed")}
-              ${pathHtml("grid", "batteryIn", gridToBattery, 0.42, 0.62, "sankey-grid-battery")}
-              ${pathHtml("batteryOut", "load", batteryDischarge, 0.48, 0.73, "sankey-battery-load")}
-            </g>
-            ${cardHtml(cards.solar)}
-            ${cardHtml(cards.batteryOut)}
-            ${cardHtml(cards.grid)}
-            ${cardHtml(cards.batteryIn)}
-            ${cardHtml(cards.load)}
-            ${cardHtml(cards.feed)}
-          </svg>
-          <div class="sankey-mobile">
-            <div class="sankey-mobile-card sankey-mobile-source solar">
-              <div class="sankey-mobile-label">Solar</div>
-              <div class="sankey-mobile-value">${this._fmtEnergy(solar)}</div>
-              <div class="sankey-mobile-sub">${pct(solar, sourceTotal)} produced</div>
-            </div>
-            <div class="sankey-mobile-card sankey-mobile-source battery">
-              <div class="sankey-mobile-label">Battery</div>
-              <div class="sankey-mobile-value">${this._fmtEnergy(batteryDischarge)}</div>
-              <div class="sankey-mobile-sub">${pct(batteryDischarge, sourceTotal)} discharged</div>
-            </div>
-            <div class="sankey-mobile-card sankey-mobile-source grid">
-              <div class="sankey-mobile-label">Grid</div>
-              <div class="sankey-mobile-value">${this._fmtEnergy(grid)}</div>
-              <div class="sankey-mobile-sub">${pct(grid, sourceTotal)} imported</div>
-            </div>
-            <div class="sankey-mobile-flow sankey-mobile-flow-solar-load">
-              <span>Solar -> Load</span><strong>${this._fmtEnergy(pvToHouse)}</strong>
-            </div>
-            <div class="sankey-mobile-flow sankey-mobile-flow-solar-battery">
-              <span>Solar -> Battery</span><strong>${this._fmtEnergy(pvToBattery)}</strong>
-            </div>
-            <div class="sankey-mobile-flow sankey-mobile-flow-grid-battery">
-              <span>Grid -> Battery</span><strong>${this._fmtEnergy(gridToBattery)}</strong>
-            </div>
-            <div class="sankey-mobile-flow sankey-mobile-flow-battery-load">
-              <span>Battery -> Load</span><strong>${this._fmtEnergy(batteryDischarge)}</strong>
-            </div>
-            <div class="sankey-mobile-flow sankey-mobile-flow-feed">
-              <span>Solar -> Feed-in</span><strong>${this._fmtEnergy(feedIn)}</strong>
-            </div>
-          </div>
-        </div>
-        <div class="sankey-summary-grid">
-          ${summaryCards
-            .map(
-              ([label, value, kind]) => `
-                <div class="sankey-summary sankey-summary-kind-${kind}">
-                  <div class="sankey-summary-label">${label}</div>
-                  <div class="sankey-summary-value">${value}</div>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </section>
-    `;
-  }
-
   _renderRealtimePanel(reporting) {
     const live = reporting?.live || {};
     const batteryDirection = this._batteryDirection(live.battery_power);
@@ -1962,476 +1680,6 @@ class ByteWattReportCard extends HTMLElement {
         <div class="detail-label">${label}</div>
         <div class="detail-value">${value}</div>
       </div>
-    `;
-  }
-
-  _renderChart(reporting, periodContext = null) {
-    const scopedReporting = periodContext?.reporting || reporting || {};
-    const period = scopedReporting?.meta?.period || this._reportPeriod || "day";
-    const periodLabel = scopedReporting?.meta?.period_label || "Day";
-    const periodStart = scopedReporting?.meta?.period_start || "";
-    const periodEnd = scopedReporting?.meta?.period_end || periodStart;
-    const periodRecords = periodContext?.chart_records || scopedReporting?.chart_records || scopedReporting?.records || [];
-    const chartWindow =
-      periodStart && periodEnd
-        ? {
-            start: this._parseLocalDate(periodStart),
-            end: this._parseLocalDate(periodEnd),
-          }
-        : null;
-    const formatDisplay = (value) => {
-      const parsed = this._parseLocalDate(value);
-      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
-    };
-    const periodRange =
-      periodStart && periodEnd
-        ? periodStart === periodEnd
-          ? formatDisplay(periodStart)
-          : `${formatDisplay(periodStart)} -> ${formatDisplay(periodEnd)}`
-        : formatDisplay(scopedReporting?.power_diagram?.date || "");
-    const pad = (value) => String(value).padStart(2, "0");
-    const shortDate = (value) => {
-      const date = this._parseLocalDate(value);
-      return date ? `${pad(date.getDate())}/${pad(date.getMonth() + 1)}` : String(value || "");
-    };
-    const chartRecords = periodRecords;
-    const bars = chartRecords
-      .slice()
-      .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
-      .map((record) => {
-        const displayDate = this._recordDisplayDate(record);
-        const load = Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
-        const solarRaw = Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"], ["pv_power_house"]]), 0);
-        const batteryRaw = Math.max(this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]), 0);
-        const solar = Math.min(solarRaw, load);
-        const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
-        const grid = Math.max(load - solar - battery, 0);
-        return {
-          label: shortDate(displayDate || record.record_date),
-          fullLabel: displayDate || record.record_date || "",
-          load,
-          solar,
-          battery,
-          grid,
-          tooltip: `${displayDate || record.record_date || ""}: load ${this._fmtEnergy(load)} | solar ${this._fmtEnergy(solar)} | battery ${this._fmtEnergy(battery)} | grid ${this._fmtEnergy(grid)}`,
-        };
-      });
-    if (!bars.length) {
-      const fallbackTotals = scopedReporting?.totals || scopedReporting?.today || {};
-      const fallbackLoad = Math.max(
-        this._parseFloat(
-          fallbackTotals.house_consumption ??
-            fallbackTotals.load_consumption ??
-            fallbackTotals.total_house_consumption ??
-            fallbackTotals.total_load ??
-            fallbackTotals.load ??
-            0
-        ),
-        0
-      );
-      const fallbackSolar = Math.max(this._parseFloat(fallbackTotals.solar_generation ?? fallbackTotals.total_solar_generation ?? fallbackTotals.solar ?? 0), 0);
-      const fallbackBattery = Math.max(this._parseFloat(fallbackTotals.battery_discharge ?? fallbackTotals.total_battery_discharge ?? fallbackTotals.battery ?? 0), 0);
-      const fallbackGrid = Math.max(this._parseFloat(fallbackTotals.grid_consumption ?? fallbackTotals.total_grid_consumption ?? fallbackTotals.grid ?? 0), 0);
-      if (fallbackLoad > 0 || fallbackSolar > 0 || fallbackBattery > 0 || fallbackGrid > 0) {
-        const fallbackLabel = shortDate(scopedReporting?.meta?.period_end || scopedReporting?.meta?.period_start || scopedReporting?.power_diagram?.date || "");
-        bars.push({
-          label: fallbackLabel || periodLabel,
-          fullLabel: periodRange || periodLabel,
-          load: fallbackLoad,
-          solar: Math.min(fallbackSolar, fallbackLoad),
-          battery: Math.min(fallbackBattery, Math.max(fallbackLoad - fallbackSolar, 0)),
-          grid: Math.max(fallbackGrid, 0),
-          tooltip: `${periodRange || fallbackLabel || periodLabel}: load ${this._fmtEnergy(fallbackLoad)} | solar ${this._fmtEnergy(fallbackSolar)} | battery ${this._fmtEnergy(fallbackBattery)} | grid ${this._fmtEnergy(fallbackGrid)}`,
-        });
-      }
-    }
-    const maxLoad = this._niceChartMax(Math.max(...bars.map((bar) => bar.load), 0), 0.1);
-    const formatUsageMixEnergy = (value) => {
-      const number = Math.max(this._parseFloat(value), 0);
-      if (number >= 1000) {
-        return `${this._fmtNumber(number / 1000, 2)} MWh`;
-      }
-      return `${this._fmtNumber(number, 2)} kWh`;
-    };
-    const width = Math.max(760, bars.length * 74 + 110);
-    const height = 340;
-    const left = 68;
-    const top = 30;
-    const plotHeight = 200;
-    const bottom = top + plotHeight;
-    const plotWidth = width - left - 32;
-    const barStep = plotWidth / Math.max(bars.length, 1);
-    const barWidth = Math.max(20, Math.min(34, barStep * 0.56));
-    const chartNote = "Daily values for the selected period. Stacks show solar, battery, and grid contributions.";
-    const yTicks = [0, 0.25, 0.5, 0.75, 1];
-
-    const segmentRect = (x, y, w, h, fill, radiusTop = false, radiusBottom = false) => {
-      if (!(h > 0)) return "";
-      const r = Math.min(8, w / 2, h / 2);
-      const topRadius = radiusTop ? r : 0;
-      const bottomRadius = radiusBottom ? r : 0;
-      return `
-        <rect
-          x="${x}"
-          y="${y}"
-          width="${w}"
-          height="${h}"
-          rx="${Math.max(topRadius, bottomRadius)}"
-          ry="${Math.max(topRadius, bottomRadius)}"
-          fill="${fill}"
-        ></rect>
-      `;
-    };
-
-    const barsHtml = bars
-      .map((bar, index) => {
-        const x = left + index * barStep + (barStep - barWidth) / 2;
-        const totalHeight = bar.load > 0 ? Math.max((bar.load / maxLoad) * plotHeight, 10) : 0;
-        const scale = bar.load > 0 ? totalHeight / bar.load : 0;
-        const solarHeight = this._usageMixSeries?.solar ? bar.solar * scale : 0;
-        const batteryHeight = this._usageMixSeries?.battery ? bar.battery * scale : 0;
-        const gridHeight = this._usageMixSeries?.grid ? bar.grid * scale : 0;
-        const totalLabelY = Math.max(top + 20, bottom - totalHeight + 22);
-        const barBottom = bottom;
-        const gridTop = barBottom - gridHeight;
-        const batteryTop = gridTop - batteryHeight;
-        const solarTop = batteryTop - solarHeight;
-        const textColor = totalHeight > 52 ? "#0f172a" : "#334155";
-        return `
-          <g class="stacked-bar">
-            <title>${this._escape(bar.tooltip)}</title>
-            <text x="${x + barWidth / 2}" y="${Math.max(20, totalLabelY)}" text-anchor="middle" class="stacked-total" fill="${textColor}">${formatUsageMixEnergy(bar.load)}</text>
-            ${segmentRect(x, gridTop, barWidth, gridHeight, "rgba(152,162,168,0.92)", false, true)}
-            ${segmentRect(x, batteryTop, barWidth, batteryHeight, "rgba(47,201,110,0.92)", false, false)}
-            ${segmentRect(x, solarTop, barWidth, solarHeight, "rgba(240,196,25,0.92)", true, false)}
-            <text x="${x + barWidth / 2}" y="${bottom + 24}" text-anchor="middle" class="stacked-label">${this._escape(bar.label)}</text>
-          </g>
-        `;
-      })
-      .join("");
-
-    const legend = `
-      <div class="stacked-legend">
-        <button type="button" class="legend-chip ${this._usageMixSeries?.solar ? "active" : ""}" aria-pressed="${this._usageMixSeries?.solar ? "true" : "false"}" data-usage-series="solar" style="background:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.solar ? "rgba(240,196,25,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.solar ? "#7a6100" : "#64748b"};">Solar</button>
-        <button type="button" class="legend-chip ${this._usageMixSeries?.battery ? "active" : ""}" aria-pressed="${this._usageMixSeries?.battery ? "true" : "false"}" data-usage-series="battery" style="background:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.battery ? "rgba(47,201,110,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.battery ? "#1f6b42" : "#64748b"};">Battery</button>
-        <button type="button" class="legend-chip ${this._usageMixSeries?.grid ? "active" : ""}" aria-pressed="${this._usageMixSeries?.grid ? "true" : "false"}" data-usage-series="grid" style="background:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.14)" : "#fff"}; border-color:${this._usageMixSeries?.grid ? "rgba(152,162,168,0.5)" : "#d6dbe1"}; color:${this._usageMixSeries?.grid ? "#516075" : "#64748b"};">Grid</button>
-      </div>
-    `;
-    const usageVisible = Object.values(this._usageMixSeries || {}).some(Boolean);
-    const chartBody = bars.length
-      && usageVisible
-      ? `
-          <svg class="stacked-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Stacked power usage chart by source">
-            <line x1="${left}" y1="${bottom}" x2="${width - 20}" y2="${bottom}" class="axis"></line>
-            <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" class="axis"></line>
-            ${yTicks
-              .map((point) => {
-                const y = bottom - point * plotHeight;
-                return `
-                  <line x1="${left}" y1="${y}" x2="${width - 20}" y2="${y}" class="grid"></line>
-                  <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${formatUsageMixEnergy(maxLoad * point)}</text>
-                `;
-              })
-              .join("")}
-            ${barsHtml}
-            <text x="16" y="${top + 16}" class="axis-label">kWh</text>
-            <text x="${width - 56}" y="${top + 16}" class="axis-label">LOAD</text>
-            <text x="${left + plotWidth / 2}" y="${bottom + 50}" text-anchor="middle" class="axis-label">Date</text>
-          </svg>
-        `
-      : `<div class="empty stacked-empty">${usageVisible ? "No usage mix data for the selected period yet." : "All usage mix series are hidden."}</div>`;
-
-    return `
-      <section class="panel stacked-panel">
-        <div class="panel-header stacked-header">
-          <div>
-            <div class="panel-title">${this._escape(periodLabel)} Usage Mix</div>
-            <div class="panel-date">${this._escape(periodRange)}${bars.length ? ` | ${bars.length} rows` : ""}</div>
-            <div class="panel-note">${this._escape(chartNote)}</div>
-          </div>
-          <button class="download-btn" data-download-report>Download CSV</button>
-        </div>
-        <div class="stacked-chart-wrap">
-          ${chartBody}
-        </div>
-        ${legend}
-      </section>
-    `;
-  }
-
-  _buildPowerChartData(reporting, periodContext) {
-    const period = periodContext?.period || reporting?.meta?.period || this._reportPeriod || "day";
-    const isDaily = this._isDailyPeriod(period);
-    const powerDiagram = reporting?.power_diagram || {};
-    const series = powerDiagram.series || {};
-    const times = powerDiagram.time || [];
-    const sourceRecords = periodContext?.chart_records || periodContext?.records || [];
-    const records = sourceRecords.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
-    const chartRecords = !isDaily && !periodContext?.chart_records && periodContext?.window?.start && periodContext?.window?.end ? this._expandDailyRecords(records, periodContext.window) : records;
-    const formatShortDate = (value) => {
-      const parsed = this._parseLocalDate(value);
-      return parsed ? `${String(parsed.getDate()).padStart(2, "0")}/${String(parsed.getMonth() + 1).padStart(2, "0")}` : String(value || "");
-    };
-    const formatDisplayDate = (value) => {
-      const parsed = this._parseLocalDate(value);
-      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
-    };
-    const useEnergyUnits = !isDaily;
-    const points = isDaily
-      ? (times || []).map((time, index) => ({
-          key: `${index}:${time}`,
-          label: String(time || ""),
-          hoverLabel: String(time || ""),
-          bat: this._parseFloat(series.bat?.[index]),
-          load: this._parseFloat(series.load?.[index]),
-          solar: this._parseFloat(series.solar?.[index]),
-          feed_in: this._parseFloat(series.feed_in?.[index]),
-          consumed: this._parseFloat(series.consumed?.[index]),
-        }))
-      : chartRecords.map((record) => {
-          const displayDate = this._recordDisplayDate(record) || record.record_date || "";
-          return {
-            key: record.record_date || "",
-            label: formatShortDate(displayDate),
-            hoverLabel: formatDisplayDate(displayDate),
-            bat: this._recordFloat(record, [["live_soc"], ["live", "soc"]]),
-            load: this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]),
-            solar: this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]),
-            feed_in: this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
-            consumed: this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
-          };
-        });
-
-    const summary = periodContext?.summary || {};
-    const totals = isDaily
-      ? {
-          bat: this._parseFloat(reporting?.live?.soc ?? powerDiagram.summary?.soc ?? 0),
-          load: this._parseFloat(reporting?.today?.load_consumption ?? 0),
-          solar: this._parseFloat(reporting?.today?.solar_generation ?? 0),
-          feed_in: this._parseFloat(reporting?.today?.feed_in ?? 0),
-          consumed: this._parseFloat(reporting?.today?.grid_consumption ?? 0),
-        }
-      : {
-          bat: this._parseFloat(summary.live_soc ?? reporting?.live?.soc ?? 0),
-          load: this._parseFloat(reporting?.today?.load_consumption ?? summary.load_consumption_today ?? 0),
-          solar: this._parseFloat(reporting?.today?.solar_generation ?? summary.solar_generation_today ?? 0),
-          feed_in: this._parseFloat(reporting?.today?.feed_in ?? summary.feed_in_today ?? 0),
-          consumed: this._parseFloat(reporting?.today?.grid_consumption ?? summary.grid_consumption_today ?? 0),
-        };
-
-    return {
-      period,
-      isDaily,
-      useEnergyUnits,
-      points,
-      totals,
-      rangeLabel:
-        periodContext?.window?.start && periodContext?.window?.end
-          ? periodContext.window.start === periodContext.window.end
-            ? formatDisplayDate(periodContext.window.start)
-            : `${formatDisplayDate(periodContext.window.start)} -> ${formatDisplayDate(periodContext.window.end)}`
-          : formatDisplayDate(reporting?.power_diagram?.date || ""),
-    };
-  }
-
-  _renderPowerChart(reporting, periodContext) {
-    const chart = this._buildPowerChartData(reporting, periodContext);
-    const seriesLabels = {
-      bat: { label: "BAT", tone: "bat" },
-      load: { label: "Load", tone: "load" },
-      solar: { label: "Solar", tone: "solar" },
-      feed_in: { label: "Feed-in", tone: "feed" },
-      consumed: { label: "Consumed", tone: "grid" },
-    };
-    const points = chart.points || [];
-    const fallbackPoint = {
-      key: chart.rangeLabel || chart.period || "selected",
-      label: chart.rangeLabel ? String(chart.rangeLabel).split(" -> ")[0] : "Selected",
-      hoverLabel: chart.rangeLabel || chart.period || "Selected period",
-      bat: this._parseFloat(chart.totals.bat ?? reporting?.live?.soc ?? reporting?.power_diagram?.summary?.soc ?? 0),
-      load: this._parseFloat(chart.totals.load ?? reporting?.today?.load_consumption ?? reporting?.totals?.house_consumption ?? 0),
-      solar: this._parseFloat(chart.totals.solar ?? reporting?.today?.solar_generation ?? reporting?.totals?.solar_generation ?? 0),
-      feed_in: this._parseFloat(chart.totals.feed_in ?? reporting?.today?.feed_in ?? reporting?.totals?.feed_in ?? 0),
-      consumed: this._parseFloat(chart.totals.consumed ?? reporting?.today?.grid_consumption ?? reporting?.totals?.grid_consumption ?? 0),
-    };
-    const renderPoints = points.length ? points : [fallbackPoint];
-    const plotCount = Math.max(renderPoints.length - 1, 1);
-    const width = Math.max(860, renderPoints.length * 60 + 140);
-    const height = 340;
-    const left = 64;
-    const right = 64;
-    const top = 30;
-    const plotHeight = 190;
-    const bottom = top + plotHeight;
-    const plotWidth = width - left - right;
-    const xFor = (index) => left + (plotWidth * index) / plotCount;
-    const powerSeriesKeys = ["load", "solar", "feed_in", "consumed"];
-    const selectedPowerValues = powerSeriesKeys.flatMap((key) => (this._chartSeries?.[key] ? renderPoints.map((point) => this._parseFloat(point[key])) : []));
-    const selectedBatValues = this._chartSeries?.bat ? renderPoints.map((point) => this._parseFloat(point.bat)) : [];
-    const powerMax = this._niceChartMax(Math.max(...selectedPowerValues, renderPoints.length ? Math.max(...renderPoints.map((point) => this._parseFloat(point.load || point.solar || point.feed_in || point.consumed)), 0) : 0), 0.1);
-    const batMax = Math.max(...selectedBatValues, 100);
-    const leftLabel = chart.useEnergyUnits ? "ENERGY (kWh)" : "POWER (kW)";
-    const rightLabel = "BAT (%)";
-    const formatPowerValue = chart.useEnergyUnits ? (value) => this._fmtEnergy(value) : (value) => this._fmtPower(value);
-    const formatAxisValue = chart.useEnergyUnits ? (value) => this._fmtEnergy(value) : (value) => this._fmtPower(value);
-    const hoverIndex =
-      renderPoints.length && this._powerHoverIndex !== null && this._powerHoverIndex !== undefined
-        ? Math.min(Math.max(Number(this._powerHoverIndex) || 0, 0), renderPoints.length - 1)
-        : -1;
-    const hoverPoint = hoverIndex >= 0 ? renderPoints[hoverIndex] : null;
-    const activePoint = chart.isDaily
-      ? (hoverPoint || renderPoints[renderPoints.length - 1] || fallbackPoint)
-      : null;
-    const pointFor = (point, key) => (key === "bat" ? this._parseFloat(point.bat) : this._parseFloat(point[key]));
-    const yLeft = (value) => bottom - (this._parseFloat(value) / powerMax) * plotHeight;
-    const yRight = (value) => bottom - (this._parseFloat(value) / batMax) * plotHeight;
-    const areaPoints = (key, useRightAxis = false) => {
-      const yFn = useRightAxis ? yRight : yLeft;
-      const coords = renderPoints.map((point, index) => `${xFor(index)},${yFn(pointFor(point, key))}`);
-      if (!coords.length) return "";
-      return `${left},${bottom} ${coords.join(" ")} ${xFor(renderPoints.length - 1)},${bottom}`;
-    };
-    const linePoints = (key, useRightAxis = false) => {
-      const yFn = useRightAxis ? yRight : yLeft;
-      return renderPoints.map((point, index) => `${xFor(index)},${yFn(pointFor(point, key))}`).join(" ");
-    };
-    const chips = `
-      <div class="chart-toggle-row">
-        ${Object.entries(seriesLabels)
-          .map(
-            ([key, meta]) => `
-              <button class="legend-chip ${this._chartSeries?.[key] ? "active" : ""}" data-chart-series="${key}">
-                ${meta.label}
-              </button>
-            `
-          )
-          .join("")}
-      </div>
-    `;
-    const summaryValues = chart.isDaily
-      ? {
-          bat: this._parseFloat(activePoint?.bat ?? chart.totals.bat ?? 0),
-          load: this._parseFloat(activePoint?.load ?? 0),
-          solar: this._parseFloat(activePoint?.solar ?? 0),
-          feed_in: this._parseFloat(activePoint?.feed_in ?? 0),
-          consumed: this._parseFloat(activePoint?.consumed ?? 0),
-        }
-      : {
-          bat: this._parseFloat(chart.totals.bat ?? 0),
-          load: this._parseFloat(chart.totals.load ?? 0),
-          solar: this._parseFloat(chart.totals.solar ?? 0),
-          feed_in: this._parseFloat(chart.totals.feed_in ?? 0),
-          consumed: this._parseFloat(chart.totals.consumed ?? 0),
-        };
-    const summaryBoxes = `
-      <div class="sankey-summary-grid power-summary-grid">
-        ${this._summaryTile("BAT SOC", this._fmtPercent(summaryValues.bat), "bat")}
-        ${this._summaryTile("Load", formatPowerValue(summaryValues.load), "load")}
-        ${this._summaryTile("Solar", formatPowerValue(summaryValues.solar), "solar")}
-        ${this._summaryTile("Feed-in", formatPowerValue(summaryValues.feed_in), "feed")}
-        ${this._summaryTile("Grid", formatPowerValue(summaryValues.consumed), "grid")}
-      </div>
-    `;
-    const hoverLines = hoverPoint
-      ? `
-        <div class="chart-hover-value"><span class="hover-dot bat"></span>BAT: ${this._fmtPercent(hoverPoint.bat)}</div>
-        <div class="chart-hover-value"><span class="hover-dot load"></span>Load: ${formatPowerValue(hoverPoint.load)}</div>
-        <div class="chart-hover-value"><span class="hover-dot solar"></span>Solar: ${formatPowerValue(hoverPoint.solar)}</div>
-        <div class="chart-hover-value"><span class="hover-dot feed"></span>Feed-in: ${formatPowerValue(hoverPoint.feed_in)}</div>
-        <div class="chart-hover-value"><span class="hover-dot grid"></span>Consumed: ${formatPowerValue(hoverPoint.consumed)}</div>
-      `
-      : `<div class="chart-hover-empty">Hover a point to inspect values.</div>`;
-    const hoverTitle = hoverPoint ? hoverPoint.hoverLabel : chart.rangeLabel || chart.period;
-    const tickIndices = renderPoints.length <= 1 ? [0] : Array.from(new Set([0, Math.round(plotCount * 0.2), Math.round(plotCount * 0.4), Math.round(plotCount * 0.6), Math.round(plotCount * 0.8), plotCount])).sort((a, b) => a - b);
-    const svgLayers = `
-      <defs>
-        <linearGradient id="bwLoadFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="rgba(47,155,232,0.34)"></stop>
-          <stop offset="100%" stop-color="rgba(47,155,232,0.06)"></stop>
-        </linearGradient>
-        <linearGradient id="bwSolarFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="rgba(240,196,25,0.35)"></stop>
-          <stop offset="100%" stop-color="rgba(240,196,25,0.06)"></stop>
-        </linearGradient>
-        <linearGradient id="bwFeedFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="rgba(240,138,36,0.28)"></stop>
-          <stop offset="100%" stop-color="rgba(240,138,36,0.04)"></stop>
-        </linearGradient>
-        <linearGradient id="bwConsumedFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="rgba(152,162,168,0.28)"></stop>
-          <stop offset="100%" stop-color="rgba(152,162,168,0.04)"></stop>
-        </linearGradient>
-        <linearGradient id="bwBatFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stop-color="rgba(47,201,110,0.34)"></stop>
-          <stop offset="100%" stop-color="rgba(47,201,110,0.08)"></stop>
-        </linearGradient>
-      </defs>
-      <line x1="${left}" y1="${bottom}" x2="${width - right}" y2="${bottom}" class="axis"></line>
-      <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" class="axis"></line>
-      <line x1="${width - right}" y1="${top}" x2="${width - right}" y2="${bottom}" class="axis"></line>
-      ${[0, 0.25, 0.5, 0.75, 1]
-        .map((point) => {
-          const y = bottom - point * plotHeight;
-          const leftValue = formatAxisValue(powerMax * point);
-          const rightValue = this._fmtPercent(batMax * point);
-          return `
-            <line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" class="grid"></line>
-            <text x="${left - 10}" y="${y + 4}" text-anchor="end" class="tick">${leftValue}</text>
-            <text x="${width - right + 10}" y="${y + 4}" text-anchor="start" class="tick">${rightValue}</text>
-          `;
-        })
-        .join("")}
-      ${this._chartSeries?.load && renderPoints.length ? `<polygon class="series-area series-load" points="${areaPoints("load")}" fill="url(#bwLoadFill)"></polygon><polyline class="series-line series-load" points="${linePoints("load")}" stroke="var(--bw-load)"></polyline>` : ""}
-      ${this._chartSeries?.solar && renderPoints.length ? `<polygon class="series-area series-solar" points="${areaPoints("solar")}" fill="url(#bwSolarFill)"></polygon><polyline class="series-line series-solar" points="${linePoints("solar")}" stroke="var(--bw-solar)"></polyline>` : ""}
-      ${this._chartSeries?.feed_in && renderPoints.length ? `<polygon class="series-area series-feed" points="${areaPoints("feed_in")}" fill="url(#bwFeedFill)"></polygon><polyline class="series-line series-feed" points="${linePoints("feed_in")}" stroke="var(--bw-feed)"></polyline>` : ""}
-      ${this._chartSeries?.consumed && renderPoints.length ? `<polygon class="series-area series-consumed" points="${areaPoints("consumed")}" fill="url(#bwConsumedFill)"></polygon><polyline class="series-line series-consumed" points="${linePoints("consumed")}" stroke="var(--bw-grid)"></polyline>` : ""}
-      ${this._chartSeries?.bat && renderPoints.length ? `<polygon class="series-area series-bat" points="${areaPoints("bat", true)}" fill="url(#bwBatFill)"></polygon><polyline class="series-line series-bat" points="${linePoints("bat", true)}" stroke="var(--bw-battery)"></polyline>` : ""}
-      ${renderPoints
-        .map((point, index) => {
-          const x = xFor(index);
-          const zoneWidth = Math.max(14, Math.min(40, plotWidth / Math.max(renderPoints.length, 1)));
-          const markerY = hoverIndex === index ? bottom - 10 : bottom;
-          return `
-            <rect x="${x - zoneWidth / 2}" y="${top}" width="${zoneWidth}" height="${plotHeight}" fill="transparent" class="power-hover-zone" data-power-hover="${index}"></rect>
-            ${hoverIndex === index ? `<circle cx="${x}" cy="${markerY}" r="5.5" class="series-marker marker-bat"></circle>` : ""}
-          `;
-        })
-        .join("")}
-      ${tickIndices
-        .map((index) => {
-          const point = renderPoints[index];
-          if (!point) return "";
-          return `<text x="${xFor(index)}" y="${bottom + 24}" text-anchor="middle" class="tick power-x-tick">${this._escape(point.label)}</text>`;
-        })
-        .join("")}
-      <text x="12" y="${top + 16}" class="axis-label">${this._escape(leftLabel)}</text>
-      <text x="${width - 52}" y="${top + 16}" class="axis-label">${this._escape(rightLabel)}</text>
-    `;
-    const chartBody = renderPoints.length
-      ? `<svg class="power-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Power chart for the selected period">${svgLayers}</svg>`
-      : `<div class="empty power-empty">No power samples are available for this period yet.</div>`;
-
-    return `
-      <section class="panel power-panel">
-        <div class="panel-header power-header">
-          <div>
-            <div class="panel-title">${this._escape(chart.period === "today" ? "Today" : chart.period === "day" ? "Day" : chart.period === "week" ? "Week" : "Month")} Power Diagram</div>
-            <div class="panel-date">${this._escape(chart.rangeLabel)}${renderPoints.length ? ` | ${renderPoints.length} points` : ""}</div>
-            <div class="panel-note">Hover a point to inspect values. Toggle any series on or off with the chips below.</div>
-          </div>
-          <div class="chart-hover-card">
-            <div class="chart-hover-title">${this._escape(hoverTitle || "Hover point")}</div>
-            ${hoverLines}
-          </div>
-        </div>
-        <div class="power-chart-shell">
-          <div class="power-chart-wrap">
-            ${chartBody}
-          </div>
-          ${summaryBoxes}
-          ${chips}
-        </div>
-      </section>
     `;
   }
 
@@ -3640,9 +2888,6 @@ class ByteWattReportCard extends HTMLElement {
           ${
             reporting
               ? `
-            ${this._renderSankeyPanel(reporting, periodContext)}
-            ${this._renderChart(reporting, periodContext)}
-            ${this._renderPowerChart(reporting, periodContext)}
             ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
             ${this._renderAggregateStrip(reporting)}
@@ -3679,43 +2924,6 @@ class ByteWattReportCard extends HTMLElement {
         this._historyPeriod = button.dataset.historyPeriod;
         this.render();
       });
-    });
-    this.shadowRoot.querySelectorAll("[data-chart-series]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const key = button.dataset.chartSeries;
-        if (!key) return;
-        this._chartSeries = {
-          ...(this._chartSeries || {}),
-          [key]: !this._chartSeries?.[key],
-        };
-        this.render();
-      });
-    });
-    this.shadowRoot.querySelectorAll("[data-usage-series]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const key = button.dataset.usageSeries;
-        if (!key) return;
-        this._usageMixSeries = {
-          ...(this._usageMixSeries || {}),
-          [key]: !this._usageMixSeries?.[key],
-        };
-        this.render();
-      });
-    });
-    const powerWrap = this.shadowRoot.querySelector(".power-chart-wrap");
-    powerWrap?.querySelectorAll("[data-power-hover]").forEach((zone) => {
-      const setHover = () => {
-        this._powerHoverIndex = Number(zone.dataset.powerHover || 0);
-        this.render();
-      };
-      zone.addEventListener("pointerenter", setHover);
-      zone.addEventListener("click", setHover);
-    });
-    powerWrap?.addEventListener("pointerleave", () => {
-      if (this._powerHoverIndex !== null) {
-        this._powerHoverIndex = null;
-        this.render();
-      }
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
       button.addEventListener("click", async () => {
