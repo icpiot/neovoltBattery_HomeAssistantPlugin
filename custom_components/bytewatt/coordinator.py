@@ -163,6 +163,178 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 return str(getattr(inverter, "display_name", "") or sys_sn)
         return sys_sn
 
+    def _snapshot_has_reporting_data(self, snapshot: Optional[Dict[str, Any]]) -> bool:
+        """Return True when a daily snapshot has enough data to archive."""
+        if not snapshot:
+            return False
+        return bool(
+            snapshot.get("Power_Diagram")
+            or snapshot.get("PV_Generated_Today") is not None
+            or snapshot.get("Consumed_Today") is not None
+            or snapshot.get("Feed_In_Today") is not None
+            or snapshot.get("Grid_Import_Today") is not None
+        )
+
+    @staticmethod
+    def _sum_snapshot_value(snapshots: List[Dict[str, Any]], key: str) -> float:
+        total = 0.0
+        for snapshot in snapshots:
+            value = snapshot.get(key)
+            try:
+                total += float(value or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _combine_daily_snapshots(
+        self,
+        *,
+        record_date: str,
+        snapshots: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Combine individual-battery day snapshots into an all-systems snapshot."""
+        if not snapshots:
+            return {}
+
+        time_points: List[str] = []
+        for snapshot in snapshots:
+            diagram = snapshot.get("Power_Diagram") or {}
+            for label in diagram.get("time") or []:
+                text = str(label or "").strip()
+                if text and text not in time_points:
+                    time_points.append(text)
+
+        time_index = {label: idx for idx, label in enumerate(time_points)}
+
+        def series_totals(series_key: str) -> List[float]:
+            values = [0.0] * len(time_points)
+            for snapshot in snapshots:
+                diagram = snapshot.get("Power_Diagram") or {}
+                series = (diagram.get("series") or {}).get(series_key) or []
+                labels = diagram.get("time") or []
+                for label, raw_value in zip(labels, series):
+                    idx = time_index.get(str(label or "").strip())
+                    if idx is None:
+                        continue
+                    try:
+                        values[idx] += float(raw_value or 0)
+                    except (TypeError, ValueError):
+                        continue
+            return values
+
+        solar_generation = self._sum_snapshot_value(snapshots, "PV_Generated_Today")
+        load_consumption = self._sum_snapshot_value(snapshots, "Consumed_Today")
+        feed_in = self._sum_snapshot_value(snapshots, "Feed_In_Today")
+        grid_consumption = self._sum_snapshot_value(snapshots, "Grid_Import_Today")
+        battery_charge = self._sum_snapshot_value(snapshots, "Battery_Charged_Today")
+        battery_discharge = self._sum_snapshot_value(snapshots, "Battery_Discharged_Today")
+        pv_power_house = self._sum_snapshot_value(snapshots, "PV_Power_House")
+        pv_charging_battery = self._sum_snapshot_value(snapshots, "PV_Charging_Battery")
+        grid_battery_charge = self._sum_snapshot_value(snapshots, "Grid_Based_Battery_Charge")
+        trees_planted = self._sum_snapshot_value(snapshots, "Trees_Planted")
+        co2_reduction = self._sum_snapshot_value(snapshots, "CO2_Reduction_Tons")
+        today_income = self._sum_snapshot_value(snapshots, "Today_Income")
+        total_income = self._sum_snapshot_value(snapshots, "Total_Income")
+
+        soc_values: List[float] = []
+        power_sources: List[str] = []
+        for snapshot in snapshots:
+            try:
+                if snapshot.get("soc") is not None:
+                    soc_values.append(float(snapshot.get("soc")))
+            except (TypeError, ValueError):
+                pass
+            source = str(snapshot.get("powerSource") or "").strip()
+            if source and source not in power_sources:
+                power_sources.append(source)
+
+        self_consumption = round(((solar_generation - feed_in) / solar_generation) * 100, 2) if solar_generation > 0 else 0.0
+        self_sufficiency = round(((load_consumption - grid_consumption) / load_consumption) * 100, 2) if load_consumption > 0 else 0.0
+
+        power_diagram = {
+            "date": record_date,
+            "time": time_points,
+            "series": {
+                "bat": series_totals("bat"),
+                "load": series_totals("load"),
+                "solar": series_totals("solar"),
+                "feed_in": series_totals("feed_in"),
+                "consumed": series_totals("consumed"),
+            },
+            "summary": {
+                "soc": round(statistics.fmean(soc_values), 2) if soc_values else None,
+                "solar_generation": solar_generation,
+                "load_consumption": load_consumption,
+                "feed_in": feed_in,
+                "grid_consumption": grid_consumption,
+                "battery_charge": battery_charge,
+                "battery_discharge": battery_discharge,
+            },
+            "meta": {
+                "power_source": " / ".join(power_sources),
+            },
+        }
+
+        return {
+            "PV_Generated_Today": solar_generation,
+            "Consumed_Today": load_consumption,
+            "Feed_In_Today": feed_in,
+            "Grid_Import_Today": grid_consumption,
+            "Battery_Charged_Today": battery_charge,
+            "Battery_Discharged_Today": battery_discharge,
+            "Self_Consumption": self_consumption,
+            "Self_Sufficiency": self_sufficiency,
+            "Trees_Planted": trees_planted,
+            "CO2_Reduction_Tons": co2_reduction,
+            "Today_Income": today_income,
+            "Total_Income": total_income,
+            "PV_Power_House": pv_power_house,
+            "PV_Charging_Battery": pv_charging_battery,
+            "Grid_Based_Battery_Charge": grid_battery_charge,
+            "soc": round(statistics.fmean(soc_values), 2) if soc_values else None,
+            "powerSource": " / ".join(power_sources),
+            "Power_Diagram": power_diagram,
+        }
+
+    async def _build_aggregate_day_snapshot(
+        self,
+        *,
+        record_date: str,
+        inventory: List[Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Build an all-systems day snapshot from child batteries.
+
+        Historical endpoints appear to be more reliable per child battery than
+        via the synthetic "All" monitoring scope, so period reports use the
+        per-battery rows as the source of truth.
+        """
+        snapshots: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+        for inverter in inventory:
+            sys_sn = str(getattr(inverter, "sys_sn", "") or "").strip()
+            if not sys_sn or sys_sn.lower() == "all" or sys_sn in seen:
+                continue
+            seen.add(sys_sn)
+            try:
+                snapshot = await self.client.get_battery_day_snapshot(
+                    record_date,
+                    sys_sn=sys_sn,
+                )
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Aggregate historical fetch failed for %s (%s): %s",
+                    sys_sn,
+                    record_date,
+                    err,
+                )
+                continue
+            if self._snapshot_has_reporting_data(snapshot):
+                snapshots.append(snapshot)
+
+        if not snapshots:
+            return None
+        return self._combine_daily_snapshots(record_date=record_date, snapshots=snapshots)
+
     async def _backfill_history_snapshots(
         self,
         *,
@@ -197,10 +369,16 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
             for record_date in reversed(missing_dates):
                 try:
-                    snapshot = await self.client.get_battery_day_snapshot(
-                        record_date,
-                        sys_sn=fetch_sys_sn,
-                    )
+                    if aggregate:
+                        snapshot = await self._build_aggregate_day_snapshot(
+                            record_date=record_date,
+                            inventory=inventory,
+                        )
+                    else:
+                        snapshot = await self.client.get_battery_day_snapshot(
+                            record_date,
+                            sys_sn=fetch_sys_sn,
+                        )
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.debug(
                         "Historical backfill failed for %s (%s): %s",
@@ -210,7 +388,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     continue
 
-                if not snapshot or not (snapshot.get("Power_Diagram") or snapshot.get("PV_Generated_Today") is not None):
+                if not self._snapshot_has_reporting_data(snapshot):
                     continue
 
                 reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
