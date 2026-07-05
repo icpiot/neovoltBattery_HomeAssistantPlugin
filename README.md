@@ -36,6 +36,23 @@ Requires Home Assistant **2024.11.0** or later.
 Copy `custom_components/bytewatt` into your Home Assistant `custom_components/`
 directory, restart, then add the integration as above.
 
+### Repo-managed HA pull/push
+
+This branch now includes repo-owned HA helper scripts under [scripts](scripts):
+
+- `scripts/ha_git_pull.sh`
+- `scripts/ha_git_push.sh`
+
+Use these as the canonical versions for Home Assistant shell commands. The pull
+script is designed to deploy both:
+
+- `custom_components/bytewatt`
+- `examples/www/bytewatt-policy-card.js`
+- `examples/www/bytewatt-report-card.js`
+
+That avoids the broken state where the frontend card is newer than the backend
+integration logic.
+
 ## Setup
 
 You'll be asked for:
@@ -131,6 +148,9 @@ This repo also includes example dashboard assets under [examples](examples):
 The optional custom cards are not auto-installed by HACS with the integration.
 If you want them, copy the files above into Home Assistant's `www` folder and
 add them as Lovelace resources.
+
+If you are using the repo-managed HA pull script, the pull should deploy both
+the custom cards and the integration backend together.
 
 A future standalone frontend-package scaffold for these cards now lives under:
 

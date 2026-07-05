@@ -70,6 +70,10 @@ url: /local/community/bytewatt-card/bytewatt-report-card.js?v=167
 type: module
 ```
 
+If you are using the repo-managed HA pull script from `scripts/ha_git_pull.sh`,
+it should also deploy `custom_components/bytewatt` at the same time so the card
+and backend stay aligned.
+
 ## Resource Counter
 
 To force Home Assistant and the browser to load a fresh custom-card build:
@@ -96,7 +100,7 @@ type: module
 Current build stamp in this repo:
 
 - Policy card: `049`
-- Reporting card: `145`
+- Reporting card: `167`
 
 ## Defaults
 
