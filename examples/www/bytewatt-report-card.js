@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "171";
+const BYTEWATT_REPORT_CARD_BUILD = "172";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -414,6 +414,21 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureAttemptKey = "";
     this._historyEnsureStatus = "";
     this._historyEnsureState = "";
+  }
+
+  async _syncSelectedDayHistory() {
+    if ((this._reportPeriod || "day") !== "day") {
+      this.render();
+      return;
+    }
+    if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
+      await this._reloadHistory();
+    }
+    if (this._historyMeta().enabled) {
+      await this._ensureSelectedDailyHistory();
+    } else {
+      this.render();
+    }
   }
 
   async _ensureSelectedDailyHistory() {
@@ -3685,7 +3700,7 @@ class ByteWattReportCard extends HTMLElement {
       }
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const nextPeriod = button.dataset.reportPeriod || "day";
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
         const liveAnchor =
@@ -3698,24 +3713,24 @@ class ByteWattReportCard extends HTMLElement {
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._resetHistoryEnsureState();
-        this.render();
+        await this._syncSelectedDayHistory();
       });
     });
     this.shadowRoot.querySelectorAll("[data-report-shift]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const step = Number(button.dataset.reportShift || 0) || 0;
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
         const fallback = this._parseLocalDate(this._reportAnchorDate) || this._parseLocalDate(this._reporting()?.power_diagram?.date) || null;
         const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records);
         this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
         this._resetHistoryEnsureState();
-        this.render();
+        await this._syncSelectedDayHistory();
       });
     });
-    this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", (event) => {
+    this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", async (event) => {
       this._reportAnchorDate = String(event.target.value || "").trim();
       this._resetHistoryEnsureState();
-      this.render();
+      await this._syncSelectedDayHistory();
     });
     this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
       try {

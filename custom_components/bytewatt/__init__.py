@@ -744,6 +744,13 @@ def _register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("No ByteWatt integrations found to toggle diagnostics")
 
     async def handle_ensure_report_history(call: ServiceCall) -> None:
+        _LOGGER.info(
+            "ByteWatt ensure_report_history called for scope=%s start=%s end=%s entry_id=%s",
+            call.data.get(ATTR_SCOPE_KEY, "all"),
+            call.data.get(ATTR_START_DATE),
+            call.data.get(ATTR_END_DATE),
+            call.data.get(ATTR_ENTRY_ID),
+        )
         coordinator = _coordinator_for(hass, call)
         result = await coordinator.async_ensure_history_range(
             scope_key=call.data.get(ATTR_SCOPE_KEY, "all"),
