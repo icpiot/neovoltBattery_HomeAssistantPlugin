@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "148";
+const BYTEWATT_REPORT_CARD_BUILD = "149";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -266,10 +266,24 @@ class ByteWattReportCard extends HTMLElement {
 
   _historyRecords() {
     const data = this._historyData?.scopes?.[this._historyScopeKey()]?.records || {};
-    return Object.entries(data).map(([recordDate, reporting]) => ({
-      record_date: recordDate,
-      ...(reporting || {}),
-    }));
+    return Object.entries(data).map(([recordDate, reporting]) => {
+      const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
+      const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
+      const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
+      return {
+        record_date: normalizedDate,
+        record_date_display: displayDate,
+        record_date_raw: String(recordDate || ""),
+        ...(reporting || {}),
+      };
+    });
+  }
+
+  _recordDisplayDate(record) {
+    if (!record) return "";
+    if (record.record_date_display) return String(record.record_date_display);
+    const parsed = this._parseLocalDate(record.record_date);
+    return parsed ? this._formatDisplayDate(parsed) : String(record.record_date || "");
   }
 
   _selectedHistoryRecords() {
@@ -295,10 +309,36 @@ class ByteWattReportCard extends HTMLElement {
       return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
     }
     const text = String(value).trim();
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    return Number.isNaN(date.getTime()) ? null : date;
+    const candidates = text.split(/\s*(?:->|to)\s*/i).filter(Boolean);
+    const parseCandidate = (candidate) => {
+      const trimmed = String(candidate || "").trim();
+      const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (iso) {
+        const date = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+      const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (dmy) {
+        const date = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+      return null;
+    };
+    for (const candidate of candidates.length ? candidates : [text]) {
+      const parsed = parseCandidate(candidate);
+      if (parsed) return parsed;
+    }
+    const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const dmyMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmyMatch) {
+      const date = new Date(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1]));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    return null;
   }
 
   _formatLocalDate(date) {
@@ -386,6 +426,7 @@ class ByteWattReportCard extends HTMLElement {
       const key = this._formatLocalDate(cursor);
       expanded.push({
         record_date: key,
+        record_date_display: this._formatDisplayDate(cursor),
         ...(mapped.get(key) || {}),
       });
       cursor.setDate(cursor.getDate() + 1);
@@ -1202,17 +1243,18 @@ class ByteWattReportCard extends HTMLElement {
     `;
   }
 
-  _renderSankeyPanel(reporting) {
-    const sankey = reporting?.sankey || {};
-    const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
+  _renderSankeyPanel(reporting, periodContext = null) {
+    const periodReporting = periodContext?.reporting || reporting || {};
+    const sankey = periodReporting?.sankey || {};
+    const periodSummary = periodReporting?.summary || periodReporting?.power_diagram?.summary || {};
     const dataLayers = [
-      reporting?.today || {},
-      periodSummary,
-      reporting?.totals || {},
+      periodReporting?.totals || {},
       sankey,
-      reporting?.power_diagram?.summary || {},
+      periodSummary,
+      periodReporting?.today || {},
+      periodReporting?.power_diagram?.summary || {},
     ];
-    const isDailyPeriod = this._isDailyPeriod(reporting?.meta?.period || this._reportPeriod || "day");
+    const isDailyPeriod = this._isDailyPeriod(periodReporting?.meta?.period || this._reportPeriod || "day");
     const sourceNumber = (...keys) => {
       let zeroCandidate = null;
       for (const layer of dataLayers) {
@@ -1325,12 +1367,12 @@ class ByteWattReportCard extends HTMLElement {
       </defs>
     `;
 
-    const periodRecords = Number(reporting?.records?.length) || 0;
-    const periodLabel = reporting?.meta?.period_label || "Day";
+    const periodRecords = Number(periodReporting?.records?.length) || 0;
+    const periodLabel = periodReporting?.meta?.period_label || "Day";
     const periodRange =
-      reporting?.meta?.period_start && reporting?.meta?.period_end
-        ? `${reporting.meta.period_start} -> ${reporting.meta.period_end}`
-        : reporting?.power_diagram?.date || "";
+      periodReporting?.meta?.period_start && periodReporting?.meta?.period_end
+        ? `${periodReporting.meta.period_start} -> ${periodReporting.meta.period_end}`
+        : periodReporting?.power_diagram?.date || "";
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
       ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
@@ -1518,6 +1560,7 @@ class ByteWattReportCard extends HTMLElement {
       .slice()
       .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)))
       .map((record) => {
+        const displayDate = this._recordDisplayDate(record);
         const load = Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
         const solarRaw = Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"], ["pv_power_house"]]), 0);
         const batteryRaw = Math.max(this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]), 0);
@@ -1525,13 +1568,13 @@ class ByteWattReportCard extends HTMLElement {
         const battery = Math.min(batteryRaw, Math.max(load - solar, 0));
         const grid = Math.max(load - solar - battery, 0);
         return {
-          label: shortDate(record.record_date),
-          fullLabel: record.record_date || "",
+          label: shortDate(displayDate || record.record_date),
+          fullLabel: displayDate || record.record_date || "",
           load,
           solar,
           battery,
           grid,
-          tooltip: `${record.record_date || ""}: load ${this._fmtEnergy(load)} | solar ${this._fmtEnergy(solar)} | battery ${this._fmtEnergy(battery)} | grid ${this._fmtEnergy(grid)}`,
+          tooltip: `${displayDate || record.record_date || ""}: load ${this._fmtEnergy(load)} | solar ${this._fmtEnergy(solar)} | battery ${this._fmtEnergy(battery)} | grid ${this._fmtEnergy(grid)}`,
         };
       });
     if (!bars.length) {
@@ -1706,16 +1749,19 @@ class ByteWattReportCard extends HTMLElement {
           feed_in: this._parseFloat(series.feed_in?.[index]),
           consumed: this._parseFloat(series.consumed?.[index]),
         }))
-      : chartRecords.map((record) => ({
-          key: record.record_date || "",
-          label: formatShortDate(record.record_date),
-          hoverLabel: formatDisplayDate(record.record_date),
-          bat: this._recordFloat(record, [["live_soc"], ["live", "soc"]]),
-          load: this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]),
-          solar: this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]),
-          feed_in: this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
-          consumed: this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
-        }));
+      : chartRecords.map((record) => {
+          const displayDate = this._recordDisplayDate(record) || record.record_date || "";
+          return {
+            key: record.record_date || "",
+            label: formatShortDate(displayDate),
+            hoverLabel: formatDisplayDate(displayDate),
+            bat: this._recordFloat(record, [["live_soc"], ["live", "soc"]]),
+            load: this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]),
+            solar: this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]),
+            feed_in: this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]),
+            consumed: this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]),
+          };
+        });
 
     const summary = periodContext?.summary || {};
     const totals = isDaily
@@ -3129,7 +3175,7 @@ class ByteWattReportCard extends HTMLElement {
           ${
             reporting
               ? `
-            ${this._renderSankeyPanel(reporting)}
+            ${this._renderSankeyPanel(reporting, periodContext)}
             ${this._renderChart(reporting)}
             ${this._renderPowerChart(reporting, periodContext)}
             ${this._renderHeroBanner(reporting)}
