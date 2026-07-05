@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "146";
+const BYTEWATT_REPORT_CARD_BUILD = "147";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1205,21 +1205,31 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting) {
     const sankey = reporting?.sankey || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
+    const dataLayers = [
+      periodSummary,
+      reporting?.totals || {},
+      reporting?.today || {},
+      sankey,
+      reporting?.power_diagram?.summary || {},
+    ];
     const isDailyPeriod = this._isDailyPeriod(reporting?.meta?.period || this._reportPeriod || "day");
     const sourceNumber = (...keys) => {
-      for (const key of keys) {
-        const value = Number(sankey?.[key]);
-        if (Number.isFinite(value)) {
-          return value;
+      let zeroCandidate = null;
+      for (const layer of dataLayers) {
+        if (!layer || !Object.keys(layer).length) continue;
+        for (const key of keys) {
+          const value = Number(layer?.[key]);
+          if (Number.isFinite(value)) {
+            if (value !== 0) {
+              return value;
+            }
+            if (zeroCandidate === null) {
+              zeroCandidate = 0;
+            }
+          }
         }
       }
-      for (const key of keys) {
-        const value = Number(periodSummary?.[key]);
-        if (Number.isFinite(value)) {
-          return value;
-        }
-      }
-      return 0;
+      return zeroCandidate ?? 0;
     };
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
