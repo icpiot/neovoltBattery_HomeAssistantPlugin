@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "149";
+const BYTEWATT_REPORT_CARD_BUILD = "150";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -565,46 +565,26 @@ class ByteWattReportCard extends HTMLElement {
       }
       return 0;
     };
-    const totalSolar = summary.total_solar_generation || 0;
-    const totalLoad = summary.total_house_consumption || 0;
-    const totalFeed = summary.total_feed_in || 0;
+    const periodSnapshot = this._isDailyPeriod(period) ? baseToday : summary;
+    const periodSolarTotal = this._isDailyPeriod(period)
+      ? this._parseFloat(periodSnapshot.solar_generation ?? periodSnapshot.solar_generation_today ?? 0)
+      : summary.solar_generation_today;
+    const periodLoadTotal = this._isDailyPeriod(period)
+      ? this._parseFloat(periodSnapshot.load_consumption ?? periodSnapshot.load_consumption_today ?? 0)
+      : summary.load_consumption_today;
+    const periodFeedTotal = this._isDailyPeriod(period)
+      ? this._parseFloat(periodSnapshot.feed_in ?? periodSnapshot.feed_in_today ?? 0)
+      : summary.feed_in_today;
+    const periodGridTotal = this._isDailyPeriod(period)
+      ? this._parseFloat(periodSnapshot.grid_consumption ?? periodSnapshot.grid_consumption_today ?? 0)
+      : summary.grid_consumption_today;
     const periodToday = {
-      solar_generation: summary.solar_generation_today,
-      load_consumption: summary.load_consumption_today,
-      feed_in: summary.feed_in_today,
-      grid_consumption: summary.grid_consumption_today,
-      battery_charge: summary.battery_charged_today,
-      battery_discharge: summary.battery_discharged_today,
-      pv_power_house: summary.pv_power_house,
-      pv_charging_battery: summary.pv_charging_battery,
-      grid_battery_charge: summary.grid_battery_charge,
-      self_consumption: totalSolar > 0 ? Math.max(((totalSolar - totalFeed) / totalSolar) * 100, 0) : baseToday.self_consumption,
-      self_sufficiency:
-        totalLoad > 0 ? Math.max(((totalLoad - summary.total_grid_consumption) / totalLoad) * 100, 0) : baseToday.self_sufficiency,
-      trees_planted: latest.trees_planted ?? baseToday.trees_planted,
-      co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
-      today_income: selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
-      total_income: this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
-    };
-    const periodTotals = {
-      solar_generation: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_solar_generation"], ["totals", "solar_generation"]], [["today", "solar_generation"], ["solar_generation_today"]])
-        : summary.total_solar_generation,
-      feed_in: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_feed_in"], ["totals", "feed_in"]], [["today", "feed_in"], ["feed_in_today"]])
-        : summary.total_feed_in,
-      battery_charge: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_battery_charge"], ["totals", "battery_charge"]], [["today", "battery_charge"], ["battery_charged_today"]])
-        : summary.total_battery_charge,
-      battery_discharge: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_battery_discharge"], ["totals", "battery_discharge"]], [["today", "battery_discharge"], ["battery_discharged_today"]])
-        : summary.total_battery_discharge,
-      house_consumption: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_house_consumption"], ["totals", "house_consumption"]], [["today", "load_consumption"], ["load_consumption_today"]])
-        : summary.total_house_consumption,
-      grid_consumption: this._isDailyPeriod(period)
-        ? periodAbsolute([["total_grid_consumption"], ["totals", "grid_consumption"]], [["today", "grid_consumption"], ["grid_consumption_today"]])
-        : summary.total_grid_consumption,
+      solar_generation: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.solar_generation ?? periodSnapshot.solar_generation_today ?? 0) : summary.solar_generation_today,
+      load_consumption: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.load_consumption ?? periodSnapshot.load_consumption_today ?? 0) : summary.load_consumption_today,
+      feed_in: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.feed_in ?? periodSnapshot.feed_in_today ?? 0) : summary.feed_in_today,
+      grid_consumption: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.grid_consumption ?? periodSnapshot.grid_consumption_today ?? 0) : summary.grid_consumption_today,
+      battery_charge: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.battery_charge ?? periodSnapshot.battery_charged_today ?? 0) : summary.battery_charged_today,
+      battery_discharge: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.battery_discharge ?? periodSnapshot.battery_discharged_today ?? 0) : summary.battery_discharged_today,
       pv_power_house: this._isDailyPeriod(period)
         ? periodAbsolute([["pv_power_house"], ["totals", "pv_power_house"]], [])
         : summary.pv_power_house,
@@ -614,30 +594,33 @@ class ByteWattReportCard extends HTMLElement {
       grid_battery_charge: this._isDailyPeriod(period)
         ? periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], [])
         : summary.grid_battery_charge,
+      self_consumption:
+        this._isDailyPeriod(period)
+          ? (periodSnapshot.self_consumption ?? baseToday.self_consumption)
+          : periodSolarTotal > 0
+            ? Math.max(((periodSolarTotal - periodFeedTotal) / periodSolarTotal) * 100, 0)
+            : baseToday.self_consumption,
+      self_sufficiency:
+        this._isDailyPeriod(period)
+          ? (periodSnapshot.self_sufficiency ?? baseToday.self_sufficiency)
+          : periodLoadTotal > 0
+            ? Math.max(((periodLoadTotal - periodGridTotal) / periodLoadTotal) * 100, 0)
+            : baseToday.self_sufficiency,
+      trees_planted: latest.trees_planted ?? baseToday.trees_planted,
+      co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
+      today_income: this._isDailyPeriod(period)
+        ? this._parseFloat(periodSnapshot.today_income ?? baseToday.today_income ?? 0)
+        : selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
+      total_income: this._isDailyPeriod(period)
+        ? (periodSnapshot.total_income ?? baseToday.total_income)
+        : this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
     };
-    const sankey = this._isDailyPeriod(period)
-      ? {
-          solar_generation: summary.solar_generation_today,
-          load_consumption: summary.load_consumption_today,
-          feed_in: summary.feed_in_today,
-          grid_consumption: summary.grid_consumption_today,
-          battery_charge: summary.battery_charged_today,
-          battery_discharge: summary.battery_discharged_today,
-          pv_power_house: periodAbsolute([["pv_power_house"], ["totals", "pv_power_house"]], []),
-          pv_charging_battery: periodAbsolute([["pv_charging_battery"], ["totals", "pv_charging_battery"]], []),
-          grid_battery_charge: periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], []),
-        }
-      : {
-          solar_generation: summary.total_solar_generation,
-          load_consumption: summary.total_house_consumption,
-          feed_in: summary.total_feed_in,
-          grid_consumption: summary.total_grid_consumption,
-          battery_charge: summary.total_battery_charge,
-          battery_discharge: summary.total_battery_discharge,
-          pv_power_house: summary.pv_power_house,
-          pv_charging_battery: summary.pv_charging_battery,
-          grid_battery_charge: summary.grid_battery_charge,
-        };
+    const periodTotals = {
+      ...periodToday,
+    };
+    const sankey = {
+      ...periodToday,
+    };
     const powerSummary = this._isDailyPeriod(period)
       ? {
           ...summary,
@@ -1248,10 +1231,10 @@ class ByteWattReportCard extends HTMLElement {
     const sankey = periodReporting?.sankey || {};
     const periodSummary = periodReporting?.summary || periodReporting?.power_diagram?.summary || {};
     const dataLayers = [
+      periodReporting?.today || {},
       periodReporting?.totals || {},
       sankey,
       periodSummary,
-      periodReporting?.today || {},
       periodReporting?.power_diagram?.summary || {},
     ];
     const isDailyPeriod = this._isDailyPeriod(periodReporting?.meta?.period || this._reportPeriod || "day");
@@ -1774,10 +1757,10 @@ class ByteWattReportCard extends HTMLElement {
         }
       : {
           bat: this._parseFloat(summary.live_soc ?? reporting?.live?.soc ?? 0),
-          load: this._parseFloat(summary.total_house_consumption ?? 0),
-          solar: this._parseFloat(summary.total_solar_generation ?? 0),
-          feed_in: this._parseFloat(summary.total_feed_in ?? 0),
-          consumed: this._parseFloat(summary.total_grid_consumption ?? 0),
+          load: this._parseFloat(reporting?.today?.load_consumption ?? summary.load_consumption_today ?? 0),
+          solar: this._parseFloat(reporting?.today?.solar_generation ?? summary.solar_generation_today ?? 0),
+          feed_in: this._parseFloat(reporting?.today?.feed_in ?? summary.feed_in_today ?? 0),
+          consumed: this._parseFloat(reporting?.today?.grid_consumption ?? summary.grid_consumption_today ?? 0),
         };
 
     return {
