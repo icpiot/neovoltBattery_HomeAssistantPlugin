@@ -195,6 +195,15 @@ class ByteWattReportHistory:
                 err,
             )
 
+    async def async_record_dates(self, scope_key: str) -> set[str]:
+        """Return the known record dates for a scope."""
+        scope_key = _safe_filename(scope_key)
+        try:
+            return await self.hass.async_add_executor_job(self._record_dates_sync, scope_key)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Failed to read ByteWatt history dates for %s: %s", scope_key, err)
+            return set()
+
     def _store_snapshot_sync(
         self,
         scope_key: str,
@@ -233,6 +242,19 @@ class ByteWattReportHistory:
             encoding="utf-8",
         )
         self._write_scope_csv(scope_key, label, scope.get("records", {}))
+
+    def _record_dates_sync(self, scope_key: str) -> set[str]:
+        if not self.history_file.exists():
+            return set()
+        try:
+            history = json.loads(self.history_file.read_text(encoding="utf-8"))
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Unable to read existing ByteWatt history file: %s", err)
+            return set()
+        scopes = history.get("scopes") or {}
+        scope = scopes.get(scope_key) or {}
+        records = scope.get("records") or {}
+        return {str(key) for key in records.keys() if key}
 
     def _write_scope_csv(
         self,

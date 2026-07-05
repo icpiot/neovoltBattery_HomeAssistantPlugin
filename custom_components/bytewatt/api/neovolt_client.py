@@ -573,6 +573,191 @@ class NeovoltClient:
         except (asyncio.TimeoutError, aiohttp.ClientError, ValueError) as error:
             # Wrap transport errors so the caller sees a uniform exception type.
             raise ByteWattAPIError(f"Transport error fetching battery data: {error}") from error
+
+    async def async_get_battery_day_snapshot(
+        self,
+        report_date: str,
+        station_id: str = None,
+        sys_sn: Optional[str] = None,
+        _retry_count: int = 0,
+    ) -> Dict[str, Any]:
+        """Fetch one historical daily snapshot for the requested date."""
+        if not self.token:
+            if not await self.async_login():
+                raise ByteWattAuthError("Authentication failed")
+
+        effective_sys_sn = sys_sn or self._aggregate_monitoring_sys_sn()
+        headers = self._get_auth_headers()
+        battery_data: Dict[str, Any] = {}
+
+        today_url = f"{self.base_url}/api/stable/home/getSumDataForCustomer"
+        today_params = {
+            "sn": effective_sys_sn,
+            "stationId": station_id or "",
+            "tday": report_date,
+        }
+
+        try:
+            async with asyncio.timeout(DEFAULT_TIMEOUT):
+                async with self.session.get(
+                    url=today_url, params=today_params, headers=headers,
+                ) as today_response:
+                    if today_response.status == 401 and _retry_count < MAX_RELOGIN_RETRIES:
+                        if await self.async_login():
+                            return await self.async_get_battery_day_snapshot(
+                                report_date,
+                                station_id=station_id,
+                                sys_sn=effective_sys_sn,
+                                _retry_count=_retry_count + 1,
+                            )
+                        raise ByteWattAuthError("Session expired during daily summary fetch")
+
+                    if today_response.status == 200:
+                        today_result = await _decode_json_object(today_response, "getSumDataForCustomer(day)")
+                        if today_result and today_result.get("code") == 200:
+                            today_data = today_result.get("data", {}) or {}
+                            battery_data["PV_Generated_Today"] = today_data.get("epvtoday")
+                            battery_data["Total_PV_Generation"] = today_data.get("epvtotal")
+                            battery_data["Consumed_Today"] = today_data.get("eload")
+                            battery_data["Feed_In_Today"] = today_data.get("eoutput")
+                            battery_data["Grid_Import_Today"] = today_data.get("einput")
+                            battery_data["Battery_Charged_Today"] = today_data.get("echarge")
+                            battery_data["Battery_Discharged_Today"] = today_data.get("edischarge")
+                            self_consumption = today_data.get("eselfConsumption")
+                            if self_consumption is not None:
+                                battery_data["Self_Consumption"] = round(self_consumption * 100, 2)
+                            self_sufficiency = today_data.get("eselfSufficiency")
+                            if self_sufficiency is not None:
+                                battery_data["Self_Sufficiency"] = round(self_sufficiency * 100, 2)
+                            battery_data["Trees_Planted"] = today_data.get("treeNum")
+                            carbon_kg = today_data.get("carbonNum")
+                            if carbon_kg is not None:
+                                battery_data["CO2_Reduction_Tons"] = round(carbon_kg / 1000, 2)
+                            battery_data["Today_Income"] = today_data.get("todayIncome")
+                            battery_data["Total_Income"] = today_data.get("totalIncome")
+                    else:
+                        _LOGGER.debug(
+                            "Daily summary unavailable for %s (%s): HTTP %s",
+                            effective_sys_sn,
+                            report_date,
+                            today_response.status,
+                        )
+        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError) as today_error:
+            _LOGGER.error("Error fetching daily summary for %s (%s): %s", effective_sys_sn, report_date, today_error)
+
+        today_stats_url = f"{self.base_url}/api/report/power/staticsByDay"
+        today_stats_params = {
+            "sysSn": effective_sys_sn,
+            "date": report_date,
+        }
+
+        try:
+            async with asyncio.timeout(DEFAULT_TIMEOUT):
+                async with self.session.get(
+                    url=today_stats_url, params=today_stats_params, headers=headers,
+                ) as today_stats_response:
+                    if today_stats_response.status == 401 and _retry_count < MAX_RELOGIN_RETRIES:
+                        if await self.async_login():
+                            return await self.async_get_battery_day_snapshot(
+                                report_date,
+                                station_id=station_id,
+                                sys_sn=effective_sys_sn,
+                                _retry_count=_retry_count + 1,
+                            )
+                        raise ByteWattAuthError("Session expired during daily detail fetch")
+
+                    if today_stats_response.status != 200:
+                        _LOGGER.debug(
+                            "Daily detail unavailable for %s (%s): HTTP %s",
+                            effective_sys_sn,
+                            report_date,
+                            today_stats_response.status,
+                        )
+                        return battery_data
+
+                    today_stats_result = await _decode_json_object(today_stats_response, "staticsByDay(history)")
+                    if today_stats_result is None:
+                        return battery_data
+
+                    if today_stats_result.get("code") == 6069 and _retry_count < MAX_RELOGIN_RETRIES:
+                        if await self.async_login():
+                            return await self.async_get_battery_day_snapshot(
+                                report_date,
+                                station_id=station_id,
+                                sys_sn=effective_sys_sn,
+                                _retry_count=_retry_count + 1,
+                            )
+                        raise ByteWattAuthError("Session expired during daily detail fetch")
+
+                    if today_stats_result.get("code") != 200:
+                        _LOGGER.debug(
+                            "Daily detail fetch returned code %s for %s (%s)",
+                            today_stats_result.get("code"),
+                            effective_sys_sn,
+                            report_date,
+                        )
+                        return battery_data
+
+                    stats_data = today_stats_result.get("data", {}) or {}
+                    if not stats_data:
+                        return battery_data
+
+                    pv_today = _stat_value(stats_data, "epvtoday")
+                    consumed = _stat_value(stats_data, "ehomeload")
+                    feed_in = _stat_value(stats_data, "efeedIn")
+                    grid_import = _stat_value(stats_data, "einput")
+                    charged = _stat_value(stats_data, "echarge")
+
+                    battery_data["PV_Generated_Today"] = pv_today
+                    battery_data["Consumed_Today"] = consumed
+                    battery_data["Feed_In_Today"] = feed_in
+                    battery_data["Grid_Import_Today"] = grid_import
+                    battery_data["Battery_Charged_Today"] = charged
+
+                    if battery_data.get("Battery_Discharged_Today") is None:
+                        total_gained = pv_today + grid_import
+                        total_used = consumed + feed_in + charged
+                        battery_data["Battery_Discharged_Today"] = max(total_used - total_gained, 0)
+
+                    time_points = stats_data.get("time") or []
+                    battery_curve = stats_data.get("cbat") or []
+                    if not battery_curve and time_points:
+                        battery_curve = [stats_data.get("soc")] * len(time_points)
+
+                    battery_data["soc"] = stats_data.get("soc")
+                    battery_data["powerSource"] = stats_data.get("powerSource")
+                    battery_data["Power_Diagram"] = {
+                        "date": report_date,
+                        "time": time_points,
+                        "series": {
+                            "bat": battery_curve,
+                            "load": stats_data.get("usePower") or stats_data.get("homePower") or [],
+                            "solar": stats_data.get("ppv") or [],
+                            "feed_in": stats_data.get("feedIn") or [],
+                            "consumed": stats_data.get("gridCharge") or [],
+                        },
+                        "summary": {
+                            "soc": stats_data.get("soc"),
+                            "solar_generation": stats_data.get("epvtoday"),
+                            "load_consumption": stats_data.get("eload"),
+                            "feed_in": stats_data.get("efeedIn"),
+                            "grid_consumption": stats_data.get("egridCharge"),
+                            "battery_charge": stats_data.get("echarge"),
+                            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
+                        },
+                        "meta": {
+                            "power_source": stats_data.get("powerSource"),
+                            "system_time": stats_data.get("systemTime"),
+                            "maximum_power": stats_data.get("maximumPower"),
+                            "inverter_mode": stats_data.get("inverterMode"),
+                        },
+                    }
+                    return battery_data
+        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError) as today_stats_error:
+            _LOGGER.error("Error fetching daily detail for %s (%s): %s", effective_sys_sn, report_date, today_stats_error)
+            return battery_data
+
+        return battery_data
     
     def _get_auth_headers(self) -> Dict[str, str]:
         """Get the authentication headers."""

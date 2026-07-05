@@ -163,6 +163,65 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 return str(getattr(inverter, "display_name", "") or sys_sn)
         return sys_sn
 
+    async def _backfill_history_snapshots(
+        self,
+        *,
+        selected_battery_data: Optional[Dict[str, Any]],
+        inventory: List[Any],
+    ) -> None:
+        """Backfill recent daily archive rows so period reports have real data."""
+        manager = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("manager")
+        selected_sys_sn = ""
+        if manager is not None:
+            selected_sys_sn = str(getattr(manager, "current_settings_target_sys_sn", "") or "").strip()
+
+        scopes: list[tuple[str, str, bool, Optional[str]]] = [("all", "All systems", True, None)]
+        if selected_battery_data and selected_sys_sn and selected_sys_sn.lower() != "all":
+            scopes.append(
+                (
+                    selected_sys_sn,
+                    self._scope_label_for_sys_sn(selected_sys_sn, inventory),
+                    False,
+                    selected_sys_sn,
+                )
+            )
+
+        today = dt_util.now().date()
+        desired_dates = [
+            (today - timedelta(days=offset)).isoformat()
+            for offset in range(0, 31)
+        ]
+
+        for scope_key, label, aggregate, fetch_sys_sn in scopes:
+            known_dates = await self._history_store.async_record_dates(scope_key)
+            missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+            for record_date in reversed(missing_dates):
+                try:
+                    snapshot = await self.client.get_battery_day_snapshot(
+                        record_date,
+                        sys_sn=fetch_sys_sn,
+                    )
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.debug(
+                        "Historical backfill failed for %s (%s): %s",
+                        scope_key,
+                        record_date,
+                        err,
+                    )
+                    continue
+
+                if not snapshot or not (snapshot.get("Power_Diagram") or snapshot.get("PV_Generated_Today") is not None):
+                    continue
+
+                reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
+                await self._history_store.async_store_snapshot(
+                    scope_key=scope_key,
+                    label=label,
+                    reporting=reporting,
+                    record_date=record_date,
+                )
+                await asyncio.sleep(0.05)
+
     async def _persist_history_snapshots(
         self,
         *,
@@ -316,6 +375,10 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     battery_data=battery_data,
                     selected_battery_data=selected_battery_data,
                     all_battery_data=all_battery_data,
+                    inventory=inventory,
+                )
+                await self._backfill_history_snapshots(
+                    selected_battery_data=selected_battery_data,
                     inventory=inventory,
                 )
             elif self._last_battery_data is None:

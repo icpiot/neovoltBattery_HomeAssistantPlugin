@@ -53,6 +53,19 @@ class ByteWattClient:
         """
         return await self.api_client.async_get_battery_data(station_id, sys_sn=sys_sn)
 
+    async def get_battery_day_snapshot(
+        self,
+        report_date: str,
+        station_id: Optional[str] = None,
+        sys_sn: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch a daily reporting snapshot for a specific date."""
+        return await self.api_client.async_get_battery_day_snapshot(
+            report_date,
+            station_id=station_id,
+            sys_sn=sys_sn,
+        )
+
     async def get_device_list(self) -> Optional[Dict[str, Any]]:
         return await self.api_client.async_get_device_list()
 
