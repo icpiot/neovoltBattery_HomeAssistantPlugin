@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "168";
+const BYTEWATT_REPORT_CARD_BUILD = "170";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -29,6 +29,10 @@ class ByteWattReportCard extends HTMLElement {
     this._historyLoadError = this._historyLoadError || "";
     this._historyAttempted = this._historyAttempted || false;
     this._historySourceKey = this._historySourceKey || "";
+    this._historyEnsureLoading = this._historyEnsureLoading || false;
+    this._historyEnsureAttemptKey = this._historyEnsureAttemptKey || "";
+    this._historyEnsureStatus = this._historyEnsureStatus || "";
+    this._historyEnsureState = this._historyEnsureState || "";
   }
 
   set hass(hass) {
@@ -143,15 +147,11 @@ class ByteWattReportCard extends HTMLElement {
     if (scopes?.[requested]?.records) {
       return { requested, key: requested, scope: scopes[requested], fallback: false };
     }
-    if (requested !== "all" && scopes?.all?.records) {
-      return { requested, key: "all", scope: scopes.all, fallback: true };
-    }
-    const firstKey = Object.keys(scopes).find((key) => scopes?.[key]?.records);
     return {
       requested,
-      key: firstKey || requested,
-      scope: firstKey ? scopes[firstKey] : null,
-      fallback: Boolean(firstKey),
+      key: requested,
+      scope: scopes?.[requested] || null,
+      fallback: false,
     };
   }
 
@@ -375,8 +375,12 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   async _ensureHistoryLoaded() {
+    await this._reloadHistory();
+  }
+
+  async _reloadHistory() {
     const url = this._historyUrl();
-    if (!url || this._historyLoading || this._historyData || this._historyAttempted) return;
+    if (!url || this._historyLoading) return;
     this._historyLoading = true;
     this._historyAttempted = true;
     this._historyLoadError = "";
@@ -392,6 +396,80 @@ class ByteWattReportCard extends HTMLElement {
       this._historyData = null;
     } finally {
       this._historyLoading = false;
+      this.render();
+    }
+  }
+
+  _historyEntryId() {
+    return String(this._historyMeta()?.entry_id || "").trim();
+  }
+
+  _hasExactHistoryRecord(scopeKey, recordDate) {
+    if (!scopeKey || !recordDate) return false;
+    const scopes = this._historyScopes();
+    return Boolean(scopes?.[scopeKey]?.records?.[recordDate]);
+  }
+
+  _todayLocalDate() {
+    return this._formatLocalDate(new Date());
+  }
+
+  _resetHistoryEnsureState() {
+    this._historyEnsureAttemptKey = "";
+    this._historyEnsureStatus = "";
+    this._historyEnsureState = "";
+  }
+
+  async _ensureSelectedDailyHistory() {
+    const period = this._reportPeriod || "day";
+    if (period !== "day") return;
+    const scopeKey = this._historyScopeKey();
+    const anchorDate = String(this._reportAnchorDate || "").trim();
+    if (!scopeKey || !anchorDate || this._historyLoading || this._historyEnsureLoading) return;
+    if (anchorDate === this._todayLocalDate()) return;
+
+    const ensureKey = `${scopeKey}|${anchorDate}`;
+    if (this._historyEnsureAttemptKey === ensureKey && this._historyEnsureState) return;
+
+    this._historyEnsureAttemptKey = ensureKey;
+    this._historyEnsureState = "checking";
+    this._historyEnsureStatus = "Checking selected day archive...";
+    this.render();
+    if (this._hasExactHistoryRecord(scopeKey, anchorDate)) {
+      this._historyEnsureState = "available";
+      this._historyEnsureStatus = "Selected day already in archive";
+      this.render();
+      return;
+    }
+
+    this._historyEnsureLoading = true;
+    this._historyEnsureState = "downloading";
+    this._historyEnsureStatus = "Downloading selected day archive...";
+    this.render();
+    try {
+      const payload = {
+        scope_key: scopeKey,
+        start_date: anchorDate,
+        end_date: anchorDate,
+      };
+      const entryId = this._historyEntryId();
+      if (entryId) payload.entry_id = entryId;
+      await this._hass.callService("bytewatt", "ensure_report_history", payload);
+      this._historyData = null;
+      await this._reloadHistory();
+      if (!this._hasExactHistoryRecord(scopeKey, anchorDate)) {
+        this._historyEnsureState = "missing";
+        this._historyEnsureStatus = "No archive row available for selected day";
+      } else {
+        this._historyEnsureState = "ready";
+        this._historyEnsureStatus = "Selected day archive ready";
+      }
+    } catch (error) {
+      console.warn("ByteWatt daily archive download failed:", error);
+      this._historyEnsureState = "failed";
+      this._historyEnsureStatus = "Archive download failed";
+    } finally {
+      this._historyEnsureLoading = false;
       this.render();
     }
   }
@@ -694,6 +772,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodStatus(records, loading, error, context = {}) {
+    if (context.ensure_status) return context.ensure_status;
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
     const selectedCount = (records || []).length;
@@ -1318,8 +1397,17 @@ class ByteWattReportCard extends HTMLElement {
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
       total_records: totalCount,
       live_fallback: periodContext?.live_fallback,
+      ensure_status: this._historyEnsureStatus,
     });
-    const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : selectedCount ? "loaded" : "empty";
+    const statusClass = this._historyLoading && !this._historyData
+      ? "loading"
+      : this._historyEnsureLoading
+        ? "loading"
+        : this._historyLoadError || this._historyEnsureState === "failed" || this._historyEnsureState === "missing"
+          ? "error"
+          : this._historyEnsureState === "available" || this._historyEnsureState === "ready" || selectedCount
+            ? "loaded"
+            : "empty";
     const windowStart = periodContext?.window?.start || anchor;
     const displayDate = this._formatLocalDate(windowStart);
     const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
@@ -2350,9 +2438,13 @@ class ByteWattReportCard extends HTMLElement {
       this._historyData = null;
       this._historyLoadError = "";
       this._historyAttempted = false;
+      this._resetHistoryEnsureState();
     }
     if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
       this._ensureHistoryLoaded();
+    }
+    if (this._historyMeta().enabled && this._historyData && !this._historyLoading) {
+      this._ensureSelectedDailyHistory();
     }
     const periodContext = this._buildPeriodReporting(baseReporting);
     const reporting = periodContext.reporting;
@@ -3548,6 +3640,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _bindEvents() {
     this.shadowRoot.querySelector("[data-select-target]")?.addEventListener("change", async (event) => {
+      this._resetHistoryEnsureState();
       await this._hass.callService("select", "select_option", {
         entity_id: this._config.settings_target,
         option: event.target.value,
@@ -3609,6 +3702,7 @@ class ByteWattReportCard extends HTMLElement {
         const nextAnchor = this._clampAnchor(liveAnchor, records);
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
+        this._resetHistoryEnsureState();
         this.render();
       });
     });
@@ -3619,11 +3713,13 @@ class ByteWattReportCard extends HTMLElement {
         const fallback = this._parseLocalDate(this._reportAnchorDate) || this._parseLocalDate(this._reporting()?.power_diagram?.date) || null;
         const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records);
         this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
+        this._resetHistoryEnsureState();
         this.render();
       });
     });
     this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", (event) => {
       this._reportAnchorDate = String(event.target.value || "").trim();
+      this._resetHistoryEnsureState();
       this.render();
     });
     this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {

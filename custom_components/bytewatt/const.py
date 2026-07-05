@@ -36,6 +36,7 @@ SERVICE_UPDATE_BATTERY_SETTINGS = "update_battery_settings"
 SERVICE_FORCE_RECONNECT = "force_reconnect"  # Force client reconnection for troubleshooting
 SERVICE_HEALTH_CHECK = "health_check"  # Check connection health and return diagnostics
 SERVICE_TOGGLE_DIAGNOSTICS = "toggle_diagnostics"  # Toggle diagnostic logging
+SERVICE_ENSURE_REPORT_HISTORY = "ensure_report_history"  # Backfill history rows for a selected range
 
 # Service attributes
 ATTR_END_DISCHARGE = "end_discharge"
@@ -45,6 +46,9 @@ ATTR_END_CHARGE = "end_charge"
 ATTR_MINIMUM_SOC = "minimum_soc"
 ATTR_CHARGE_CAP = "charge_cap"
 ATTR_ENTRY_ID = "entry_id"
+ATTR_SCOPE_KEY = "scope_key"
+ATTR_START_DATE = "start_date"
+ATTR_END_DATE = "end_date"
 
 # Sensor types
 SENSOR_SOC = "soc"

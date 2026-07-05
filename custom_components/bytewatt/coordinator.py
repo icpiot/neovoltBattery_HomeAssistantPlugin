@@ -335,6 +335,110 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             return None
         return self._combine_daily_snapshots(record_date=record_date, snapshots=snapshots)
 
+    def _history_scope_definition(
+        self,
+        *,
+        scope_key: str,
+        inventory: List[Any],
+    ) -> tuple[str, bool, Optional[str]]:
+        """Return label, aggregate flag, and fetch sysSn for a history scope."""
+        normalized = str(scope_key or "").strip() or "all"
+        if normalized.lower() == "all":
+            return ("All systems", True, None)
+        return (self._scope_label_for_sys_sn(normalized, inventory), False, normalized)
+
+    async def async_ensure_history_range(
+        self,
+        *,
+        scope_key: str,
+        start_date: str,
+        end_date: str,
+    ) -> dict[str, Any]:
+        """Ensure history rows exist for the requested inclusive date range."""
+        inventory = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("inverters", [])
+        label, aggregate, fetch_sys_sn = self._history_scope_definition(
+            scope_key=scope_key,
+            inventory=inventory,
+        )
+
+        start = dt_util.parse_date(start_date)
+        end = dt_util.parse_date(end_date)
+        if start is None or end is None:
+            raise ValueError("Invalid history date range")
+        if end < start:
+            start, end = end, start
+
+        today = dt_util.now().date()
+        if end > today:
+            end = today
+
+        desired_dates: list[str] = []
+        cursor = start
+        while cursor <= end:
+            desired_dates.append(cursor.isoformat())
+            cursor += timedelta(days=1)
+
+        if not desired_dates:
+            return {
+                "scope_key": scope_key,
+                "label": label,
+                "requested": 0,
+                "downloaded": 0,
+                "available": 0,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            }
+
+        known_dates = await self._history_store.async_record_dates(scope_key)
+        missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+        downloaded = 0
+
+        for record_date in missing_dates:
+            try:
+                if aggregate:
+                    snapshot = await self._build_aggregate_day_snapshot(
+                        record_date=record_date,
+                        inventory=inventory,
+                    )
+                else:
+                    snapshot = await self.client.get_battery_day_snapshot(
+                        record_date,
+                        sys_sn=fetch_sys_sn,
+                    )
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Historical range fetch failed for %s (%s): %s",
+                    scope_key,
+                    record_date,
+                    err,
+                )
+                continue
+
+            if not self._snapshot_has_reporting_data(snapshot):
+                continue
+
+            reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
+            await self._history_store.async_store_snapshot(
+                scope_key=scope_key,
+                label=label,
+                reporting=reporting,
+                record_date=record_date,
+            )
+            downloaded += 1
+            await asyncio.sleep(0.05)
+
+        refreshed_dates = await self._history_store.async_record_dates(scope_key)
+        available = sum(1 for record_date in desired_dates if record_date in refreshed_dates)
+        return {
+            "scope_key": scope_key,
+            "label": label,
+            "requested": len(desired_dates),
+            "downloaded": downloaded,
+            "available": available,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+        }
+
     async def _backfill_history_snapshots(
         self,
         *,

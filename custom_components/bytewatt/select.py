@@ -130,6 +130,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             "enabled": True,
             "base_url": f"/local/bytewatt-history/{self._config_entry.entry_id}/",
             "current_scope": current.sys_sn if current is not None else "all",
+            "entry_id": self._config_entry.entry_id,
         }
         monitoring_summary = {
             "soc": selected_battery.get("soc") if current is not None else aggregate_battery.get("soc"),

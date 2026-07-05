@@ -50,6 +50,7 @@ from .const import (
     SERVICE_FORCE_RECONNECT,
     SERVICE_HEALTH_CHECK,
     SERVICE_TOGGLE_DIAGNOSTICS,
+    SERVICE_ENSURE_REPORT_HISTORY,
     ATTR_END_DISCHARGE,
     ATTR_START_DISCHARGE,
     ATTR_START_CHARGE,
@@ -80,6 +81,9 @@ from .const import (
     ATTR_SLOT_WEEKS,
     ATTR_DURATION_MINUTES,
     ATTR_ENTRY_ID,
+    ATTR_SCOPE_KEY,
+    ATTR_START_DATE,
+    ATTR_END_DATE,
     CONF_HOST_SYSTEM_ID,
     CONF_HOST_SYS_SN,
     CURRENT_ENTRY_VERSION,
@@ -739,6 +743,23 @@ def _register_services(hass: HomeAssistant) -> None:
         else:
             _LOGGER.error("No ByteWatt integrations found to toggle diagnostics")
 
+    async def handle_ensure_report_history(call: ServiceCall) -> None:
+        coordinator = _coordinator_for(hass, call)
+        result = await coordinator.async_ensure_history_range(
+            scope_key=call.data.get(ATTR_SCOPE_KEY, "all"),
+            start_date=call.data[ATTR_START_DATE],
+            end_date=call.data[ATTR_END_DATE],
+        )
+        _LOGGER.info(
+            "ByteWatt history ensured for %s (%s to %s): %s/%s available, %s downloaded",
+            result["scope_key"],
+            result["start_date"],
+            result["end_date"],
+            result["available"],
+            result["requested"],
+            result["downloaded"],
+        )
+
     # ---------- Schemas ----------
 
     _time_schema = vol.All(cv.string)
@@ -876,4 +897,13 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_TOGGLE_DIAGNOSTICS, handle_toggle_diagnostics,
         schema=vol.Schema({vol.Optional("enable"): cv.boolean, **_entry_id_opt}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_ENSURE_REPORT_HISTORY, handle_ensure_report_history,
+        schema=vol.Schema({
+            vol.Required(ATTR_START_DATE): cv.string,
+            vol.Required(ATTR_END_DATE): cv.string,
+            vol.Optional(ATTR_SCOPE_KEY, default="all"): cv.string,
+            **_entry_id_opt,
+        }),
     )

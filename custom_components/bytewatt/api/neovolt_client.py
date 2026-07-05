@@ -617,6 +617,7 @@ class NeovoltClient:
                         if today_result and today_result.get("code") == 200:
                             today_data = today_result.get("data", {}) or {}
                             battery_data["PV_Generated_Today"] = today_data.get("epvtoday")
+                            battery_data["Total_Solar_Generation"] = today_data.get("epvtotal")
                             battery_data["Total_PV_Generation"] = today_data.get("epvtotal")
                             battery_data["Consumed_Today"] = today_data.get("eload")
                             battery_data["Feed_In_Today"] = today_data.get("eoutput")

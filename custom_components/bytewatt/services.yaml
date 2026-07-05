@@ -49,6 +49,41 @@ toggle_diagnostics:
       selector:
         text:
 
+ensure_report_history:
+  name: Ensure Report History
+  description: >-
+    Download and store missing daily report history rows for a selected scope
+    and date range.
+  fields:
+    start_date:
+      name: Start Date
+      description: Inclusive start date in YYYY-MM-DD format.
+      required: true
+      example: "2026-07-04"
+      selector:
+        text:
+    end_date:
+      name: End Date
+      description: Inclusive end date in YYYY-MM-DD format.
+      required: true
+      example: "2026-07-04"
+      selector:
+        text:
+    scope_key:
+      name: Scope Key
+      description: Use "all" for all systems or a specific battery sys_sn.
+      required: false
+      example: "all"
+      selector:
+        text:
+    entry_id:
+      name: Integration ID
+      description: Required only if multiple accounts are configured.
+      example: "abcdef1234"
+      required: false
+      selector:
+        text:
+
 set_discharge_time:
   name: Set Discharge End Time
   description: Set the end time for battery discharge.
