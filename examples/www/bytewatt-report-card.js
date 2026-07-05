@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "150";
+const BYTEWATT_REPORT_CARD_BUILD = "151";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -552,74 +552,53 @@ class ByteWattReportCard extends HTMLElement {
     this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
-    const periodAbsolute = (paths, fallbackPaths = []) => {
-      const latestValue = this._recordValue(latest, paths);
-      if (latestValue !== undefined) {
-        return this._parseFloat(latestValue);
-      }
-      for (const fallbackPath of fallbackPaths) {
-        const fallbackValue = this._recordValue(baseReporting, [fallbackPath]);
-        if (fallbackValue !== undefined) {
-          return this._parseFloat(fallbackValue);
-        }
-      }
-      return 0;
-    };
-    const periodSnapshot = this._isDailyPeriod(period) ? baseToday : summary;
-    const periodSolarTotal = this._isDailyPeriod(period)
-      ? this._parseFloat(periodSnapshot.solar_generation ?? periodSnapshot.solar_generation_today ?? 0)
-      : summary.solar_generation_today;
-    const periodLoadTotal = this._isDailyPeriod(period)
-      ? this._parseFloat(periodSnapshot.load_consumption ?? periodSnapshot.load_consumption_today ?? 0)
-      : summary.load_consumption_today;
-    const periodFeedTotal = this._isDailyPeriod(period)
-      ? this._parseFloat(periodSnapshot.feed_in ?? periodSnapshot.feed_in_today ?? 0)
-      : summary.feed_in_today;
-    const periodGridTotal = this._isDailyPeriod(period)
-      ? this._parseFloat(periodSnapshot.grid_consumption ?? periodSnapshot.grid_consumption_today ?? 0)
-      : summary.grid_consumption_today;
+    const periodSolarTotal = summary.solar_generation_today;
+    const periodLoadTotal = summary.load_consumption_today;
+    const periodFeedTotal = summary.feed_in_today;
+    const periodGridTotal = summary.grid_consumption_today;
+    const periodBatteryChargeTotal = summary.battery_charged_today;
+    const periodBatteryDischargeTotal = summary.battery_discharged_today;
+    const periodPvToHouse = Math.max(periodLoadTotal - periodGridTotal - periodBatteryDischargeTotal, 0);
+    const periodGridToBattery = Math.max(summary.grid_battery_charge, 0);
+    const periodPvToBattery = Math.max(periodBatteryChargeTotal - periodGridToBattery, 0);
     const periodToday = {
-      solar_generation: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.solar_generation ?? periodSnapshot.solar_generation_today ?? 0) : summary.solar_generation_today,
-      load_consumption: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.load_consumption ?? periodSnapshot.load_consumption_today ?? 0) : summary.load_consumption_today,
-      feed_in: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.feed_in ?? periodSnapshot.feed_in_today ?? 0) : summary.feed_in_today,
-      grid_consumption: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.grid_consumption ?? periodSnapshot.grid_consumption_today ?? 0) : summary.grid_consumption_today,
-      battery_charge: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.battery_charge ?? periodSnapshot.battery_charged_today ?? 0) : summary.battery_charged_today,
-      battery_discharge: this._isDailyPeriod(period) ? this._parseFloat(periodSnapshot.battery_discharge ?? periodSnapshot.battery_discharged_today ?? 0) : summary.battery_discharged_today,
-      pv_power_house: this._isDailyPeriod(period)
-        ? periodAbsolute([["pv_power_house"], ["totals", "pv_power_house"]], [])
-        : summary.pv_power_house,
-      pv_charging_battery: this._isDailyPeriod(period)
-        ? periodAbsolute([["pv_charging_battery"], ["totals", "pv_charging_battery"]], [])
-        : summary.pv_charging_battery,
-      grid_battery_charge: this._isDailyPeriod(period)
-        ? periodAbsolute([["grid_battery_charge"], ["totals", "grid_battery_charge"]], [])
-        : summary.grid_battery_charge,
+      solar_generation: periodSolarTotal,
+      load_consumption: periodLoadTotal,
+      feed_in: periodFeedTotal,
+      grid_consumption: periodGridTotal,
+      battery_charge: periodBatteryChargeTotal,
+      battery_discharge: periodBatteryDischargeTotal,
+      pv_power_house: periodPvToHouse,
+      pv_charging_battery: periodPvToBattery,
+      grid_battery_charge: periodGridToBattery,
       self_consumption:
-        this._isDailyPeriod(period)
-          ? (periodSnapshot.self_consumption ?? baseToday.self_consumption)
-          : periodSolarTotal > 0
-            ? Math.max(((periodSolarTotal - periodFeedTotal) / periodSolarTotal) * 100, 0)
-            : baseToday.self_consumption,
+        periodSolarTotal > 0
+          ? Math.max(((periodSolarTotal - periodFeedTotal) / periodSolarTotal) * 100, 0)
+          : baseToday.self_consumption,
       self_sufficiency:
-        this._isDailyPeriod(period)
-          ? (periodSnapshot.self_sufficiency ?? baseToday.self_sufficiency)
-          : periodLoadTotal > 0
-            ? Math.max(((periodLoadTotal - periodGridTotal) / periodLoadTotal) * 100, 0)
-            : baseToday.self_sufficiency,
+        periodLoadTotal > 0
+          ? Math.max(((periodLoadTotal - periodGridTotal) / periodLoadTotal) * 100, 0)
+          : baseToday.self_sufficiency,
       trees_planted: latest.trees_planted ?? baseToday.trees_planted,
       co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
-      today_income: this._isDailyPeriod(period)
-        ? this._parseFloat(periodSnapshot.today_income ?? baseToday.today_income ?? 0)
-        : selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
+      today_income: selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
       total_income: this._isDailyPeriod(period)
-        ? (periodSnapshot.total_income ?? baseToday.total_income)
+        ? (this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income)
         : this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
     };
     const periodTotals = {
       ...periodToday,
     };
     const sankey = {
-      ...periodToday,
+      solar_generation: periodSolarTotal,
+      load_consumption: periodLoadTotal,
+      feed_in: periodFeedTotal,
+      grid_consumption: periodGridTotal,
+      battery_charge: periodBatteryChargeTotal,
+      battery_discharge: periodBatteryDischargeTotal,
+      pv_power_house: periodPvToHouse,
+      pv_charging_battery: periodPvToBattery,
+      grid_battery_charge: periodGridToBattery,
     };
     const powerSummary = this._isDailyPeriod(period)
       ? {
@@ -1229,32 +1208,18 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting, periodContext = null) {
     const periodReporting = periodContext?.reporting || reporting || {};
     const sankey = periodReporting?.sankey || {};
-    const periodSummary = periodReporting?.summary || periodReporting?.power_diagram?.summary || {};
-    const dataLayers = [
-      periodReporting?.today || {},
-      periodReporting?.totals || {},
-      sankey,
-      periodSummary,
-      periodReporting?.power_diagram?.summary || {},
-    ];
+    const fallbackToday = periodReporting?.today || {};
     const isDailyPeriod = this._isDailyPeriod(periodReporting?.meta?.period || this._reportPeriod || "day");
     const sourceNumber = (...keys) => {
-      let zeroCandidate = null;
-      for (const layer of dataLayers) {
-        if (!layer || !Object.keys(layer).length) continue;
-        for (const key of keys) {
-          const value = Number(layer?.[key]);
-          if (Number.isFinite(value)) {
-            if (value !== 0) {
-              return value;
-            }
-            if (zeroCandidate === null) {
-              zeroCandidate = 0;
-            }
-          }
-        }
+      for (const key of keys) {
+        const scoped = Number(sankey?.[key]);
+        if (Number.isFinite(scoped)) return scoped;
       }
-      return zeroCandidate ?? 0;
+      for (const key of keys) {
+        const fallback = Number(fallbackToday?.[key]);
+        if (Number.isFinite(fallback)) return fallback;
+      }
+      return 0;
     };
     const compactSankey = typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 1440;
     const solar = sourceNumber("solar_generation", "total_solar_generation", "solar_generation_today");
@@ -1510,12 +1475,13 @@ class ByteWattReportCard extends HTMLElement {
     `;
   }
 
-  _renderChart(reporting) {
-    const period = reporting?.meta?.period || this._reportPeriod || "day";
-    const periodLabel = reporting?.meta?.period_label || "Day";
-    const periodStart = reporting?.meta?.period_start || "";
-    const periodEnd = reporting?.meta?.period_end || periodStart;
-    const periodRecords = reporting?.chart_records || reporting?.records || [];
+  _renderChart(reporting, periodContext = null) {
+    const scopedReporting = periodContext?.reporting || reporting || {};
+    const period = scopedReporting?.meta?.period || this._reportPeriod || "day";
+    const periodLabel = scopedReporting?.meta?.period_label || "Day";
+    const periodStart = scopedReporting?.meta?.period_start || "";
+    const periodEnd = scopedReporting?.meta?.period_end || periodStart;
+    const periodRecords = periodContext?.chart_records || scopedReporting?.chart_records || scopedReporting?.records || [];
     const chartWindow =
       periodStart && periodEnd
         ? {
@@ -1532,7 +1498,7 @@ class ByteWattReportCard extends HTMLElement {
         ? periodStart === periodEnd
           ? formatDisplay(periodStart)
           : `${formatDisplay(periodStart)} -> ${formatDisplay(periodEnd)}`
-        : formatDisplay(reporting?.power_diagram?.date || "");
+        : formatDisplay(scopedReporting?.power_diagram?.date || "");
     const pad = (value) => String(value).padStart(2, "0");
     const shortDate = (value) => {
       const date = this._parseLocalDate(value);
@@ -1561,7 +1527,7 @@ class ByteWattReportCard extends HTMLElement {
         };
       });
     if (!bars.length) {
-      const fallbackTotals = reporting?.totals || reporting?.today || {};
+      const fallbackTotals = scopedReporting?.totals || scopedReporting?.today || {};
       const fallbackLoad = Math.max(
         this._parseFloat(
           fallbackTotals.house_consumption ??
@@ -1577,7 +1543,7 @@ class ByteWattReportCard extends HTMLElement {
       const fallbackBattery = Math.max(this._parseFloat(fallbackTotals.battery_discharge ?? fallbackTotals.total_battery_discharge ?? fallbackTotals.battery ?? 0), 0);
       const fallbackGrid = Math.max(this._parseFloat(fallbackTotals.grid_consumption ?? fallbackTotals.total_grid_consumption ?? fallbackTotals.grid ?? 0), 0);
       if (fallbackLoad > 0 || fallbackSolar > 0 || fallbackBattery > 0 || fallbackGrid > 0) {
-        const fallbackLabel = shortDate(reporting?.meta?.period_end || reporting?.meta?.period_start || reporting?.power_diagram?.date || "");
+        const fallbackLabel = shortDate(scopedReporting?.meta?.period_end || scopedReporting?.meta?.period_start || scopedReporting?.power_diagram?.date || "");
         bars.push({
           label: fallbackLabel || periodLabel,
           fullLabel: periodRange || periodLabel,
@@ -3159,7 +3125,7 @@ class ByteWattReportCard extends HTMLElement {
             reporting
               ? `
             ${this._renderSankeyPanel(reporting, periodContext)}
-            ${this._renderChart(reporting)}
+            ${this._renderChart(reporting, periodContext)}
             ${this._renderPowerChart(reporting, periodContext)}
             ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
