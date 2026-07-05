@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "170";
+const BYTEWATT_REPORT_CARD_BUILD = "171";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -410,10 +410,6 @@ class ByteWattReportCard extends HTMLElement {
     return Boolean(scopes?.[scopeKey]?.records?.[recordDate]);
   }
 
-  _todayLocalDate() {
-    return this._formatLocalDate(new Date());
-  }
-
   _resetHistoryEnsureState() {
     this._historyEnsureAttemptKey = "";
     this._historyEnsureStatus = "";
@@ -426,7 +422,6 @@ class ByteWattReportCard extends HTMLElement {
     const scopeKey = this._historyScopeKey();
     const anchorDate = String(this._reportAnchorDate || "").trim();
     if (!scopeKey || !anchorDate || this._historyLoading || this._historyEnsureLoading) return;
-    if (anchorDate === this._todayLocalDate()) return;
 
     const ensureKey = `${scopeKey}|${anchorDate}`;
     if (this._historyEnsureAttemptKey === ensureKey && this._historyEnsureState) return;
