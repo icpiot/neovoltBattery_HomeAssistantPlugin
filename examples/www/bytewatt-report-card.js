@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "157";
+const BYTEWATT_REPORT_CARD_BUILD = "158";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -641,8 +641,8 @@ class ByteWattReportCard extends HTMLElement {
                 : `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`,
           },
         },
-        records: sorted,
-        chart_records: this._isDailyPeriod(period) ? sorted : this._expandDailyRecords(sorted, window),
+        records: selected,
+        chart_records: this._isDailyPeriod(period) ? selected : this._expandDailyRecords(selected, window),
         anchor,
         period,
         window,
@@ -1304,17 +1304,14 @@ class ByteWattReportCard extends HTMLElement {
 
   _renderSankeyPanel(reporting, periodContext = null) {
     const periodReporting = periodContext?.reporting || reporting || {};
-    const sankey = periodReporting?.sankey || {};
-    const fallbackToday = periodReporting?.today || {};
-    const isDailyPeriod = this._isDailyPeriod(periodReporting?.meta?.period || this._reportPeriod || "day");
+    const selectedRecords = Array.isArray(periodContext?.records) ? periodContext.records : [];
+    const sankey = periodContext
+      ? this._selectedPeriodEnergyModel(selectedRecords, periodReporting?.summary || {})
+      : periodReporting?.sankey || {};
     const sourceNumber = (...keys) => {
       for (const key of keys) {
         const scoped = Number(sankey?.[key]);
         if (Number.isFinite(scoped)) return scoped;
-      }
-      for (const key of keys) {
-        const fallback = Number(fallbackToday?.[key]);
-        if (Number.isFinite(fallback)) return fallback;
       }
       return 0;
     };
@@ -1405,14 +1402,14 @@ class ByteWattReportCard extends HTMLElement {
     `;
 
     const debug = periodReporting?.sankey_debug || {};
-    const periodRecords = Number(debug.selected_records ?? periodContext?.records?.length ?? 0) || 0;
+    const periodRecords = selectedRecords.length || Number(debug.selected_records ?? periodContext?.records?.length ?? 0) || 0;
     const modelRows = Number(debug.rows ?? sankey.rows ?? 0) || 0;
     const periodLabel = periodReporting?.meta?.period_label || "Day";
     const periodRange =
       periodReporting?.meta?.period_start && periodReporting?.meta?.period_end
         ? `${periodReporting.meta.period_start} -> ${periodReporting.meta.period_end}`
         : periodReporting?.power_diagram?.date || "";
-    const sourceLabel = `records ${periodRecords} | model rows ${modelRows}`;
+    const sourceLabel = `records ${periodRecords} | model rows ${modelRows} | ${sankey.source || debug.source || "period"}`;
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
       ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
