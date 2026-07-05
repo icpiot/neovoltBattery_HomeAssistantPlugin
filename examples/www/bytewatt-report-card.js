@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "155";
+const BYTEWATT_REPORT_CARD_BUILD = "156";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -250,6 +250,7 @@ class ByteWattReportCard extends HTMLElement {
     const start = window?.start instanceof Date ? window.start : null;
     const end = window?.end instanceof Date ? window.end : null;
     const empty = {
+      valid: false,
       total_solar_generation: 0,
       total_feed_in: 0,
       total_battery_charge: 0,
@@ -280,6 +281,7 @@ class ByteWattReportCard extends HTMLElement {
     };
 
     return {
+      valid: true,
       total_solar_generation: delta([["total_solar_generation"], ["totals", "solar_generation"]]),
       total_feed_in: delta([["total_feed_in"], ["totals", "feed_in"]]),
       total_battery_charge: delta([["total_battery_charge"], ["totals", "battery_charge"]]),
@@ -504,22 +506,23 @@ class ByteWattReportCard extends HTMLElement {
       { solar: 0, load: 0, feed: 0, grid: 0, batteryCharge: 0, batteryDischarge: 0, income: 0 }
     );
 
-    const counterSolar = Math.max(this._parseFloat(counterSummary.total_solar_generation), 0);
-    const counterLoad = Math.max(this._parseFloat(counterSummary.total_house_consumption), 0);
-    const counterFeed = Math.max(this._parseFloat(counterSummary.total_feed_in), 0);
-    const counterGrid = Math.max(this._parseFloat(counterSummary.total_grid_consumption), 0);
-    const counterBatteryCharge = Math.max(this._parseFloat(counterSummary.total_battery_charge), 0);
-    const counterBatteryDischarge = Math.max(this._parseFloat(counterSummary.total_battery_discharge), 0);
-    const solar = counterSolar > 0 ? counterSolar : totals.solar;
-    const load = counterLoad > 0 ? counterLoad : totals.load;
-    const feed = counterFeed > 0 ? counterFeed : totals.feed;
-    const grid = counterGrid > 0 ? counterGrid : totals.grid;
-    const batteryCharge = counterBatteryCharge > 0 ? counterBatteryCharge : totals.batteryCharge;
-    const batteryDischarge = counterBatteryDischarge > 0 ? counterBatteryDischarge : totals.batteryDischarge;
+    const useCounters = counterSummary?.valid === true;
+    const counterSolar = useCounters ? Math.max(this._parseFloat(counterSummary.total_solar_generation), 0) : 0;
+    const counterLoad = useCounters ? Math.max(this._parseFloat(counterSummary.total_house_consumption), 0) : 0;
+    const counterFeed = useCounters ? Math.max(this._parseFloat(counterSummary.total_feed_in), 0) : 0;
+    const counterGrid = useCounters ? Math.max(this._parseFloat(counterSummary.total_grid_consumption), 0) : 0;
+    const counterBatteryCharge = useCounters ? Math.max(this._parseFloat(counterSummary.total_battery_charge), 0) : 0;
+    const counterBatteryDischarge = useCounters ? Math.max(this._parseFloat(counterSummary.total_battery_discharge), 0) : 0;
+    const solar = useCounters ? counterSolar : totals.solar;
+    const load = useCounters ? counterLoad : totals.load;
+    const feed = useCounters ? counterFeed : totals.feed;
+    const grid = useCounters ? counterGrid : totals.grid;
+    const batteryCharge = useCounters ? counterBatteryCharge : totals.batteryCharge;
+    const batteryDischarge = useCounters ? counterBatteryDischarge : totals.batteryDischarge;
 
-    const gridToBatteryCounter = Math.max(this._parseFloat(counterSummary.grid_battery_charge || summary.grid_battery_charge), 0);
-    const pvToBatteryCounter = Math.max(this._parseFloat(counterSummary.pv_charging_battery || summary.pv_charging_battery), 0);
-    const pvToHouseCounter = Math.max(this._parseFloat(counterSummary.pv_power_house || summary.pv_power_house), 0);
+    const gridToBatteryCounter = Math.max(this._parseFloat(useCounters ? counterSummary.grid_battery_charge : summary.grid_battery_charge), 0);
+    const pvToBatteryCounter = Math.max(this._parseFloat(useCounters ? counterSummary.pv_charging_battery : summary.pv_charging_battery), 0);
+    const pvToHouseCounter = Math.max(this._parseFloat(useCounters ? counterSummary.pv_power_house : summary.pv_power_house), 0);
     const gridToBattery = Math.min(gridToBatteryCounter, batteryCharge);
     const solarToBattery = pvToBatteryCounter > 0 ? Math.min(pvToBatteryCounter, batteryCharge) : Math.max(batteryCharge - gridToBattery, 0);
     const batteryToLoad = Math.min(batteryDischarge, load);
@@ -528,6 +531,7 @@ class ByteWattReportCard extends HTMLElement {
 
     return {
       rows: rows.length,
+      source: useCounters ? "counter" : "daily",
       solar_generation: solar,
       load_consumption: load,
       feed_in: feed,
@@ -728,7 +732,8 @@ class ByteWattReportCard extends HTMLElement {
         sankey,
         sankey_debug: {
           rows: energyModel.rows,
-          counter_rows: counterSummary.total_house_consumption > 0 || counterSummary.total_solar_generation > 0 ? selected.length : 0,
+          counter_rows: counterSummary.valid ? selected.length : 0,
+          source: energyModel.source,
           selected_records: selected.length,
           period,
           period_start: this._formatLocalDate(window.start),
@@ -2046,7 +2051,6 @@ class ByteWattReportCard extends HTMLElement {
     const historyKey = [
       this._historyUrl(),
       this._historyScopeKey(),
-      baseReporting?.meta?.saved_at || baseReporting?.power_diagram?.date || "",
     ].join("|");
     if (historyKey !== this._historySourceKey) {
       this._historySourceKey = historyKey;
@@ -3297,7 +3301,6 @@ class ByteWattReportCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
       button.addEventListener("click", () => {
         this._reportPeriod = button.dataset.reportPeriod || "day";
-        this._reportAnchorDate = "";
         this.render();
       });
     });
