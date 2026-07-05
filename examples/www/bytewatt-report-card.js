@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "172";
+const BYTEWATT_REPORT_CARD_BUILD = "173";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2279,6 +2279,9 @@ class ByteWattReportCard extends HTMLElement {
         ? Math.min(Math.max(Number(this._powerHoverIndex) || 0, 0), renderPoints.length - 1)
         : -1;
     const hoverPoint = hoverIndex >= 0 ? renderPoints[hoverIndex] : null;
+    const activePoint = chart.isDaily
+      ? (hoverPoint || renderPoints[renderPoints.length - 1] || fallbackPoint)
+      : null;
     const pointFor = (point, key) => (key === "bat" ? this._parseFloat(point.bat) : this._parseFloat(point[key]));
     const yLeft = (value) => bottom - (this._parseFloat(value) / powerMax) * plotHeight;
     const yRight = (value) => bottom - (this._parseFloat(value) / batMax) * plotHeight;
@@ -2305,13 +2308,28 @@ class ByteWattReportCard extends HTMLElement {
           .join("")}
       </div>
     `;
+    const summaryValues = chart.isDaily
+      ? {
+          bat: this._parseFloat(activePoint?.bat ?? chart.totals.bat ?? 0),
+          load: this._parseFloat(activePoint?.load ?? 0),
+          solar: this._parseFloat(activePoint?.solar ?? 0),
+          feed_in: this._parseFloat(activePoint?.feed_in ?? 0),
+          consumed: this._parseFloat(activePoint?.consumed ?? 0),
+        }
+      : {
+          bat: this._parseFloat(chart.totals.bat ?? 0),
+          load: this._parseFloat(chart.totals.load ?? 0),
+          solar: this._parseFloat(chart.totals.solar ?? 0),
+          feed_in: this._parseFloat(chart.totals.feed_in ?? 0),
+          consumed: this._parseFloat(chart.totals.consumed ?? 0),
+        };
     const summaryBoxes = `
       <div class="sankey-summary-grid power-summary-grid">
-        ${this._summaryTile("BAT SOC", this._fmtPercent(chart.totals.bat), "bat")}
-        ${this._summaryTile("Load", formatPowerValue(chart.totals.load), "load")}
-        ${this._summaryTile("Solar", formatPowerValue(chart.totals.solar), "solar")}
-        ${this._summaryTile("Feed-in", formatPowerValue(chart.totals.feed_in), "feed")}
-        ${this._summaryTile("Grid", formatPowerValue(chart.totals.consumed), "grid")}
+        ${this._summaryTile("BAT SOC", this._fmtPercent(summaryValues.bat), "bat")}
+        ${this._summaryTile("Load", formatPowerValue(summaryValues.load), "load")}
+        ${this._summaryTile("Solar", formatPowerValue(summaryValues.solar), "solar")}
+        ${this._summaryTile("Feed-in", formatPowerValue(summaryValues.feed_in), "feed")}
+        ${this._summaryTile("Grid", formatPowerValue(summaryValues.consumed), "grid")}
       </div>
     `;
     const hoverLines = hoverPoint
