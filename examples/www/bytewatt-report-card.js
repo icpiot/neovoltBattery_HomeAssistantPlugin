@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "159";
+const BYTEWATT_REPORT_CARD_BUILD = "160";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -73,6 +73,29 @@ class ByteWattReportCard extends HTMLElement {
     const history = this._historyMeta();
     const currentScope = String(history.current_scope || "").trim();
     return currentScope || "all";
+  }
+
+  _historyScopes() {
+    const scopes = this._historyData?.scopes;
+    return scopes && typeof scopes === "object" ? scopes : {};
+  }
+
+  _historyScopeData() {
+    const scopes = this._historyScopes();
+    const requested = this._historyScopeKey();
+    if (scopes?.[requested]?.records) {
+      return { requested, key: requested, scope: scopes[requested], fallback: false };
+    }
+    if (requested !== "all" && scopes?.all?.records) {
+      return { requested, key: "all", scope: scopes.all, fallback: true };
+    }
+    const firstKey = Object.keys(scopes).find((key) => scopes?.[key]?.records);
+    return {
+      requested,
+      key: firstKey || requested,
+      scope: firstKey ? scopes[firstKey] : null,
+      fallback: Boolean(firstKey),
+    };
   }
 
   _historyUrl() {
@@ -317,7 +340,8 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _historyRecords() {
-    const data = this._historyData?.scopes?.[this._historyScopeKey()]?.records || {};
+    const scopeInfo = this._historyScopeData();
+    const data = scopeInfo.scope?.records || {};
     return Object.entries(data).map(([recordDate, reporting]) => {
       const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
       const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
@@ -327,6 +351,8 @@ class ByteWattReportCard extends HTMLElement {
         record_date: normalizedDate,
         record_date_display: displayDate,
         record_date_raw: String(recordDate || ""),
+        history_scope: scopeInfo.key,
+        requested_scope: scopeInfo.requested,
       };
     });
   }
@@ -336,7 +362,7 @@ class ByteWattReportCard extends HTMLElement {
     const parsed =
       this._parseLocalDate(reporting?.power_diagram?.date) ||
       this._parseLocalDate(reporting?.reporting_date) ||
-      this._parseLocalDate(String(reporting?.meta?.saved_at || "").slice(0, 10));
+      this._parseSavedAtLocalDate(reporting?.meta?.saved_at || reporting?.saved_at);
     if (!parsed) return null;
     const normalizedDate = this._formatLocalDate(parsed);
     return {
@@ -408,6 +434,15 @@ class ByteWattReportCard extends HTMLElement {
       return Number.isNaN(date.getTime()) ? null : date;
     }
     return null;
+  }
+
+  _parseSavedAtLocalDate(value) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    }
+    return this._parseLocalDate(value);
   }
 
   _formatLocalDate(date) {
@@ -558,9 +593,14 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
-  _periodStatus(records, loading, error) {
+  _periodStatus(records, loading, error, context = {}) {
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
+    const selectedCount = (records || []).length;
+    const totalCount = Number(context.total_records ?? 0) || 0;
+    if (!selectedCount) {
+      return totalCount > 0 ? `No archive rows for selected period (${totalCount} available)` : "No archive rows loaded";
+    }
     const range = this._historyRange(records);
     const first = range.first ? this._formatDisplayDate(this._parseLocalDate(range.first)) : "";
     const latest = range.latest ? this._formatDisplayDate(this._parseLocalDate(range.latest)) : "";
@@ -616,6 +656,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _buildPeriodReporting(baseReporting) {
+    const scopeInfo = this._historyScopeData();
     const historyRecords = this._historyRecords();
     const liveRecord = this._liveReportingRecord(baseReporting);
     const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
@@ -628,6 +669,16 @@ class ByteWattReportCard extends HTMLElement {
     const records = Array.from(recordsByDate.values());
     const sorted = records.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const availableRange = this._historyRange(sorted);
+    const debugBase = {
+      history_scope: scopeInfo.key,
+      requested_scope: scopeInfo.requested,
+      scope_fallback: scopeInfo.fallback,
+      archive_records_total: historyRecords.length,
+      records_total: sorted.length,
+      live_record_date: liveRecord?.record_date || "",
+      available_first: availableRange.first || "",
+      available_latest: availableRange.latest || "",
+    };
     const fallbackDate = baseReporting?.power_diagram?.date || availableRange.latest || availableRange.first || "";
     if (!this._reportAnchorDate && fallbackDate) {
       this._reportAnchorDate = fallbackDate;
@@ -643,6 +694,23 @@ class ByteWattReportCard extends HTMLElement {
       : this._expandDailyRecords(selected, window);
     if (!selected.length) {
       const periodLabel = this._reportPeriodLabel(period);
+      const emptyEnergyModel = this._selectedPeriodEnergyModel([], {});
+      const emptyToday = {
+        solar_generation: 0,
+        load_consumption: 0,
+        house_consumption: 0,
+        feed_in: 0,
+        grid_consumption: 0,
+        battery_charge: 0,
+        battery_discharge: 0,
+        pv_power_house: 0,
+        pv_charging_battery: 0,
+        grid_battery_charge: 0,
+        grid_to_load: 0,
+        self_consumption: 0,
+        self_sufficiency: 0,
+        today_income: 0,
+      };
       this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
       return {
         reporting: {
@@ -659,6 +727,20 @@ class ByteWattReportCard extends HTMLElement {
             period_end: this._formatLocalDate(window.end),
             saved_at: baseReporting?.meta?.saved_at || "",
           },
+          live: baseReporting?.live || {},
+          today: emptyToday,
+          totals: { ...emptyToday },
+          sankey: emptyEnergyModel,
+          sankey_debug: {
+            ...debugBase,
+            rows: 0,
+            counter_rows: 0,
+            source: "no-selected-period",
+            selected_records: 0,
+            period,
+            period_start: this._formatLocalDate(window.start),
+            period_end: this._formatLocalDate(window.end),
+          },
           power_diagram: {
             ...(baseReporting?.power_diagram || {}),
             date:
@@ -673,6 +755,9 @@ class ByteWattReportCard extends HTMLElement {
         period,
         window,
         availableRange,
+        records_total: sorted.length,
+        history_scope: scopeInfo.key,
+        requested_scope: scopeInfo.requested,
       };
     }
 
@@ -750,6 +835,7 @@ class ByteWattReportCard extends HTMLElement {
         totals: periodTotals,
         sankey,
         sankey_debug: {
+          ...debugBase,
           rows: energyModel.rows,
           counter_rows: 0,
           source: energyModel.source,
@@ -767,6 +853,9 @@ class ByteWattReportCard extends HTMLElement {
       period,
       window,
       availableRange,
+      records_total: sorted.length,
+      history_scope: scopeInfo.key,
+      requested_scope: scopeInfo.requested,
       summary,
     };
   }
@@ -1043,8 +1132,12 @@ class ByteWattReportCard extends HTMLElement {
   _renderReportControls(periodContext) {
     const period = periodContext?.period || this._reportPeriod || "day";
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
-    const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError);
-    const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : "loaded";
+    const selectedCount = (periodContext?.records || []).length;
+    const totalCount = Number(periodContext?.records_total ?? 0) || 0;
+    const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
+      total_records: totalCount,
+    });
+    const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : selectedCount ? "loaded" : "empty";
     const windowStart = periodContext?.window?.start || anchor;
     const displayDate = this._formatLocalDate(windowStart);
     const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
@@ -1435,7 +1528,11 @@ class ByteWattReportCard extends HTMLElement {
       periodReporting?.meta?.period_start && periodReporting?.meta?.period_end
         ? `${periodReporting.meta.period_start} -> ${periodReporting.meta.period_end}`
         : periodReporting?.power_diagram?.date || "";
-    const sourceLabel = `records ${periodRecords} | model rows ${modelRows} | ${sankey.source || debug.source || "period"}`;
+    const totalRecords = Number(debug.records_total ?? periodContext?.records_total ?? debug.archive_records_total ?? 0) || 0;
+    const scopeLabel = debug.history_scope ? ` | scope ${debug.history_scope}` : "";
+    const requestedLabel = debug.requested_scope && debug.requested_scope !== debug.history_scope ? ` (requested ${debug.requested_scope})` : "";
+    const liveLabel = debug.live_record_date ? ` | live ${debug.live_record_date}` : "";
+    const sourceLabel = `records ${periodRecords}/${totalRecords} | model rows ${modelRows} | ${sankey.source || debug.source || "period"}${scopeLabel}${requestedLabel}${liveLabel}`;
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
       ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
@@ -2210,6 +2307,11 @@ class ByteWattReportCard extends HTMLElement {
           background:#e8f7ee;
           border-color:rgba(74, 167, 98, 0.24);
           color:#2e7d46;
+        }
+        .report-status.empty {
+          background:#fff8e6;
+          border-color:rgba(240, 196, 25, 0.30);
+          color:#805f00;
         }
         .report-status.error {
           background:#fdecec;
