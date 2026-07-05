@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "163";
+const BYTEWATT_REPORT_CARD_BUILD = "164";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -679,6 +679,26 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
+  _windowLiveFallbackRecord(reporting, window) {
+    if (!reporting || !window?.start || !window?.end) return null;
+    const liveRecord = this._liveReportingRecord(reporting);
+    const liveDate = this._parseLocalDate(
+      liveRecord?.record_date ||
+      reporting?.power_diagram?.date ||
+      reporting?.reporting_date ||
+      reporting?.meta?.reporting_date
+    );
+    if (!liveDate) return null;
+    if (liveDate < window.start || liveDate > window.end) return null;
+    return {
+      ...(reporting || {}),
+      record_date: this._formatLocalDate(liveDate),
+      record_date_display: this._formatDisplayDate(liveDate),
+      record_date_raw: "window-live-fallback",
+      live_record: true,
+    };
+  }
+
   _periodStatus(records, loading, error, context = {}) {
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
@@ -849,6 +869,85 @@ class ByteWattReportCard extends HTMLElement {
           },
           records: fallbackSelected,
           chart_records: fallbackSelected,
+          anchor,
+          period,
+          window,
+          availableRange,
+          records_total: sorted.length,
+          history_scope: scopeInfo.key,
+          requested_scope: scopeInfo.requested,
+          summary: fallbackSummary,
+          live_fallback: true,
+        };
+      }
+      const windowFallbackRecord = this._windowLiveFallbackRecord(baseReporting, window);
+      if (windowFallbackRecord) {
+        const fallbackSelected = [windowFallbackRecord];
+        const fallbackSummary = this._periodSummary(fallbackSelected);
+        const fallbackEnergyModel = this._selectedPeriodEnergyModel(fallbackSelected, fallbackSummary);
+        this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
+        return {
+          reporting: {
+            ...(baseReporting || {}),
+            aggregate: !this._isDailyPeriod(period),
+            label: baseReporting?.label || "ByteWatt",
+            meta: {
+              ...(baseReporting?.meta || {}),
+              aggregate: !this._isDailyPeriod(period),
+              label: baseReporting?.label || "ByteWatt",
+              period,
+              period_label: this._reportPeriodLabel(period),
+              period_start: this._formatLocalDate(window.start),
+              period_end: this._formatLocalDate(window.end),
+              saved_at: baseReporting?.meta?.saved_at || "",
+            },
+            live: baseReporting?.live || {},
+            today: {
+              ...(baseReporting?.today || {}),
+              solar_generation: fallbackEnergyModel.solar_generation,
+              load_consumption: fallbackEnergyModel.load_consumption,
+              house_consumption: fallbackEnergyModel.load_consumption,
+              feed_in: fallbackEnergyModel.feed_in,
+              grid_consumption: fallbackEnergyModel.grid_consumption,
+              battery_charge: fallbackEnergyModel.battery_charge,
+              battery_discharge: fallbackEnergyModel.battery_discharge,
+              pv_power_house: fallbackEnergyModel.pv_power_house,
+              pv_charging_battery: fallbackEnergyModel.pv_charging_battery,
+              grid_battery_charge: fallbackEnergyModel.grid_battery_charge,
+              grid_to_load: fallbackEnergyModel.grid_to_load,
+              today_income: fallbackEnergyModel.today_income,
+            },
+            totals: {
+              ...(baseReporting?.today || {}),
+              solar_generation: fallbackEnergyModel.solar_generation,
+              load_consumption: fallbackEnergyModel.load_consumption,
+              house_consumption: fallbackEnergyModel.load_consumption,
+              feed_in: fallbackEnergyModel.feed_in,
+              grid_consumption: fallbackEnergyModel.grid_consumption,
+              battery_charge: fallbackEnergyModel.battery_charge,
+              battery_discharge: fallbackEnergyModel.battery_discharge,
+              pv_power_house: fallbackEnergyModel.pv_power_house,
+              pv_charging_battery: fallbackEnergyModel.pv_charging_battery,
+              grid_battery_charge: fallbackEnergyModel.grid_battery_charge,
+              grid_to_load: fallbackEnergyModel.grid_to_load,
+              today_income: fallbackEnergyModel.today_income,
+            },
+            sankey: fallbackEnergyModel,
+            sankey_debug: {
+              ...debugBase,
+              rows: fallbackEnergyModel.rows,
+              counter_rows: 0,
+              source: "window-live-fallback",
+              selected_records: 1,
+              period,
+              period_start: this._formatLocalDate(window.start),
+              period_end: this._formatLocalDate(window.end),
+            },
+            power_diagram: this._buildPeriodPowerDiagram(fallbackSelected, fallbackSummary, windowFallbackRecord, period, anchor, window),
+            summary: fallbackSummary,
+          },
+          records: fallbackSelected,
+          chart_records: this._isDailyPeriod(period) ? fallbackSelected : this._expandDailyRecords(fallbackSelected, window),
           anchor,
           period,
           window,
