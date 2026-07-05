@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "154";
+const BYTEWATT_REPORT_CARD_BUILD = "155";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -321,10 +321,10 @@ class ByteWattReportCard extends HTMLElement {
       const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
       const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
       return {
+        ...(reporting || {}),
         record_date: normalizedDate,
         record_date_display: displayDate,
         record_date_raw: String(recordDate || ""),
-        ...(reporting || {}),
       };
     });
   }
