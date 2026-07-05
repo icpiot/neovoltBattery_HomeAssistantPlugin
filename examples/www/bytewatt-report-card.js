@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "147";
+const BYTEWATT_REPORT_CARD_BUILD = "148";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1206,9 +1206,9 @@ class ByteWattReportCard extends HTMLElement {
     const sankey = reporting?.sankey || {};
     const periodSummary = reporting?.summary || reporting?.power_diagram?.summary || {};
     const dataLayers = [
+      reporting?.today || {},
       periodSummary,
       reporting?.totals || {},
-      reporting?.today || {},
       sankey,
       reporting?.power_diagram?.summary || {},
     ];
