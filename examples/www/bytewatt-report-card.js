@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "162";
+const BYTEWATT_REPORT_CARD_BUILD = "163";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -657,11 +657,34 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
+  _dailyLiveFallbackRecord(reporting, anchor, period = this._reportPeriod) {
+    if (!reporting || !this._isDailyPeriod(period)) return null;
+    const liveRecord = this._liveReportingRecord(reporting);
+    const liveDate =
+      liveRecord?.record_date ||
+      this._formatLocalDate(
+        this._parseLocalDate(reporting?.power_diagram?.date) ||
+          this._parseLocalDate(reporting?.reporting_date) ||
+          this._parseLocalDate(reporting?.meta?.reporting_date) ||
+          new Date()
+      );
+    const anchorDate = this._formatLocalDate(anchor);
+    if (period !== "today" && anchorDate && liveDate && anchorDate !== liveDate) return null;
+    return {
+      ...(reporting || {}),
+      record_date: anchorDate || liveDate,
+      record_date_display: this._formatDisplayDate(anchor || this._parseLocalDate(liveDate) || new Date()),
+      record_date_raw: "live-fallback",
+      live_record: true,
+    };
+  }
+
   _periodStatus(records, loading, error, context = {}) {
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
     const selectedCount = (records || []).length;
     const totalCount = Number(context.total_records ?? 0) || 0;
+    if (context.live_fallback) return "Live reporting shown while archive row catches up";
     if (!selectedCount) {
       return totalCount > 0 ? `No archive rows for selected period (${totalCount} available)` : "No archive rows loaded";
     }
@@ -758,6 +781,85 @@ class ByteWattReportCard extends HTMLElement {
       ? selected
       : this._expandDailyRecords(selected, window);
     if (!selected.length) {
+      const fallbackRecord = this._dailyLiveFallbackRecord(baseReporting, anchor, period);
+      if (fallbackRecord) {
+        const fallbackSelected = [fallbackRecord];
+        const fallbackSummary = this._periodSummary(fallbackSelected);
+        const fallbackEnergyModel = this._selectedPeriodEnergyModel(fallbackSelected, fallbackSummary);
+        this._reportAnchorDate = this._formatLocalDate(anchor);
+        return {
+          reporting: {
+            ...(baseReporting || {}),
+            aggregate: false,
+            label: baseReporting?.label || "ByteWatt",
+            meta: {
+              ...(baseReporting?.meta || {}),
+              aggregate: false,
+              label: baseReporting?.label || "ByteWatt",
+              period,
+              period_label: this._reportPeriodLabel(period),
+              period_start: this._formatLocalDate(window.start),
+              period_end: this._formatLocalDate(window.end),
+              saved_at: baseReporting?.meta?.saved_at || "",
+            },
+            live: baseReporting?.live || {},
+            today: {
+              ...(baseReporting?.today || {}),
+              solar_generation: fallbackEnergyModel.solar_generation,
+              load_consumption: fallbackEnergyModel.load_consumption,
+              house_consumption: fallbackEnergyModel.load_consumption,
+              feed_in: fallbackEnergyModel.feed_in,
+              grid_consumption: fallbackEnergyModel.grid_consumption,
+              battery_charge: fallbackEnergyModel.battery_charge,
+              battery_discharge: fallbackEnergyModel.battery_discharge,
+              pv_power_house: fallbackEnergyModel.pv_power_house,
+              pv_charging_battery: fallbackEnergyModel.pv_charging_battery,
+              grid_battery_charge: fallbackEnergyModel.grid_battery_charge,
+              grid_to_load: fallbackEnergyModel.grid_to_load,
+              today_income: fallbackEnergyModel.today_income,
+            },
+            totals: {
+              ...(baseReporting?.today || {}),
+              solar_generation: fallbackEnergyModel.solar_generation,
+              load_consumption: fallbackEnergyModel.load_consumption,
+              house_consumption: fallbackEnergyModel.load_consumption,
+              feed_in: fallbackEnergyModel.feed_in,
+              grid_consumption: fallbackEnergyModel.grid_consumption,
+              battery_charge: fallbackEnergyModel.battery_charge,
+              battery_discharge: fallbackEnergyModel.battery_discharge,
+              pv_power_house: fallbackEnergyModel.pv_power_house,
+              pv_charging_battery: fallbackEnergyModel.pv_charging_battery,
+              grid_battery_charge: fallbackEnergyModel.grid_battery_charge,
+              grid_to_load: fallbackEnergyModel.grid_to_load,
+              today_income: fallbackEnergyModel.today_income,
+            },
+            sankey: fallbackEnergyModel,
+            sankey_debug: {
+              ...debugBase,
+              rows: fallbackEnergyModel.rows,
+              counter_rows: 0,
+              source: "live-fallback",
+              selected_records: 1,
+              period,
+              period_start: this._formatLocalDate(window.start),
+              period_end: this._formatLocalDate(window.end),
+            },
+            power_diagram: this._buildPeriodPowerDiagram(fallbackSelected, fallbackSummary, fallbackRecord, period, anchor, window),
+            summary: fallbackSummary,
+          },
+          records: fallbackSelected,
+          chart_records: fallbackSelected,
+          anchor,
+          period,
+          window,
+          availableRange,
+          records_total: sorted.length,
+          history_scope: scopeInfo.key,
+          requested_scope: scopeInfo.requested,
+          summary: fallbackSummary,
+          live_fallback: true,
+        };
+      }
       const periodLabel = this._reportPeriodLabel(period);
       const emptyEnergyModel = this._selectedPeriodEnergyModel([], {});
       const emptyToday = {
@@ -1201,6 +1303,7 @@ class ByteWattReportCard extends HTMLElement {
     const totalCount = Number(periodContext?.records_total ?? 0) || 0;
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
       total_records: totalCount,
+      live_fallback: periodContext?.live_fallback,
     });
     const statusClass = this._historyLoading && !this._historyData ? "loading" : this._historyLoadError ? "error" : selectedCount ? "loaded" : "empty";
     const windowStart = periodContext?.window?.start || anchor;
