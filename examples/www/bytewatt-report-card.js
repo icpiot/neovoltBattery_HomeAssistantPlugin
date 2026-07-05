@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "161";
+const BYTEWATT_REPORT_CARD_BUILD = "162";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -76,8 +76,71 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _historyScopes() {
-    const scopes = this._historyData?.scopes;
-    return scopes && typeof scopes === "object" ? scopes : {};
+    const archiveScopes = this._historyData?.scopes;
+    const scopes = archiveScopes && typeof archiveScopes === "object" ? JSON.parse(JSON.stringify(archiveScopes)) : {};
+    const localScopes = this._readLocalSnapshots().scopes || {};
+    Object.entries(localScopes).forEach(([scopeKey, scope]) => {
+      if (!scope?.records) return;
+      const target = scopes[scopeKey] || { records: {} };
+      target.records = { ...(target.records || {}), ...scope.records };
+      scopes[scopeKey] = target;
+    });
+    return scopes;
+  }
+
+  _localSnapshotKey() {
+    const entity = String(this._config?.settings_target || "bytewatt").replace(/[^A-Za-z0-9_.-]+/g, "_");
+    return `bytewatt-report-history:${entity}`;
+  }
+
+  _readLocalSnapshots() {
+    try {
+      const raw = window.localStorage?.getItem(this._localSnapshotKey());
+      if (!raw) return { scopes: {} };
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : { scopes: {} };
+    } catch (_err) {
+      return { scopes: {} };
+    }
+  }
+
+  _writeLocalSnapshots(data) {
+    try {
+      window.localStorage?.setItem(this._localSnapshotKey(), JSON.stringify(data));
+    } catch (_err) {
+      // Browser storage can be disabled; HA archive remains the primary source.
+    }
+  }
+
+  _storeLiveReportingSnapshot(reporting) {
+    const liveRecord = this._liveReportingRecord(reporting);
+    if (!liveRecord?.record_date) return null;
+    const history = this._readLocalSnapshots();
+    history.scopes = history.scopes || {};
+    const scopeKeys = Array.from(new Set([this._historyScopeKey(), "all"].filter(Boolean)));
+    scopeKeys.forEach((scopeKey) => {
+      const scope = history.scopes[scopeKey] || { records: {} };
+      scope.records = scope.records || {};
+      scope.records[liveRecord.record_date] = {
+        ...reporting,
+        reporting_date: liveRecord.record_date,
+        record_date: liveRecord.record_date,
+        meta: {
+          ...(reporting?.meta || {}),
+          reporting_date: liveRecord.record_date,
+        },
+      };
+
+      const keys = Object.keys(scope.records).sort();
+      while (keys.length > 400) {
+        const oldest = keys.shift();
+        if (oldest) delete scope.records[oldest];
+      }
+      history.scopes[scopeKey] = scope;
+    });
+    history.updated = new Date().toISOString();
+    this._writeLocalSnapshots(history);
+    return liveRecord;
   }
 
   _historyScopeData() {
@@ -657,6 +720,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _buildPeriodReporting(baseReporting) {
+    this._storeLiveReportingSnapshot(baseReporting);
     const scopeInfo = this._historyScopeData();
     const historyRecords = this._historyRecords();
     const liveRecord = this._liveReportingRecord(baseReporting);
@@ -1425,9 +1489,7 @@ class ByteWattReportCard extends HTMLElement {
   _renderSankeyPanel(reporting, periodContext = null) {
     const periodReporting = periodContext?.reporting || reporting || {};
     const selectedRecords = Array.isArray(periodContext?.records) ? periodContext.records : [];
-    const sankey = periodContext
-      ? this._selectedPeriodEnergyModel(selectedRecords, periodReporting?.summary || {})
-      : periodReporting?.sankey || {};
+    const sankey = periodReporting?.sankey || {};
     const sourceNumber = (...keys) => {
       for (const key of keys) {
         const scoped = Number(sankey?.[key]);
