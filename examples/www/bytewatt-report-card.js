@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "151";
+const BYTEWATT_REPORT_CARD_BUILD = "152";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -438,6 +438,47 @@ class ByteWattReportCard extends HTMLElement {
     return this._aggregateHistoryRecords(records || []);
   }
 
+  _selectedPeriodEnergyModel(records, summary = {}) {
+    const rows = (records || []).filter((record) => record && record.record_date);
+    const totals = rows.reduce(
+      (acc, record) => {
+        acc.solar += Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]), 0);
+        acc.load += Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
+        acc.feed += Math.max(this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]), 0);
+        acc.grid += Math.max(this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]), 0);
+        acc.batteryCharge += Math.max(this._recordFloat(record, [["battery_charged_today"], ["today", "battery_charge"]]), 0);
+        acc.batteryDischarge += Math.max(this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]), 0);
+        acc.income += this._recordFloat(record, [["today_income"], ["today", "today_income"]]);
+        return acc;
+      },
+      { solar: 0, load: 0, feed: 0, grid: 0, batteryCharge: 0, batteryDischarge: 0, income: 0 }
+    );
+
+    const gridToBatteryCounter = Math.max(this._parseFloat(summary.grid_battery_charge), 0);
+    const gridToBattery = Math.min(gridToBatteryCounter, totals.batteryCharge);
+    const solarToBattery = Math.max(totals.batteryCharge - gridToBattery, 0);
+    const batteryToLoad = Math.min(totals.batteryDischarge, totals.load);
+    const gridToLoad = Math.min(totals.grid, Math.max(totals.load - batteryToLoad, 0));
+    const solarToLoad = Math.max(totals.load - batteryToLoad - gridToLoad, 0);
+
+    return {
+      rows: rows.length,
+      solar_generation: totals.solar,
+      load_consumption: totals.load,
+      feed_in: totals.feed,
+      grid_consumption: totals.grid,
+      battery_charge: totals.batteryCharge,
+      battery_discharge: batteryToLoad,
+      pv_power_house: solarToLoad,
+      pv_charging_battery: solarToBattery,
+      grid_battery_charge: gridToBattery,
+      grid_to_load: gridToLoad,
+      today_income: totals.income,
+      self_consumption: totals.solar > 0 ? Math.max(((totals.solar - totals.feed) / totals.solar) * 100, 0) : 0,
+      self_sufficiency: totals.load > 0 ? Math.max(((totals.load - totals.grid) / totals.load) * 100, 0) : 0,
+    };
+  }
+
   _periodStatus(records, loading, error) {
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
@@ -552,36 +593,29 @@ class ByteWattReportCard extends HTMLElement {
     this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
-    const periodSolarTotal = summary.solar_generation_today;
-    const periodLoadTotal = summary.load_consumption_today;
-    const periodFeedTotal = summary.feed_in_today;
-    const periodGridTotal = summary.grid_consumption_today;
-    const periodBatteryChargeTotal = summary.battery_charged_today;
-    const periodBatteryDischargeTotal = summary.battery_discharged_today;
-    const periodPvToHouse = Math.max(periodLoadTotal - periodGridTotal - periodBatteryDischargeTotal, 0);
-    const periodGridToBattery = Math.max(summary.grid_battery_charge, 0);
-    const periodPvToBattery = Math.max(periodBatteryChargeTotal - periodGridToBattery, 0);
+    const energyModel = this._selectedPeriodEnergyModel(selected, summary);
     const periodToday = {
-      solar_generation: periodSolarTotal,
-      load_consumption: periodLoadTotal,
-      feed_in: periodFeedTotal,
-      grid_consumption: periodGridTotal,
-      battery_charge: periodBatteryChargeTotal,
-      battery_discharge: periodBatteryDischargeTotal,
-      pv_power_house: periodPvToHouse,
-      pv_charging_battery: periodPvToBattery,
-      grid_battery_charge: periodGridToBattery,
+      solar_generation: energyModel.solar_generation,
+      load_consumption: energyModel.load_consumption,
+      feed_in: energyModel.feed_in,
+      grid_consumption: energyModel.grid_consumption,
+      battery_charge: energyModel.battery_charge,
+      battery_discharge: energyModel.battery_discharge,
+      pv_power_house: energyModel.pv_power_house,
+      pv_charging_battery: energyModel.pv_charging_battery,
+      grid_battery_charge: energyModel.grid_battery_charge,
+      grid_to_load: energyModel.grid_to_load,
       self_consumption:
-        periodSolarTotal > 0
-          ? Math.max(((periodSolarTotal - periodFeedTotal) / periodSolarTotal) * 100, 0)
+        energyModel.solar_generation > 0
+          ? energyModel.self_consumption
           : baseToday.self_consumption,
       self_sufficiency:
-        periodLoadTotal > 0
-          ? Math.max(((periodLoadTotal - periodGridTotal) / periodLoadTotal) * 100, 0)
+        energyModel.load_consumption > 0
+          ? energyModel.self_sufficiency
           : baseToday.self_sufficiency,
       trees_planted: latest.trees_planted ?? baseToday.trees_planted,
       co2_reduction_tons: latest.co2_reduction_tons ?? baseToday.co2_reduction_tons,
-      today_income: selected.reduce((acc, record) => acc + this._recordFloat(record, [["today_income"], ["today", "today_income"]]), 0),
+      today_income: energyModel.today_income,
       total_income: this._isDailyPeriod(period)
         ? (this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income)
         : this._recordValue(latest, [["total_income"], ["today", "total_income"]]) ?? baseToday.total_income,
@@ -589,17 +623,7 @@ class ByteWattReportCard extends HTMLElement {
     const periodTotals = {
       ...periodToday,
     };
-    const sankey = {
-      solar_generation: periodSolarTotal,
-      load_consumption: periodLoadTotal,
-      feed_in: periodFeedTotal,
-      grid_consumption: periodGridTotal,
-      battery_charge: periodBatteryChargeTotal,
-      battery_discharge: periodBatteryDischargeTotal,
-      pv_power_house: periodPvToHouse,
-      pv_charging_battery: periodPvToBattery,
-      grid_battery_charge: periodGridToBattery,
-    };
+    const sankey = { ...energyModel };
     const powerSummary = this._isDailyPeriod(period)
       ? {
           ...summary,
@@ -1228,17 +1252,9 @@ class ByteWattReportCard extends HTMLElement {
     const feedIn = sourceNumber("feed_in", "total_feed_in", "feed_in_today");
     const batteryCharge = sourceNumber("battery_charge", "total_battery_charge", "battery_charged_today");
     const batteryDischarge = sourceNumber("battery_discharge", "total_battery_discharge", "battery_discharged_today");
-    const pvPowerHouse = sourceNumber("pv_power_house", "pv_power_house_today", "pv_power_house");
-    const pvChargingBattery = sourceNumber("pv_charging_battery", "pv_charging_battery_today", "pv_charging_battery");
-    const gridBatteryCharge = sourceNumber("grid_battery_charge", "grid_battery_charge_today", "grid_battery_charge");
-    const pvToHouse =
-      (Number.isFinite(pvPowerHouse) ? pvPowerHouse : undefined) ??
-      Math.max(load - grid - batteryDischarge, 0);
-    const pvToBattery =
-      (Number.isFinite(pvChargingBattery) ? pvChargingBattery : undefined) ??
-      Math.max(batteryCharge - grid, 0);
-    const gridToBattery =
-      (Number.isFinite(gridBatteryCharge) ? gridBatteryCharge : undefined) ?? 0;
+    const pvToHouse = sourceNumber("pv_power_house");
+    const pvToBattery = sourceNumber("pv_charging_battery");
+    const gridToBattery = sourceNumber("grid_battery_charge");
     const sourceTotal = Math.max(solar + batteryDischarge + grid, 1);
     const sinkTotal = Math.max(load + batteryCharge + feedIn, 1);
     const flowScale = Math.max(solar, load, grid, feedIn, batteryCharge, batteryDischarge, pvToHouse, pvToBattery, gridToBattery, 1);
