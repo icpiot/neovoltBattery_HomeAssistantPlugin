@@ -27,13 +27,17 @@ def build_reporting_payload(
 ) -> dict[str, Any]:
     """Build the compact reporting payload used by the custom Lovelace cards."""
     power_diagram = battery_data.get("Power_Diagram") or {}
+    reporting_date = str(power_diagram.get("date") or dt_util.now().date().isoformat())
+    saved_at = dt_util.utcnow().isoformat()
     return {
         "aggregate": aggregate,
         "label": label,
+        "reporting_date": reporting_date,
         "meta": {
             "aggregate": aggregate,
             "label": label,
-            "saved_at": dt_util.utcnow().isoformat(),
+            "reporting_date": reporting_date,
+            "saved_at": saved_at,
         },
         "live": {
             "soc": battery_data.get("soc"),
@@ -296,4 +300,3 @@ class ByteWattReportHistory:
             writer.writeheader()
             for row in rows:
                 writer.writerow({key: _csv_cell(row.get(key)) for key in fieldnames})
-

@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "160";
+const BYTEWATT_REPORT_CARD_BUILD = "161";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -362,6 +362,7 @@ class ByteWattReportCard extends HTMLElement {
     const parsed =
       this._parseLocalDate(reporting?.power_diagram?.date) ||
       this._parseLocalDate(reporting?.reporting_date) ||
+      this._parseLocalDate(reporting?.meta?.reporting_date) ||
       this._parseSavedAtLocalDate(reporting?.meta?.saved_at || reporting?.saved_at);
     if (!parsed) return null;
     const normalizedDate = this._formatLocalDate(parsed);
