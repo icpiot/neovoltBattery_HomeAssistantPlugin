@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "164";
+const BYTEWATT_REPORT_CARD_BUILD = "166";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3683,7 +3683,17 @@ class ByteWattReportCard extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
       button.addEventListener("click", () => {
-        this._reportPeriod = button.dataset.reportPeriod || "day";
+        const nextPeriod = button.dataset.reportPeriod || "day";
+        const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+        const liveAnchor =
+          this._parseLocalDate(this._reporting()?.power_diagram?.date) ||
+          this._parseLocalDate(this._reporting()?.reporting_date) ||
+          this._parseLocalDate(this._reporting()?.meta?.reporting_date) ||
+          this._parseLocalDate(this._historyRange(records).latest) ||
+          new Date();
+        const nextAnchor = this._clampAnchor(liveAnchor, records);
+        this._reportPeriod = nextPeriod;
+        this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this.render();
       });
     });
