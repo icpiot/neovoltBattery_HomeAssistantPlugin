@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "152";
+const BYTEWATT_REPORT_CARD_BUILD = "154";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -242,6 +242,56 @@ class ByteWattReportCard extends HTMLElement {
     return aggregate;
   }
 
+  _periodCounterSummary(records, window) {
+    const sorted = (records || [])
+      .filter((record) => record && record.record_date)
+      .slice()
+      .sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const start = window?.start instanceof Date ? window.start : null;
+    const end = window?.end instanceof Date ? window.end : null;
+    const empty = {
+      total_solar_generation: 0,
+      total_feed_in: 0,
+      total_battery_charge: 0,
+      total_battery_discharge: 0,
+      total_house_consumption: 0,
+      total_grid_consumption: 0,
+      pv_power_house: 0,
+      pv_charging_battery: 0,
+      grid_battery_charge: 0,
+    };
+    if (!start || !end || !sorted.length) return empty;
+
+    let before = null;
+    let latest = null;
+    sorted.forEach((record) => {
+      const date = this._parseLocalDate(record.record_date);
+      if (!date) return;
+      if (date < start) before = record;
+      if (date >= start && date <= end) latest = record;
+    });
+    if (!latest || !before) return empty;
+
+    const delta = (paths) => {
+      const startValue = this._recordFloat(before, paths);
+      const endValue = this._recordFloat(latest, paths);
+      if (!Number.isFinite(startValue) || !Number.isFinite(endValue)) return 0;
+      return Math.max(endValue - startValue, 0);
+    };
+
+    return {
+      total_solar_generation: delta([["total_solar_generation"], ["totals", "solar_generation"]]),
+      total_feed_in: delta([["total_feed_in"], ["totals", "feed_in"]]),
+      total_battery_charge: delta([["total_battery_charge"], ["totals", "battery_charge"]]),
+      total_battery_discharge: delta([["total_battery_discharge"], ["totals", "battery_discharge"]]),
+      total_house_consumption: delta([["total_house_consumption"], ["totals", "house_consumption"]]),
+      total_grid_consumption: delta([["total_grid_consumption"], ["totals", "grid_consumption"]]),
+      pv_power_house: delta([["pv_power_house"], ["totals", "pv_power_house"]]),
+      pv_charging_battery: delta([["pv_charging_battery"], ["totals", "pv_charging_battery"]]),
+      grid_battery_charge: delta([["grid_battery_charge"], ["totals", "grid_battery_charge"]]),
+    };
+  }
+
   async _ensureHistoryLoaded() {
     const url = this._historyUrl();
     if (!url || this._historyLoading || this._historyData || this._historyAttempted) return;
@@ -438,7 +488,7 @@ class ByteWattReportCard extends HTMLElement {
     return this._aggregateHistoryRecords(records || []);
   }
 
-  _selectedPeriodEnergyModel(records, summary = {}) {
+  _selectedPeriodEnergyModel(records, summary = {}, counterSummary = {}) {
     const rows = (records || []).filter((record) => record && record.record_date);
     const totals = rows.reduce(
       (acc, record) => {
@@ -454,28 +504,43 @@ class ByteWattReportCard extends HTMLElement {
       { solar: 0, load: 0, feed: 0, grid: 0, batteryCharge: 0, batteryDischarge: 0, income: 0 }
     );
 
-    const gridToBatteryCounter = Math.max(this._parseFloat(summary.grid_battery_charge), 0);
-    const gridToBattery = Math.min(gridToBatteryCounter, totals.batteryCharge);
-    const solarToBattery = Math.max(totals.batteryCharge - gridToBattery, 0);
-    const batteryToLoad = Math.min(totals.batteryDischarge, totals.load);
-    const gridToLoad = Math.min(totals.grid, Math.max(totals.load - batteryToLoad, 0));
-    const solarToLoad = Math.max(totals.load - batteryToLoad - gridToLoad, 0);
+    const counterSolar = Math.max(this._parseFloat(counterSummary.total_solar_generation), 0);
+    const counterLoad = Math.max(this._parseFloat(counterSummary.total_house_consumption), 0);
+    const counterFeed = Math.max(this._parseFloat(counterSummary.total_feed_in), 0);
+    const counterGrid = Math.max(this._parseFloat(counterSummary.total_grid_consumption), 0);
+    const counterBatteryCharge = Math.max(this._parseFloat(counterSummary.total_battery_charge), 0);
+    const counterBatteryDischarge = Math.max(this._parseFloat(counterSummary.total_battery_discharge), 0);
+    const solar = counterSolar > 0 ? counterSolar : totals.solar;
+    const load = counterLoad > 0 ? counterLoad : totals.load;
+    const feed = counterFeed > 0 ? counterFeed : totals.feed;
+    const grid = counterGrid > 0 ? counterGrid : totals.grid;
+    const batteryCharge = counterBatteryCharge > 0 ? counterBatteryCharge : totals.batteryCharge;
+    const batteryDischarge = counterBatteryDischarge > 0 ? counterBatteryDischarge : totals.batteryDischarge;
+
+    const gridToBatteryCounter = Math.max(this._parseFloat(counterSummary.grid_battery_charge || summary.grid_battery_charge), 0);
+    const pvToBatteryCounter = Math.max(this._parseFloat(counterSummary.pv_charging_battery || summary.pv_charging_battery), 0);
+    const pvToHouseCounter = Math.max(this._parseFloat(counterSummary.pv_power_house || summary.pv_power_house), 0);
+    const gridToBattery = Math.min(gridToBatteryCounter, batteryCharge);
+    const solarToBattery = pvToBatteryCounter > 0 ? Math.min(pvToBatteryCounter, batteryCharge) : Math.max(batteryCharge - gridToBattery, 0);
+    const batteryToLoad = Math.min(batteryDischarge, load);
+    const gridToLoad = Math.min(grid, Math.max(load - batteryToLoad, 0));
+    const solarToLoad = pvToHouseCounter > 0 ? Math.min(pvToHouseCounter, load) : Math.max(load - batteryToLoad - gridToLoad, 0);
 
     return {
       rows: rows.length,
-      solar_generation: totals.solar,
-      load_consumption: totals.load,
-      feed_in: totals.feed,
-      grid_consumption: totals.grid,
-      battery_charge: totals.batteryCharge,
+      solar_generation: solar,
+      load_consumption: load,
+      feed_in: feed,
+      grid_consumption: grid,
+      battery_charge: batteryCharge,
       battery_discharge: batteryToLoad,
       pv_power_house: solarToLoad,
       pv_charging_battery: solarToBattery,
       grid_battery_charge: gridToBattery,
       grid_to_load: gridToLoad,
       today_income: totals.income,
-      self_consumption: totals.solar > 0 ? Math.max(((totals.solar - totals.feed) / totals.solar) * 100, 0) : 0,
-      self_sufficiency: totals.load > 0 ? Math.max(((totals.load - totals.grid) / totals.load) * 100, 0) : 0,
+      self_consumption: solar > 0 ? Math.max(((solar - feed) / solar) * 100, 0) : 0,
+      self_sufficiency: load > 0 ? Math.max(((load - grid) / load) * 100, 0) : 0,
     };
   }
 
@@ -589,14 +654,16 @@ class ByteWattReportCard extends HTMLElement {
     }
 
     const summary = this._periodSummary(selected);
+    const counterSummary = this._periodCounterSummary(sorted, window);
     const latest = selected[selected.length - 1] || {};
     this._reportAnchorDate = this._formatLocalDate(this._isDailyPeriod(period) ? anchor : window.start);
     const live = latest.live || baseReporting?.live || {};
     const baseToday = baseReporting?.today || {};
-    const energyModel = this._selectedPeriodEnergyModel(selected, summary);
+    const energyModel = this._selectedPeriodEnergyModel(selected, summary, counterSummary);
     const periodToday = {
       solar_generation: energyModel.solar_generation,
       load_consumption: energyModel.load_consumption,
+      house_consumption: energyModel.load_consumption,
       feed_in: energyModel.feed_in,
       grid_consumption: energyModel.grid_consumption,
       battery_charge: energyModel.battery_charge,
@@ -631,7 +698,7 @@ class ByteWattReportCard extends HTMLElement {
           total_feed_in: periodTotals.feed_in,
           total_battery_charge: periodTotals.battery_charge,
           total_battery_discharge: periodTotals.battery_discharge,
-          total_house_consumption: periodTotals.house_consumption,
+          total_house_consumption: periodTotals.load_consumption,
           total_grid_consumption: periodTotals.grid_consumption,
           pv_power_house: periodTotals.pv_power_house,
           pv_charging_battery: periodTotals.pv_charging_battery,
@@ -659,6 +726,14 @@ class ByteWattReportCard extends HTMLElement {
         today: periodToday,
         totals: periodTotals,
         sankey,
+        sankey_debug: {
+          rows: energyModel.rows,
+          counter_rows: counterSummary.total_house_consumption > 0 || counterSummary.total_solar_generation > 0 ? selected.length : 0,
+          selected_records: selected.length,
+          period,
+          period_start: this._formatLocalDate(window.start),
+          period_end: this._formatLocalDate(window.end),
+        },
         power_diagram: powerDiagram,
         summary,
       },
@@ -1331,12 +1406,15 @@ class ByteWattReportCard extends HTMLElement {
       </defs>
     `;
 
-    const periodRecords = Number(periodReporting?.records?.length) || 0;
+    const debug = periodReporting?.sankey_debug || {};
+    const periodRecords = Number(debug.selected_records ?? periodContext?.records?.length ?? 0) || 0;
+    const modelRows = Number(debug.rows ?? sankey.rows ?? 0) || 0;
     const periodLabel = periodReporting?.meta?.period_label || "Day";
     const periodRange =
       periodReporting?.meta?.period_start && periodReporting?.meta?.period_end
         ? `${periodReporting.meta.period_start} -> ${periodReporting.meta.period_end}`
         : periodReporting?.power_diagram?.date || "";
+    const sourceLabel = `records ${periodRecords} | model rows ${modelRows}`;
     const summaryCards = [
       ["Solar -> Load", this._fmtEnergy(pvToHouse), "solar"],
       ["Solar -> Battery", this._fmtEnergy(pvToBattery), "battery"],
@@ -1349,7 +1427,7 @@ class ByteWattReportCard extends HTMLElement {
         <section class="panel sankey-panel">
           <div class="panel-header">
             <div class="panel-title">Energy Flow Sankey</div>
-            <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""}${periodRecords ? ` | ${periodRecords} records` : ""}</div>
+            <div class="panel-date">${this._escape(periodLabel)}${periodRange ? ` | ${this._escape(periodRange)}` : ""} | ${this._escape(sourceLabel)}</div>
           </div>
         <div class="sankey-stage">
           <svg class="sankey-svg" viewBox="${compactSankey ? "0 0 940 440" : "0 0 940 520"}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="ByteWatt energy Sankey diagram">
@@ -1965,8 +2043,6 @@ class ByteWattReportCard extends HTMLElement {
     if (!this._hass || !this._config) return;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     const baseReporting = this._reporting();
-    const periodContext = this._buildPeriodReporting(baseReporting);
-    const reporting = periodContext.reporting;
     const historyKey = [
       this._historyUrl(),
       this._historyScopeKey(),
@@ -1981,6 +2057,8 @@ class ByteWattReportCard extends HTMLElement {
     if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
       this._ensureHistoryLoaded();
     }
+    const periodContext = this._buildPeriodReporting(baseReporting);
+    const reporting = periodContext.reporting;
 
     this.shadowRoot.innerHTML = `
       <style>
