@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "158";
+const BYTEWATT_REPORT_CARD_BUILD = "159";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -331,6 +331,23 @@ class ByteWattReportCard extends HTMLElement {
     });
   }
 
+  _liveReportingRecord(reporting) {
+    if (!reporting) return null;
+    const parsed =
+      this._parseLocalDate(reporting?.power_diagram?.date) ||
+      this._parseLocalDate(reporting?.reporting_date) ||
+      this._parseLocalDate(String(reporting?.meta?.saved_at || "").slice(0, 10));
+    if (!parsed) return null;
+    const normalizedDate = this._formatLocalDate(parsed);
+    return {
+      ...(reporting || {}),
+      record_date: normalizedDate,
+      record_date_display: this._formatDisplayDate(parsed),
+      record_date_raw: "live",
+      live_record: true,
+    };
+  }
+
   _recordDisplayDate(record) {
     if (!record) return "";
     if (record.record_date_display) return String(record.record_date_display);
@@ -599,7 +616,16 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _buildPeriodReporting(baseReporting) {
-    const records = this._historyRecords();
+    const historyRecords = this._historyRecords();
+    const liveRecord = this._liveReportingRecord(baseReporting);
+    const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
+    if (liveRecord?.record_date) {
+      recordsByDate.set(liveRecord.record_date, {
+        ...(recordsByDate.get(liveRecord.record_date) || {}),
+        ...liveRecord,
+      });
+    }
+    const records = Array.from(recordsByDate.values());
     const sorted = records.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const availableRange = this._historyRange(sorted);
     const fallbackDate = baseReporting?.power_diagram?.date || availableRange.latest || availableRange.first || "";
