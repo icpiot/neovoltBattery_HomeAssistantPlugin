@@ -452,6 +452,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             "end_date": end.isoformat(),
         }
         self._last_history_ensure_result = result
+        self.async_update_listeners()
         return result
 
     async def _backfill_history_snapshots(
