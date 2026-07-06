@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "178";
+const BYTEWATT_REPORT_CARD_BUILD = "179";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -58,6 +58,11 @@ class ByteWattReportCard extends HTMLElement {
 
   _historyMeta() {
     return this._selectorState()?.attributes?.history || {};
+  }
+
+  _historyEnsureResult() {
+    const value = this._historyMeta()?.last_ensure_result;
+    return value && typeof value === "object" ? value : {};
   }
 
   _historyScopeKey() {
@@ -1367,6 +1372,11 @@ class ByteWattReportCard extends HTMLElement {
     const latestRows = historyRecords.slice(-5).reverse();
     const latestDates = latestRows.map((record) => this._recordDisplayDate(record) || record.record_date || "Unknown");
     const historyScope = this._historyScopeKey();
+    const ensureResult = this._historyEnsureResult();
+    const ensureSummary =
+      ensureResult && Object.keys(ensureResult).length
+        ? `requested ${Number(ensureResult.requested ?? 0)} | downloaded ${Number(ensureResult.downloaded ?? 0)} | available ${Number(ensureResult.available ?? 0)}`
+        : "";
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
       total_records: totalCount,
       live_fallback: periodContext?.live_fallback,
@@ -1410,6 +1420,7 @@ class ByteWattReportCard extends HTMLElement {
             <div class="archive-inspector-title">Archive Inspector</div>
             <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}</div>
           </div>
+          ${ensureSummary ? `<div class="archive-inspector-meta">${this._escape(ensureSummary)}</div>` : ""}
           ${
             latestDates.length
               ? `<div class="archive-inspector-list">${latestDates.map((value) => `<span class="archive-row-chip">${this._escape(value)}</span>`).join("")}</div>`

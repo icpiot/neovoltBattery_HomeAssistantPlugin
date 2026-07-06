@@ -79,6 +79,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         self._heartbeat_unsub = None
         self._recovery_attempts = 0
         self._auto_reconnect_unsub = None
+        self._last_history_ensure_result: Dict[str, Any] = {}
         # async_call_later unsubscribe for the post-failure recovery retry.
         # Tracked so we can cancel it on entry unload — otherwise the
         # callback would fire on a torn-down coordinator.
@@ -441,7 +442,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
 
         refreshed_dates = await self._history_store.async_record_dates(scope_key)
         available = sum(1 for record_date in desired_dates if record_date in refreshed_dates)
-        return {
+        result = {
             "scope_key": scope_key,
             "label": label,
             "requested": len(desired_dates),
@@ -450,6 +451,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
         }
+        self._last_history_ensure_result = result
+        return result
 
     async def _backfill_history_snapshots(
         self,

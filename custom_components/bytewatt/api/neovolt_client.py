@@ -621,7 +621,15 @@ class NeovoltClient:
                 raise ByteWattAuthError("Authentication failed")
 
         effective_sys_sn = sys_sn or self._aggregate_monitoring_sys_sn()
+        current_date = dt_util.now().strftime("%Y-%m-%d %H:%M:%S")
         headers = self._get_auth_headers()
+        headers.update({
+            "Accept": "application/json, text/plain, */*",
+            "language": "en-US",
+            "operationDate": current_date,
+            "platform": "AK9D8H",
+            "System": "alphacloud",
+        })
         battery_data: Dict[str, Any] = {}
 
         today_url = f"{self.base_url}/api/stable/home/getSumDataForCustomer"
