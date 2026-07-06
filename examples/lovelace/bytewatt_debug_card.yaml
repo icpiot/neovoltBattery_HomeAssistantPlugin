@@ -1,0 +1,4 @@
+type: custom:bytewatt-debug-card
+title: ByteWatt Debug
+entity_prefix: house_bytewatt_battery_system
+settings_target: select.house_bytewatt_battery_system_settings_target

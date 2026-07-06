@@ -11,6 +11,8 @@ This folder contains two UI artifacts linked to the current branch work:
   closely while keeping unsupported controls visibly marked as not enabled.
 - `www/bytewatt-report-card.js`
   A separate reporting card for power-flow, daily summaries, and chart data.
+- `www/bytewatt-debug-card.js`
+  A focused inspector card for raw entity state, archive metadata, and probe actions.
 
 ## Why Both Exist
 
@@ -70,6 +72,13 @@ url: /local/community/bytewatt-card/bytewatt-report-card.js?v=167
 type: module
 ```
 
+Debug card:
+
+```yaml
+url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=001
+type: module
+```
+
 If you are using the repo-managed HA pull script from `scripts/ha_git_pull.sh`,
 it should also deploy `custom_components/bytewatt` at the same time so the card
 and backend stay aligned.
@@ -97,10 +106,18 @@ url: /local/community/bytewatt-card/bytewatt-report-card.js?v=167
 type: module
 ```
 
+Debug card next iteration:
+
+```yaml
+url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=001
+type: module
+```
+
 Current build stamp in this repo:
 
 - Policy card: `049`
 - Reporting card: `167`
+- Debug card: `001`
 
 ## Defaults
 
