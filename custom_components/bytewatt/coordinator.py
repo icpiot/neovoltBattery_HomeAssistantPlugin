@@ -302,12 +302,24 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         record_date: str,
         inventory: List[Any],
     ) -> Optional[Dict[str, Any]]:
-        """Build an all-systems day snapshot from child batteries.
+        """Build an all-systems day snapshot.
 
-        Historical endpoints appear to be more reliable per child battery than
-        via the synthetic "All" monitoring scope, so period reports use the
-        per-battery rows as the source of truth.
+        Prefer the direct all-systems day endpoint when it returns data. Fall
+        back to combining child batteries only when the aggregate call is
+        unavailable or empty.
         """
+        try:
+            snapshot = await self.client.get_battery_day_snapshot(record_date)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug(
+                "Direct aggregate historical fetch failed for %s: %s",
+                record_date,
+                err,
+            )
+        else:
+            if self._snapshot_has_reporting_data(snapshot):
+                return snapshot
+
         snapshots: List[Dict[str, Any]] = []
         seen: Set[str] = set()
         for inverter in inventory:
