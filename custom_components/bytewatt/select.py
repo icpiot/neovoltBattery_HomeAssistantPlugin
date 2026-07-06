@@ -27,7 +27,14 @@ def _reporting_payload(
     label: str,
 ) -> dict[str, Any]:
     """Build a compact reporting payload for custom Lovelace cards."""
-    return build_reporting_payload(battery_data, aggregate=aggregate, label=label)
+    payload = build_reporting_payload(battery_data, aggregate=aggregate, label=label)
+    power_diagram = payload.get("power_diagram") or {}
+    payload["power_diagram"] = {
+        "date": power_diagram.get("date") or payload.get("reporting_date") or "",
+        "meta": power_diagram.get("meta") or {},
+        "summary": power_diagram.get("summary") or {},
+    }
+    return payload
 
 
 async def async_setup_entry(
