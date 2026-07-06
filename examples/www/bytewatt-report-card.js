@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "176";
+const BYTEWATT_REPORT_CARD_BUILD = "177";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2980,8 +2980,8 @@ class ByteWattReportCard extends HTMLElement {
           ${
             reporting
               ? `
-            ${this._renderHeroBanner(reporting)}
             ${this._renderHistoryPanel()}
+            ${this._renderHeroBanner(reporting)}
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
             ${this._renderOverviewBands(reporting)}
