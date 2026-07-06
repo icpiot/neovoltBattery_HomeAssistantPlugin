@@ -83,8 +83,10 @@ mkdir -p "$LOG_DIR"
     custom_components/bytewatt/ \
     examples/www/bytewatt-policy-card.js \
     examples/www/bytewatt-report-card.js \
+    examples/www/bytewatt-debug-card.js \
     examples/www/LATEST_BUILD.txt \
     examples/www/LATEST_REPORT_BUILD.txt \
+    examples/www/LATEST_DEBUG_BUILD.txt \
     tests/ \
     2>/dev/null
 

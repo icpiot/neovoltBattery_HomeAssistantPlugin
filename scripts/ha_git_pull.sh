@@ -33,6 +33,23 @@ report_build_from_file() {
   echo "unknown"
 }
 
+debug_build_from_file() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo "missing"
+    return
+  fi
+
+  local line
+  line="$(grep -m1 'BYTEWATT_DEBUG_CARD_BUILD' "$file" 2>/dev/null || true)"
+  if [ -n "$line" ]; then
+    echo "$line" | sed -E 's/.*"([0-9]+)".*/\1/'
+    return
+  fi
+
+  echo "unknown"
+}
+
 integration_version_from_manifest() {
   local file="$1"
   if [ ! -f "$file" ]; then
@@ -64,6 +81,11 @@ deploy_repo_to_ha() {
     exit 1
   fi
 
+  if [ ! -f "$SOURCE_CARD_DIR/bytewatt-debug-card.js" ]; then
+    echo "ERROR: Missing source file: $SOURCE_CARD_DIR/bytewatt-debug-card.js"
+    exit 1
+  fi
+
   if [ ! -f "$SOURCE_COMPONENT_DIR/manifest.json" ]; then
     echo "ERROR: Missing integration manifest: $SOURCE_COMPONENT_DIR/manifest.json"
     exit 1
@@ -73,30 +95,38 @@ deploy_repo_to_ha() {
   mkdir -p "$DEPLOY_COMPONENT_DIR"
 
   SOURCE_REPORT_BUILD="$(report_build_from_file "$SOURCE_CARD_DIR/bytewatt-report-card.js")"
+  SOURCE_DEBUG_BUILD="$(debug_build_from_file "$SOURCE_CARD_DIR/bytewatt-debug-card.js")"
   DEPLOY_REPORT_BEFORE="$(report_build_from_file "$DEPLOY_CARD_DIR/bytewatt-report-card.js")"
+  DEPLOY_DEBUG_BEFORE="$(debug_build_from_file "$DEPLOY_CARD_DIR/bytewatt-debug-card.js")"
   SOURCE_COMPONENT_VERSION="$(integration_version_from_manifest "$SOURCE_COMPONENT_DIR/manifest.json")"
   DEPLOY_COMPONENT_VERSION_BEFORE="$(integration_version_from_manifest "$DEPLOY_COMPONENT_DIR/manifest.json")"
 
   echo "Report build (source): $SOURCE_REPORT_BUILD"
   echo "Report build (deploy before): $DEPLOY_REPORT_BEFORE"
+  echo "Debug build (source): $SOURCE_DEBUG_BUILD"
+  echo "Debug build (deploy before): $DEPLOY_DEBUG_BEFORE"
   echo "Integration version (source): $SOURCE_COMPONENT_VERSION"
   echo "Integration version (deploy before): $DEPLOY_COMPONENT_VERSION_BEFORE"
 
   cp -f "$SOURCE_CARD_DIR/bytewatt-policy-card.js" "$DEPLOY_CARD_DIR/bytewatt-policy-card.js"
   cp -f "$SOURCE_CARD_DIR/bytewatt-report-card.js" "$DEPLOY_CARD_DIR/bytewatt-report-card.js"
+  cp -f "$SOURCE_CARD_DIR/bytewatt-debug-card.js" "$DEPLOY_CARD_DIR/bytewatt-debug-card.js"
   cp -a "$SOURCE_COMPONENT_DIR/." "$DEPLOY_COMPONENT_DIR/"
 
   DEPLOY_REPORT_AFTER="$(report_build_from_file "$DEPLOY_CARD_DIR/bytewatt-report-card.js")"
+  DEPLOY_DEBUG_AFTER="$(debug_build_from_file "$DEPLOY_CARD_DIR/bytewatt-debug-card.js")"
   DEPLOY_COMPONENT_VERSION_AFTER="$(integration_version_from_manifest "$DEPLOY_COMPONENT_DIR/manifest.json")"
 
   echo ""
   echo "Deployed files:"
   echo "  $SOURCE_CARD_DIR/bytewatt-policy-card.js -> $DEPLOY_CARD_DIR/bytewatt-policy-card.js"
   echo "  $SOURCE_CARD_DIR/bytewatt-report-card.js -> $DEPLOY_CARD_DIR/bytewatt-report-card.js"
+  echo "  $SOURCE_CARD_DIR/bytewatt-debug-card.js -> $DEPLOY_CARD_DIR/bytewatt-debug-card.js"
   echo "  $SOURCE_COMPONENT_DIR -> $DEPLOY_COMPONENT_DIR"
   echo "Report build (deploy after): $DEPLOY_REPORT_AFTER"
+  echo "Debug build (deploy after): $DEPLOY_DEBUG_AFTER"
   echo "Integration version (deploy after): $DEPLOY_COMPONENT_VERSION_AFTER"
-  echo "VISIBLE UPDATE SUMMARY: HA report card now shows v${DEPLOY_REPORT_AFTER} and backend version ${DEPLOY_COMPONENT_VERSION_AFTER}"
+  echo "VISIBLE UPDATE SUMMARY: HA report card now shows v${DEPLOY_REPORT_AFTER}, debug card v${DEPLOY_DEBUG_AFTER}, and backend version ${DEPLOY_COMPONENT_VERSION_AFTER}"
 }
 
 {
