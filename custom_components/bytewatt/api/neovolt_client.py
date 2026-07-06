@@ -741,18 +741,21 @@ class NeovoltClient:
                         return battery_data
 
                     pv_today = _stat_value(stats_data, "epvtoday")
-                    consumed = _stat_value(stats_data, "ehomeload")
-                    feed_in = _stat_value(stats_data, "efeedIn")
+                    consumed = _stat_value(stats_data, "ehomeload") or _stat_value(stats_data, "eload")
+                    feed_in = _stat_value(stats_data, "efeedIn") or _stat_value(stats_data, "eout")
                     grid_import = _stat_value(stats_data, "einput")
                     charged = _stat_value(stats_data, "echarge")
+                    discharged = _stat_value(stats_data, "edischarge")
 
-                    battery_data["PV_Generated_Today"] = pv_today
+                    battery_data["PV_Generated_Today"] = pv_today or _stat_value(stats_data, "epvT")
                     battery_data["Consumed_Today"] = consumed
                     battery_data["Feed_In_Today"] = feed_in
                     battery_data["Grid_Import_Today"] = grid_import
-                    battery_data["Battery_Charged_Today"] = charged
+                    battery_data["Battery_Charged_Today"] = charged or _stat_value(stats_data, "epvcharge")
 
                     if battery_data.get("Battery_Discharged_Today") is None:
+                        battery_data["Battery_Discharged_Today"] = discharged
+                    if battery_data.get("Battery_Discharged_Today") in (None, ""):
                         total_gained = pv_today + grid_import
                         total_used = consumed + feed_in + charged
                         battery_data["Battery_Discharged_Today"] = max(total_used - total_gained, 0)
@@ -776,11 +779,11 @@ class NeovoltClient:
                         },
                         "summary": {
                             "soc": stats_data.get("soc"),
-                            "solar_generation": stats_data.get("epvtoday"),
-                            "load_consumption": stats_data.get("eload"),
-                            "feed_in": stats_data.get("efeedIn"),
-                            "grid_consumption": stats_data.get("egridCharge"),
-                            "battery_charge": stats_data.get("echarge"),
+                            "solar_generation": battery_data.get("PV_Generated_Today"),
+                            "load_consumption": battery_data.get("Consumed_Today"),
+                            "feed_in": battery_data.get("Feed_In_Today"),
+                            "grid_consumption": battery_data.get("Grid_Import_Today"),
+                            "battery_charge": battery_data.get("Battery_Charged_Today"),
                             "battery_discharge": battery_data.get("Battery_Discharged_Today"),
                         },
                         "meta": {

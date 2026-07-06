@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "175";
+const BYTEWATT_REPORT_CARD_BUILD = "176";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1063,6 +1063,30 @@ class ByteWattReportCard extends HTMLElement {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
     };
+    const rowCount = Math.min(records.length, 10);
+    const rows = records
+      .slice(-rowCount)
+      .map((record) => {
+        const rowDate = this._recordDisplayDate(record) || record.record_date || "Unknown";
+        const solar = record?.today?.solar_generation ?? record?.solar_generation_today ?? 0;
+        const load = record?.today?.load_consumption ?? record?.load_consumption_today ?? 0;
+        const feed = record?.today?.feed_in ?? record?.feed_in_today ?? 0;
+        const grid = record?.today?.grid_consumption ?? record?.grid_consumption_today ?? 0;
+        const charge = record?.today?.battery_charge ?? record?.battery_charged_today ?? 0;
+        const discharge = record?.today?.battery_discharge ?? record?.battery_discharged_today ?? 0;
+        return `
+          <tr>
+            <td>${this._escape(rowDate)}</td>
+            <td>${this._escape(this._fmtEnergy(solar))}</td>
+            <td>${this._escape(this._fmtEnergy(load))}</td>
+            <td>${this._escape(this._fmtEnergy(feed))}</td>
+            <td>${this._escape(this._fmtEnergy(grid))}</td>
+            <td>${this._escape(this._fmtEnergy(charge))}</td>
+            <td>${this._escape(this._fmtEnergy(discharge))}</td>
+          </tr>
+        `;
+      })
+      .join("");
     return `
       <section class="history-panel">
         <div class="panel-header">
@@ -1098,6 +1122,28 @@ class ByteWattReportCard extends HTMLElement {
                     ${this._metric("PV to Battery", this._fmtEnergy(summary.pv_charging_battery))}
                     ${this._metric("Grid to Battery", this._fmtEnergy(summary.grid_battery_charge))}
                     ${this._metric("SOC", this._fmtPercent(summary.live_soc))}
+                  </div>
+                  <div class="history-table-head">
+                    <div class="history-table-title">Archive Rows</div>
+                    <div class="history-table-subtitle">Latest ${rowCount} row(s) for the selected scope</div>
+                  </div>
+                  <div class="history-table-wrap">
+                    <table class="history-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Solar</th>
+                          <th>Load</th>
+                          <th>Feed-in</th>
+                          <th>Grid</th>
+                          <th>Charge</th>
+                          <th>Discharge</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${rows}
+                      </tbody>
+                    </table>
                   </div>
                 `
                 : `<div class="empty">No local history records found yet for this scope.</div>`
@@ -1961,6 +2007,52 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap:12px;
+        }
+        .history-table-head {
+          display:flex;
+          align-items:end;
+          justify-content:space-between;
+          gap:12px;
+          flex-wrap:wrap;
+        }
+        .history-table-title {
+          font-size:0.96rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .history-table-subtitle {
+          font-size:0.8rem;
+          font-weight:700;
+          color:#64748b;
+        }
+        .history-table-wrap {
+          overflow:auto;
+          border:1px solid var(--bw-border);
+          border-radius:14px;
+          background:#f8fafc;
+        }
+        .history-table {
+          width:100%;
+          min-width:720px;
+          border-collapse:collapse;
+        }
+        .history-table th,
+        .history-table td {
+          padding:10px 12px;
+          border-bottom:1px solid #e5e7eb;
+          text-align:left;
+          white-space:nowrap;
+          font-size:0.9rem;
+        }
+        .history-table th {
+          background:#eef2f7;
+          color:#475569;
+          font-size:0.72rem;
+          letter-spacing:0.04em;
+          text-transform:uppercase;
+        }
+        .history-table tbody tr:last-child td {
+          border-bottom:none;
         }
         .hero-metrics {
           display:grid;
