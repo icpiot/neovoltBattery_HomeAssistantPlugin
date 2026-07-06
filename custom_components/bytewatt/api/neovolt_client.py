@@ -110,6 +110,7 @@ class NeovoltClient:
         self.base_url = base_url
         self.session = async_get_clientsession(hass)
         self.token: Optional[str] = None
+        self.user_id: Optional[str] = None
         self.host_system_id = host_system_id   # systemId of the Host inverter
         self.host_sys_sn = host_sys_sn         # sysSn of the Host inverter
 
@@ -184,6 +185,13 @@ class NeovoltClient:
                     else:
                         _LOGGER.error("No token found in login response")
                         return False
+
+                    login_data = result.get("data") if isinstance(result.get("data"), dict) else {}
+                    for key in ("userId", "userid", "user_id", "uid", "accountId", "id"):
+                        value = result.get(key) or login_data.get(key)
+                        if value not in (None, ""):
+                            self.user_id = str(value)
+                            break
 
                     _LOGGER.debug("Successfully logged in to Neovolt API")
                     return True
@@ -648,9 +656,12 @@ class NeovoltClient:
 
         today_stats_url = f"{self.base_url}/api/report/power/staticsByDay"
         today_stats_params = {
-            "sysSn": effective_sys_sn,
             "date": report_date,
         }
+        if effective_sys_sn.lower() == "all" and self.user_id:
+            today_stats_params["userId"] = self.user_id
+        else:
+            today_stats_params["sysSn"] = effective_sys_sn
 
         try:
             async with asyncio.timeout(DEFAULT_TIMEOUT):

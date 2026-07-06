@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "174";
+const BYTEWATT_REPORT_CARD_BUILD = "175";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -774,9 +774,9 @@ class ByteWattReportCard extends HTMLElement {
     if (error) return `Archive unavailable: ${error}`;
     const selectedCount = (records || []).length;
     const totalCount = Number(context.total_records ?? 0) || 0;
-    if (context.live_fallback) return "Live reporting shown while archive row catches up";
+    if (context.live_fallback) return "Live reporting shown while selected day archive catches up";
     if (!selectedCount) {
-      return totalCount > 0 ? `No archive rows for selected period (${totalCount} available)` : "No archive rows loaded";
+      return totalCount > 0 ? `No archive rows for selected day (${totalCount} available)` : "No archive rows loaded for selected day";
     }
     const range = this._historyRange(records);
     const first = range.first ? this._formatDisplayDate(this._parseLocalDate(range.first)) : "";
