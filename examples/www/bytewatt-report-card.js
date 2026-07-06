@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "181";
+const BYTEWATT_REPORT_CARD_BUILD = "182";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -69,6 +69,11 @@ class ByteWattReportCard extends HTMLElement {
     const history = this._historyMeta();
     const currentScope = String(history.current_scope || "").trim();
     return currentScope || "all";
+  }
+
+  _historyConfigured() {
+    const history = this._historyMeta();
+    return Boolean(history?.enabled || history?.base_url || history?.entry_id);
   }
 
   _historyScopes() {
@@ -149,8 +154,14 @@ class ByteWattReportCard extends HTMLElement {
 
   _historyUrl() {
     const history = this._historyMeta();
-    if (!history.enabled || !history.base_url) return "";
-    const base = String(history.base_url).replace(/\/+$/, "");
+    const explicitBase = String(history?.base_url || "").trim();
+    const entryId = String(history?.entry_id || "").trim();
+    const base = explicitBase
+      ? explicitBase.replace(/\/+$/, "")
+      : entryId
+        ? `/local/bytewatt-history/${entryId}`
+        : "";
+    if (!base) return "";
     return `${base}/history.json`;
   }
 
@@ -413,10 +424,10 @@ class ByteWattReportCard extends HTMLElement {
       this.render();
       return;
     }
-    if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
+    if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
       await this._reloadHistory();
     }
-    if (this._historyMeta().enabled) {
+    if (this._historyConfigured()) {
       await this._ensureSelectedDailyHistory();
     } else {
       this.render();
@@ -1059,7 +1070,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _renderHistoryPanel() {
     const history = this._historyMeta();
-    if (!history.enabled) return "";
+    if (!this._historyConfigured()) return "";
     const records = this._selectedHistoryRecords();
     const summary = this._aggregateHistoryRecords(records);
     const loading = this._historyLoading && !this._historyData;
@@ -1377,6 +1388,8 @@ class ByteWattReportCard extends HTMLElement {
       ensureResult && Object.keys(ensureResult).length
         ? `requested ${Number(ensureResult.requested ?? 0)} | downloaded ${Number(ensureResult.downloaded ?? 0)} | available ${Number(ensureResult.available ?? 0)}`
         : "";
+    const historyUrl = this._historyUrl();
+    const historySourceSummary = `configured ${this._historyConfigured() ? "yes" : "no"} | entry ${this._historyEntryId() || "-"} | url ${historyUrl || "-"}`;
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
       total_records: totalCount,
       live_fallback: periodContext?.live_fallback,
@@ -1420,6 +1433,7 @@ class ByteWattReportCard extends HTMLElement {
             <div class="archive-inspector-title">Archive Inspector</div>
             <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}</div>
           </div>
+          <div class="archive-inspector-meta">${this._escape(historySourceSummary)}</div>
           ${ensureSummary ? `<div class="archive-inspector-meta">${this._escape(ensureSummary)}</div>` : ""}
           ${
             latestDates.length
@@ -1519,8 +1533,8 @@ class ByteWattReportCard extends HTMLElement {
           <div class="hero-title">${this._escape(scopeLabel)}</div>
           <div class="hero-subtitle">${this._escape(live.power_source || "Idle")} | ${direction} | ${gridDirection}</div>
           ${
-            history.enabled
-              ? `<div class="hero-history">Local archive: ${this._escape(history.base_url || "")}</div>`
+            this._historyConfigured()
+              ? `<div class="hero-history">Local archive: ${this._escape(this._historyUrl())}</div>`
               : ""
           }
         </div>
@@ -1788,10 +1802,10 @@ class ByteWattReportCard extends HTMLElement {
       this._historyAttempted = false;
       this._resetHistoryEnsureState();
     }
-    if (this._historyMeta().enabled && !this._historyData && !this._historyLoading) {
+    if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
       this._ensureHistoryLoaded();
     }
-    if (this._historyMeta().enabled && this._historyData && !this._historyLoading) {
+    if (this._historyConfigured() && this._historyData && !this._historyLoading) {
       this._ensureSelectedDailyHistory();
     }
     const periodContext = this._buildPeriodReporting(baseReporting);
