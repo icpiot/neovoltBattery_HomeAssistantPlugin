@@ -1,6 +1,8 @@
 """API client for Neovolt battery systems."""
+import base64
 import logging
 import asyncio
+import json
 import aiohttp
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -90,6 +92,23 @@ def _stat_value(stats_data, key):
     except (TypeError, ValueError):
         _LOGGER.debug("Non-numeric value for %s in stats response: %r", key, value)
         return 0
+
+
+def _decode_jwt_payload(token: str) -> Dict[str, Any]:
+    """Decode the payload portion of a JWT without verifying the signature."""
+    parts = str(token or "").split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1].replace("-", "+").replace("_", "/")
+    padding = (-len(payload)) % 4
+    if padding:
+        payload += "=" * padding
+    try:
+        decoded = base64.b64decode(payload.encode("utf-8"))
+        value = json.loads(decoded.decode("utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
 
 class NeovoltClient:
     """API Client for Neovolt battery systems."""
@@ -192,6 +211,13 @@ class NeovoltClient:
                         if value not in (None, ""):
                             self.user_id = str(value)
                             break
+                    if not self.user_id:
+                        token_payload = _decode_jwt_payload(self.token or "")
+                        for key in ("user_id", "userId", "userid", "uid", "accountId", "id"):
+                            value = token_payload.get(key)
+                            if value not in (None, ""):
+                                self.user_id = str(value)
+                                break
 
                     _LOGGER.debug("Successfully logged in to Neovolt API")
                     return True
