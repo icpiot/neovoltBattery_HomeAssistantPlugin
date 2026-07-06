@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "182";
+const BYTEWATT_REPORT_CARD_BUILD = "183";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -57,7 +57,11 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _historyMeta() {
-    return this._selectorState()?.attributes?.history || {};
+    const attrs = this._selectorState()?.attributes || {};
+    const direct = attrs.history;
+    if (direct && typeof direct === "object") return direct;
+    const fallback = attrs.reporting?.meta?.history;
+    return fallback && typeof fallback === "object" ? fallback : {};
   }
 
   _historyEnsureResult() {

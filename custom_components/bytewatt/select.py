@@ -25,6 +25,7 @@ def _reporting_payload(
     *,
     aggregate: bool,
     label: str,
+    history_hint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a compact reporting payload for custom Lovelace cards."""
     payload = build_reporting_payload(battery_data, aggregate=aggregate, label=label)
@@ -34,6 +35,8 @@ def _reporting_payload(
         "meta": power_diagram.get("meta") or {},
         "summary": power_diagram.get("summary") or {},
     }
+    meta = payload.setdefault("meta", {})
+    meta["history"] = history_hint or {}
     return payload
 
 
@@ -180,6 +183,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                     aggregate_battery,
                     aggregate=True,
                     label="All systems",
+                    history_hint=history_hint,
                 ),
                 "history": history_hint,
                 "battery_policy": self._manager.battery_policy_summary(),
@@ -195,6 +199,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                 selected_battery,
                 aggregate=False,
                 label=current.display_name,
+                history_hint=history_hint,
             ),
             "history": history_hint,
             "battery_policy": self._manager.battery_policy_summary(),
