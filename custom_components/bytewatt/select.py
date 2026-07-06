@@ -40,6 +40,12 @@ def _reporting_payload(
     return payload
 
 
+def _compact_summary(value: dict[str, Any] | None, keys: list[str]) -> dict[str, Any]:
+    """Keep only a small set of keys for recorder-safe entity attributes."""
+    source = value or {}
+    return {key: source.get(key) for key in keys if key in source}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -135,7 +141,6 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
         coordinator_data = self.coordinator.data or {}
         aggregate_battery = coordinator_data.get("battery") or {}
         selected_battery = coordinator_data.get("selected_battery") or {}
-        all_batteries = coordinator_data.get("all_batteries") or {}
         history_hint = {
             "enabled": True,
             "base_url": f"/local/bytewatt-history/{self._config_entry.entry_id}/",
@@ -143,67 +148,70 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             "entry_id": self._config_entry.entry_id,
             "last_ensure_result": getattr(self.coordinator, "_last_history_ensure_result", {}) or {},
         }
-        monitoring_summary = {
-            "soc": selected_battery.get("soc") if current is not None else aggregate_battery.get("soc"),
-            "battery_power": selected_battery.get("pbat") if current is not None else aggregate_battery.get("pbat"),
-            "house_consumption": selected_battery.get("pload") if current is not None else aggregate_battery.get("pload"),
-            "grid_power": selected_battery.get("pgrid") if current is not None else aggregate_battery.get("pgrid"),
-            "pv_power": selected_battery.get("ppv") if current is not None else aggregate_battery.get("ppv"),
-            "power_source": selected_battery.get("powerSource") if current is not None else aggregate_battery.get("powerSource"),
+        monitoring_summary = _compact_summary(
+            selected_battery if current is not None else aggregate_battery,
+            ["soc", "pbat", "pload", "pgrid", "ppv", "powerSource"],
+        )
+        selection_summary = {
+            "label": current.display_name if current is not None else "All systems",
+            "system_id": current.system_id if current is not None else "",
+            "sys_sn": current.sys_sn if current is not None else "All",
+            "remark": current.remark if current is not None else "",
         }
-        all_system_summaries = []
-        seen_sys_sn: set[str] = set()
-        for inverter in self._inventory():
-            sys_sn = str(inverter.sys_sn or "").strip()
-            if not sys_sn or sys_sn in seen_sys_sn:
-                continue
-            seen_sys_sn.add(sys_sn)
-            battery_data = all_batteries.get(sys_sn) or {}
-            if current is not None and sys_sn == str(current.sys_sn or "").strip():
-                battery_data = selected_battery or monitoring_summary
-            all_system_summaries.append(
-                {
-                    "label": inverter.display_name,
-                    "system_id": inverter.system_id,
-                    "sys_sn": inverter.sys_sn,
-                    "remark": inverter.remark,
-                    "soc": battery_data.get("soc"),
-                    "battery_power": battery_data.get("pbat"),
-                    "house_consumption": battery_data.get("pload"),
-                    "grid_power": battery_data.get("pgrid"),
-                    "pv_power": battery_data.get("ppv"),
-                    "power_source": battery_data.get("powerSource"),
-                }
-            )
+        reporting = _reporting_payload(
+            aggregate_battery if current is None else selected_battery,
+            aggregate=current is None,
+            label=selection_summary["label"],
+            history_hint=history_hint,
+        )
+        reporting_meta = reporting.get("meta") or {}
+        reporting_summary = {
+            "label": reporting.get("label"),
+            "aggregate": reporting.get("aggregate"),
+            "reporting_date": reporting.get("reporting_date"),
+            "saved_at": reporting_meta.get("saved_at"),
+            "history": reporting_meta.get("history") or {},
+            "live": _compact_summary(reporting.get("live"), ["soc", "battery_power", "house_consumption", "grid_power", "pv_power", "power_source"]),
+            "today": _compact_summary(reporting.get("today"), ["solar_generation", "load_consumption", "feed_in", "grid_consumption", "battery_charge", "battery_discharge"]),
+            "totals": _compact_summary(reporting.get("totals"), ["solar_generation", "feed_in", "battery_charge", "battery_discharge", "house_consumption", "grid_consumption"]),
+            "power_diagram": _compact_summary(reporting.get("power_diagram"), ["date", "meta", "summary"]),
+        }
+        battery_policy = self._manager.battery_policy_summary()
+        feedin_policy = self._manager.feedin_policy_summary()
         if current is None:
             return {
+                "selection": selection_summary,
                 "monitoring_summary": monitoring_summary,
-                "all_system_summaries": all_system_summaries,
-                "reporting": _reporting_payload(
-                    aggregate_battery,
-                    aggregate=True,
-                    label="All systems",
-                    history_hint=history_hint,
-                ),
+                "reporting": reporting_summary,
                 "history": history_hint,
-                "battery_policy": self._manager.battery_policy_summary(),
-                "feedin_policy": self._manager.feedin_policy_summary(),
+                "battery_policy": {
+                    "execution_cycle_label": battery_policy.get("execution_cycle_label"),
+                    "charge_slot_limit": battery_policy.get("charge_slot_limit"),
+                    "discharge_slot_limit": battery_policy.get("discharge_slot_limit"),
+                    "force_charge_active": battery_policy.get("force_charge_active"),
+                },
+                "feedin_policy": {
+                    "enabled": feedin_policy.get("enabled"),
+                    "cutoff_soc": feedin_policy.get("cutoff_soc"),
+                    "slot_limit": feedin_policy.get("slot_limit"),
+                },
             }
         return {
-            "system_id": current.system_id,
-            "sys_sn": current.sys_sn,
-            "remark": current.remark,
+            "selection": selection_summary,
             "monitoring_summary": monitoring_summary,
-            "all_system_summaries": all_system_summaries,
-            "reporting": _reporting_payload(
-                selected_battery,
-                aggregate=False,
-                label=current.display_name,
-                history_hint=history_hint,
-            ),
+            "reporting": reporting_summary,
             "history": history_hint,
-            "battery_policy": self._manager.battery_policy_summary(),
-            "feedin_policy": self._manager.feedin_policy_summary(),
+            "battery_policy": {
+                "execution_cycle_label": battery_policy.get("execution_cycle_label"),
+                "charge_slot_limit": battery_policy.get("charge_slot_limit"),
+                "discharge_slot_limit": battery_policy.get("discharge_slot_limit"),
+                "force_charge_active": battery_policy.get("force_charge_active"),
+            },
+            "feedin_policy": {
+                "enabled": feedin_policy.get("enabled"),
+                "cutoff_soc": feedin_policy.get("cutoff_soc"),
+                "slot_limit": feedin_policy.get("slot_limit"),
+            },
         }
 
     async def async_select_option(self, option: str) -> None:
