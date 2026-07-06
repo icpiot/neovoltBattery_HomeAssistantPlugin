@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "177";
+const BYTEWATT_REPORT_CARD_BUILD = "178";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1363,6 +1363,10 @@ class ByteWattReportCard extends HTMLElement {
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
     const selectedCount = (periodContext?.records || []).length;
     const totalCount = Number(periodContext?.records_total ?? 0) || 0;
+    const historyRecords = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    const latestRows = historyRecords.slice(-5).reverse();
+    const latestDates = latestRows.map((record) => this._recordDisplayDate(record) || record.record_date || "Unknown");
+    const historyScope = this._historyScopeKey();
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
       total_records: totalCount,
       live_fallback: periodContext?.live_fallback,
@@ -1400,6 +1404,17 @@ class ByteWattReportCard extends HTMLElement {
             ${this._escape(status)}
             ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
           </div>
+        </div>
+        <div class="archive-inspector">
+          <div class="archive-inspector-head">
+            <div class="archive-inspector-title">Archive Inspector</div>
+            <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}</div>
+          </div>
+          ${
+            latestDates.length
+              ? `<div class="archive-inspector-list">${latestDates.map((value) => `<span class="archive-row-chip">${this._escape(value)}</span>`).join("")}</div>`
+              : `<div class="archive-inspector-empty">No history rows loaded for the current scope.</div>`
+          }
         </div>
       </div>
     `;
@@ -1911,6 +1926,57 @@ class ByteWattReportCard extends HTMLElement {
           background:#fdecec;
           border-color:rgba(198, 82, 82, 0.22);
           color:#a04646;
+        }
+        .archive-inspector {
+          display:grid;
+          gap:10px;
+          padding:14px 16px;
+          border-radius:18px;
+          background:#fff;
+          border:1px solid var(--bw-border);
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+        }
+        .archive-inspector-head {
+          display:flex;
+          align-items:end;
+          justify-content:space-between;
+          gap:10px;
+          flex-wrap:wrap;
+        }
+        .archive-inspector-title {
+          font-size:0.95rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .archive-inspector-meta {
+          font-size:0.8rem;
+          font-weight:700;
+          color:#64748b;
+        }
+        .archive-inspector-list {
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+        }
+        .archive-row-chip {
+          display:inline-flex;
+          align-items:center;
+          padding:7px 10px;
+          border-radius:999px;
+          background:#eef4fb;
+          border:1px solid #d7e3f4;
+          color:#355377;
+          font-size:0.82rem;
+          font-weight:800;
+        }
+        .archive-inspector-empty {
+          font-size:0.88rem;
+          font-weight:700;
+          color:#805f00;
+          background:#fff8e6;
+          border:1px solid rgba(240, 196, 25, 0.30);
+          border-radius:14px;
+          padding:10px 12px;
         }
         .label { font-size:0.95rem; font-weight:700; color:#31435d; }
         select {
