@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "005";
+const BYTEWATT_DEBUG_CARD_BUILD = "006";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
