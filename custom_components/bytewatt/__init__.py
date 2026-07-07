@@ -100,7 +100,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = ["sensor", "number", "time", "switch", "button", "select"]
 
-# Services are domain-level; registered once via hass.services.has_service() guard.
+# Services are domain-level; registration is idempotent so reloads can add new services.
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +189,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             recovery_options[CONF_MAX_DATA_AGE],
         )
 
-    if not hass.services.has_service(DOMAIN, SERVICE_FORCE_RECONNECT):
-        _register_services(hass)
+    _register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await _cleanup_legacy_entity_ids(hass, entry)
@@ -482,6 +481,16 @@ async def _submit_battery_service(
 
 def _register_services(hass: HomeAssistant) -> None:
     """Register all domain-level services."""
+
+    def _register(service_name: str, handler, *, schema) -> None:
+        if hass.services.has_service(DOMAIN, service_name):
+            return
+        hass.services.async_register(
+            DOMAIN,
+            service_name,
+            handler,
+            schema=schema,
+        )
 
     # ---------- Battery: single-field convenience services ----------
 
@@ -775,32 +784,39 @@ def _register_services(hass: HomeAssistant) -> None:
     _battery_power_schema = vol.All(vol.Coerce(int), vol.Range(min=0, max=50000))
     _entry_id_opt = {vol.Optional(ATTR_ENTRY_ID): cv.string}
 
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_DISCHARGE_TIME, handle_set_discharge_time,
+    _register(
+        SERVICE_SET_DISCHARGE_TIME,
+        handle_set_discharge_time,
         schema=vol.Schema({vol.Required(ATTR_END_DISCHARGE): _time_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_DISCHARGE_START_TIME, handle_set_discharge_start_time,
+    _register(
+        SERVICE_SET_DISCHARGE_START_TIME,
+        handle_set_discharge_start_time,
         schema=vol.Schema({vol.Required(ATTR_START_DISCHARGE): _time_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_CHARGE_START_TIME, handle_set_charge_start_time,
+    _register(
+        SERVICE_SET_CHARGE_START_TIME,
+        handle_set_charge_start_time,
         schema=vol.Schema({vol.Required(ATTR_START_CHARGE): _time_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_CHARGE_END_TIME, handle_set_charge_end_time,
+    _register(
+        SERVICE_SET_CHARGE_END_TIME,
+        handle_set_charge_end_time,
         schema=vol.Schema({vol.Required(ATTR_END_CHARGE): _time_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_MINIMUM_SOC, handle_set_minimum_soc,
+    _register(
+        SERVICE_SET_MINIMUM_SOC,
+        handle_set_minimum_soc,
         schema=vol.Schema({vol.Required(ATTR_MINIMUM_SOC): _soc_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_CHARGE_CAP, handle_set_charge_cap,
+    _register(
+        SERVICE_SET_CHARGE_CAP,
+        handle_set_charge_cap,
         schema=vol.Schema({vol.Required(ATTR_CHARGE_CAP): _soc_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_BATTERY_SETTINGS, handle_update_battery_settings,
+    _register(
+        SERVICE_UPDATE_BATTERY_SETTINGS,
+        handle_update_battery_settings,
         schema=vol.Schema({
             vol.Optional(ATTR_START_DISCHARGE): _time_schema,
             vol.Optional(ATTR_END_DISCHARGE): _time_schema,
@@ -811,19 +827,22 @@ def _register_services(hass: HomeAssistant) -> None:
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_GRID_FEEDIN_ENABLED, handle_set_grid_feedin_enabled,
+    _register(
+        SERVICE_SET_GRID_FEEDIN_ENABLED,
+        handle_set_grid_feedin_enabled,
         schema=vol.Schema({vol.Required(ATTR_FEEDIN_ENABLED): cv.boolean, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SET_GRID_FEEDIN_CUTOFF_SOC, handle_set_grid_feedin_cutoff_soc,
+    _register(
+        SERVICE_SET_GRID_FEEDIN_CUTOFF_SOC,
+        handle_set_grid_feedin_cutoff_soc,
         schema=vol.Schema({
             vol.Required(ATTR_FEEDIN_CUTOFF_SOC): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_GRID_FEEDIN_SLOT, handle_update_grid_feedin_slot,
+    _register(
+        SERVICE_UPDATE_GRID_FEEDIN_SLOT,
+        handle_update_grid_feedin_slot,
         schema=vol.Schema({
             vol.Required(ATTR_FEEDIN_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=FEEDIN_MAX_SLOTS)),
             vol.Optional(ATTR_FEEDIN_START): _time_schema,
@@ -832,15 +851,17 @@ def _register_services(hass: HomeAssistant) -> None:
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_GRID_FEEDIN_SLOT, handle_delete_grid_feedin_slot,
+    _register(
+        SERVICE_DELETE_GRID_FEEDIN_SLOT,
+        handle_delete_grid_feedin_slot,
         schema=vol.Schema({
             vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=FEEDIN_MAX_SLOTS)),
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_UPDATE_BATTERY_SLOT, handle_update_battery_slot,
+    _register(
+        SERVICE_UPDATE_BATTERY_SLOT,
+        handle_update_battery_slot,
         schema=vol.Schema({
             vol.Required(ATTR_POLICY_KIND): vol.In(["charge", "discharge"]),
             vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=BATTERY_WEEKLY_MAX_SLOTS)),
@@ -852,24 +873,28 @@ def _register_services(hass: HomeAssistant) -> None:
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_BATTERY_SLOT, handle_delete_battery_slot,
+    _register(
+        SERVICE_DELETE_BATTERY_SLOT,
+        handle_delete_battery_slot,
         schema=vol.Schema({
             vol.Required(ATTR_POLICY_KIND): vol.In(["charge", "discharge"]),
             vol.Required(ATTR_SLOT): vol.All(vol.Coerce(int), vol.Range(min=1, max=BATTERY_WEEKLY_MAX_SLOTS)),
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_START_FORCE_CHARGE, handle_start_force_charge,
+    _register(
+        SERVICE_START_FORCE_CHARGE,
+        handle_start_force_charge,
         schema=vol.Schema({vol.Required(ATTR_CHARGE_CAP): _soc_schema, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_STOP_FORCE_CHARGE, handle_stop_force_charge,
+    _register(
+        SERVICE_STOP_FORCE_CHARGE,
+        handle_stop_force_charge,
         schema=vol.Schema(_entry_id_opt),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_START_DISCHARGE_NOW, handle_start_discharge_now,
+    _register(
+        SERVICE_START_DISCHARGE_NOW,
+        handle_start_discharge_now,
         schema=vol.Schema({
             vol.Required(ATTR_SLOT_SOC): _soc_schema,
             vol.Required(ATTR_FEEDIN_POWER): _battery_power_schema,
@@ -877,36 +902,43 @@ def _register_services(hass: HomeAssistant) -> None:
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_STOP_DISCHARGE_NOW, handle_stop_discharge_now,
+    _register(
+        SERVICE_STOP_DISCHARGE_NOW,
+        handle_stop_discharge_now,
         schema=vol.Schema(_entry_id_opt),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_START_FEEDIN_NOW, handle_start_feedin_now,
+    _register(
+        SERVICE_START_FEEDIN_NOW,
+        handle_start_feedin_now,
         schema=vol.Schema({
             vol.Required(ATTR_FEEDIN_POWER): _feedin_power_schema,
             vol.Optional(ATTR_DURATION_MINUTES, default=60): vol.All(vol.Coerce(int), vol.Range(min=1, max=1439)),
             **_entry_id_opt,
         }),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_STOP_FEEDIN_NOW, handle_stop_feedin_now,
+    _register(
+        SERVICE_STOP_FEEDIN_NOW,
+        handle_stop_feedin_now,
         schema=vol.Schema(_entry_id_opt),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_FORCE_RECONNECT, handle_force_reconnect,
+    _register(
+        SERVICE_FORCE_RECONNECT,
+        handle_force_reconnect,
         schema=vol.Schema(_entry_id_opt),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_HEALTH_CHECK, handle_health_check,
+    _register(
+        SERVICE_HEALTH_CHECK,
+        handle_health_check,
         schema=vol.Schema(_entry_id_opt),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_TOGGLE_DIAGNOSTICS, handle_toggle_diagnostics,
+    _register(
+        SERVICE_TOGGLE_DIAGNOSTICS,
+        handle_toggle_diagnostics,
         schema=vol.Schema({vol.Optional("enable"): cv.boolean, **_entry_id_opt}),
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_ENSURE_REPORT_HISTORY, handle_ensure_report_history,
+    _register(
+        SERVICE_ENSURE_REPORT_HISTORY,
+        handle_ensure_report_history,
         schema=vol.Schema({
             vol.Required(ATTR_START_DATE): cv.string,
             vol.Required(ATTR_END_DATE): cv.string,
