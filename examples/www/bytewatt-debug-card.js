@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "004";
+const BYTEWATT_DEBUG_CARD_BUILD = "005";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -32,19 +32,37 @@ class ByteWattDebugCard extends HTMLElement {
     return this._stateObj(this._config.settings_target);
   }
 
+  _reportTargetId() {
+    return this._config.report_target || `select.${this._config.entity_prefix}_report_target`;
+  }
+
+  _reportState() {
+    return this._stateObj(this._reportTargetId());
+  }
+
   _attrs() {
     return this._selectorState()?.attributes || {};
   }
 
+  _reportAttrs() {
+    return this._reportState()?.attributes || {};
+  }
+
   _reporting() {
-    return this._attrs().reporting || {};
+    const reportAttrs = this._reportAttrs();
+    const selectorAttrs = this._attrs();
+    return reportAttrs.reporting || selectorAttrs.reporting || {};
   }
 
   _history() {
-    const attrs = this._attrs();
-    const direct = attrs.history;
+    const reportAttrs = this._reportAttrs();
+    const selectorAttrs = this._attrs();
+    const direct = reportAttrs.history || selectorAttrs.history;
     if (direct && typeof direct === "object") return direct;
-    const fallback = attrs.reporting?.meta?.history;
+    const fallback = reportAttrs.reporting?.meta?.history
+      || selectorAttrs.reporting?.meta?.history
+      || reportAttrs.reporting?.history
+      || selectorAttrs.reporting?.history;
     return fallback && typeof fallback === "object" ? fallback : {};
   }
 
@@ -185,8 +203,10 @@ class ByteWattDebugCard extends HTMLElement {
 
   async _requestArchiveProbe() {
     const history = this._history();
-    const scopeKey = String(history.current_scope || this._attrs().current_scope || "all").trim() || "all";
-    const entryId = String(history.entry_id || this._attrs().entry_id || "").trim();
+    const selectorAttrs = this._attrs();
+    const reportAttrs = this._reportAttrs();
+    const scopeKey = String(history.current_scope || reportAttrs.current_scope || selectorAttrs.current_scope || "all").trim() || "all";
+    const entryId = String(history.entry_id || reportAttrs.entry_id || selectorAttrs.entry_id || "").trim();
     const range = this._debugRange();
     const startDate = this._formatLocalDate(range.window.start);
     const endDate = this._formatLocalDate(range.window.end);
@@ -216,6 +236,8 @@ class ByteWattDebugCard extends HTMLElement {
 
     const selector = this._selectorState();
     const attrs = this._attrs();
+    const reportTarget = this._reportState();
+    const reportAttrs = this._reportAttrs();
     const reporting = this._reporting();
     const history = this._history();
     const reportingMeta = reporting.meta || {};
@@ -460,6 +482,10 @@ class ByteWattDebugCard extends HTMLElement {
               ${this._summaryLine("Entry ID", history.entry_id || "-")}
               ${this._summaryLine("Current scope", history.current_scope || attrs.current_scope || "-")}
               ${this._summaryLine("History URL", history.base_url || historyUrl || "-")}
+              ${this._summaryLine("Settings history keys", Object.keys(attrs.history || {}).join(", ") || "-")}
+              ${this._summaryLine("Report entity", this._reportTargetId())}
+              ${this._summaryLine("Report state", reportTarget?.state)}
+              ${this._summaryLine("Report history keys", Object.keys(reportAttrs.history || {}).join(", ") || "-")}
               ${this._summaryLine("Selected period", this._debugPeriod)}
               ${this._summaryLine("Selected date", range.displayDate)}
               ${this._summaryLine("Selected range", rangeLabel)}
@@ -530,7 +556,18 @@ class ByteWattDebugCard extends HTMLElement {
           return;
         }
         if (key === "attrs") {
-          this._copyText(this._json(attrs), "Attributes");
+          this._copyText(this._json({
+            settings_target: this._config.settings_target,
+            settings_state: selector?.state,
+            settings_last_changed: selector?.last_changed,
+            settings_last_updated: selector?.last_updated,
+            settings_attributes: attrs,
+            report_target: this._reportTargetId(),
+            report_state: reportTarget?.state,
+            report_last_changed: reportTarget?.last_changed,
+            report_last_updated: reportTarget?.last_updated,
+            report_attributes: reportAttrs,
+          }), "Attributes");
           return;
         }
         if (key === "history") {
