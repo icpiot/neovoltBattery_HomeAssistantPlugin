@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "003";
+const BYTEWATT_DEBUG_CARD_BUILD = "004";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -11,6 +11,8 @@ class ByteWattDebugCard extends HTMLElement {
     };
     this._status = "";
     this._statusKind = "neutral";
+    this._debugPeriod = this._debugPeriod || "day";
+    this._debugAnchorDate = this._debugAnchorDate || "";
   }
 
   set hass(hass) {
@@ -78,6 +80,77 @@ class ByteWattDebugCard extends HTMLElement {
     `;
   }
 
+  _parseLocalDate(value) {
+    if (!value) return null;
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  _formatLocalDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  _formatDisplayDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  }
+
+  _periodWindow(anchor, period = this._debugPeriod) {
+    const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    const end = new Date(start.getTime());
+    if (period === "week") {
+      const mondayOffset = (start.getDay() + 6) % 7;
+      start.setDate(start.getDate() - mondayOffset);
+      end.setDate(start.getDate() + 6);
+    } else if (period === "month") {
+      start.setDate(1);
+      end.setMonth(start.getMonth() + 1, 0);
+    }
+    return { start, end };
+  }
+
+  _shiftAnchor(anchor, period, step) {
+    const shifted = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    if (period === "week") {
+      shifted.setDate(shifted.getDate() + step * 7);
+    } else if (period === "month") {
+      shifted.setMonth(shifted.getMonth() + step);
+    } else {
+      shifted.setDate(shifted.getDate() + step);
+    }
+    return shifted;
+  }
+
+  _clampAnchor(anchor) {
+    const latest = this._parseLocalDate(this._reporting()?.power_diagram?.date)
+      || this._parseLocalDate(this._reporting()?.reporting_date)
+      || this._parseLocalDate(this._reporting()?.meta?.reporting_date)
+      || new Date();
+    if (!anchor) return latest;
+    return anchor > latest ? latest : anchor;
+  }
+
+  _debugAnchor() {
+    return this._parseLocalDate(this._debugAnchorDate)
+      || this._parseLocalDate(this._reporting()?.power_diagram?.date)
+      || this._parseLocalDate(this._reporting()?.reporting_date)
+      || this._parseLocalDate(this._reporting()?.meta?.reporting_date)
+      || new Date();
+  }
+
+  _debugRange() {
+    const anchor = this._clampAnchor(this._debugAnchor());
+    const window = this._periodWindow(anchor, this._debugPeriod || "day");
+    return {
+      anchor,
+      window,
+      displayDate: this._formatLocalDate(anchor),
+    };
+  }
+
   async _copyText(text, label) {
     const value = String(text ?? "");
     if (!value) {
@@ -112,23 +185,23 @@ class ByteWattDebugCard extends HTMLElement {
 
   async _requestArchiveProbe() {
     const history = this._history();
-    const reporting = this._reporting();
     const scopeKey = String(history.current_scope || this._attrs().current_scope || "all").trim() || "all";
     const entryId = String(history.entry_id || this._attrs().entry_id || "").trim();
-    const reportDate = String(reporting.reporting_date || reporting.meta?.reporting_date || "").trim()
-      || new Date().toISOString().slice(0, 10);
-    this._status = `Requested archive probe for ${scopeKey} on ${reportDate}`;
+    const range = this._debugRange();
+    const startDate = this._formatLocalDate(range.window.start);
+    const endDate = this._formatLocalDate(range.window.end);
+    this._status = `Requested archive probe for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
     this._statusKind = "loading";
     this.render();
     try {
       const payload = {
         scope_key: scopeKey,
-        start_date: reportDate,
-        end_date: reportDate,
+        start_date: startDate,
+        end_date: endDate,
       };
       if (entryId) payload.entry_id = entryId;
       await this._hass.callService("bytewatt", "ensure_report_history", payload);
-      this._status = `Archive probe sent for ${scopeKey} on ${reportDate}`;
+      this._status = `Archive probe sent for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
       this._statusKind = "success";
     } catch (err) {
       this._status = `Archive probe failed: ${String(err?.message || err)}`;
@@ -148,6 +221,8 @@ class ByteWattDebugCard extends HTMLElement {
     const reportingMeta = reporting.meta || {};
     const historyUrl = history.base_url || history.url || "";
     const statusClass = this._statusKind;
+    const range = this._debugRange();
+    const rangeLabel = `${this._formatDisplayDate(range.window.start)} to ${this._formatDisplayDate(range.window.end)}`;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -223,6 +298,50 @@ class ByteWattDebugCard extends HTMLElement {
         .button.secondary {
           color: #334155;
           border-color: rgba(100, 116, 139, 0.22);
+        }
+        .controls {
+          display: grid;
+          gap: 10px;
+        }
+        .control-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+        }
+        .period-button {
+          border: 1px solid rgba(47, 117, 216, 0.2);
+          background: #fff;
+          color: #334155;
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .period-button.active {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+        }
+        .date-input {
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          padding: 7px 10px;
+          font: inherit;
+          font-weight: 700;
+          color: var(--text);
+          background: #fff;
+        }
+        .range-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(47, 117, 216, 0.16);
+          background: #eef5ff;
+          color: #1d4f91;
+          font-size: 0.82rem;
+          font-weight: 800;
         }
         .grid {
           display: grid;
@@ -301,6 +420,24 @@ class ByteWattDebugCard extends HTMLElement {
 
           ${this._status ? `<div class="status ${statusClass}">${this._escape(this._status)}</div>` : ""}
 
+          <div class="panel">
+            <div class="panel-title">Archive Selection</div>
+            <div class="controls">
+              <div class="control-row">
+                <button class="period-button ${this._debugPeriod === "today" ? "active" : ""}" type="button" data-debug-period="today">Today</button>
+                <button class="period-button ${this._debugPeriod === "day" ? "active" : ""}" type="button" data-debug-period="day">Day</button>
+                <button class="period-button ${this._debugPeriod === "week" ? "active" : ""}" type="button" data-debug-period="week">Week</button>
+                <button class="period-button ${this._debugPeriod === "month" ? "active" : ""}" type="button" data-debug-period="month">Month</button>
+              </div>
+              <div class="control-row">
+                <input class="date-input" type="date" data-debug-date value="${this._escape(range.displayDate)}" />
+                <button class="button secondary" type="button" data-debug-shift="-1">&lt;</button>
+                <button class="button secondary" type="button" data-debug-shift="1">&gt;</button>
+                <span class="range-pill">${this._escape(rangeLabel)}</span>
+              </div>
+            </div>
+          </div>
+
           <div class="grid">
             <div class="panel">
               <div class="panel-title">Target Entity</div>
@@ -323,6 +460,9 @@ class ByteWattDebugCard extends HTMLElement {
               ${this._summaryLine("Entry ID", history.entry_id || "-")}
               ${this._summaryLine("Current scope", history.current_scope || attrs.current_scope || "-")}
               ${this._summaryLine("History URL", history.base_url || historyUrl || "-")}
+              ${this._summaryLine("Selected period", this._debugPeriod)}
+              ${this._summaryLine("Selected date", range.displayDate)}
+              ${this._summaryLine("Selected range", rangeLabel)}
               ${this._summaryLine("Last ensure", this._json(history.last_ensure_result || {}))}
             </div>
 
@@ -359,6 +499,24 @@ class ByteWattDebugCard extends HTMLElement {
       button.onclick = () => this._requestArchiveProbe();
     }
 
+    this.shadowRoot.querySelectorAll("[data-debug-period]").forEach((item) => {
+      item.onclick = () => {
+        this._debugPeriod = item.getAttribute("data-debug-period") || "day";
+        this.render();
+      };
+    });
+    this.shadowRoot.querySelector("[data-debug-date]")?.addEventListener("change", (event) => {
+      this._debugAnchorDate = String(event.target.value || "").trim();
+      this.render();
+    });
+    this.shadowRoot.querySelectorAll("[data-debug-shift]").forEach((item) => {
+      item.onclick = () => {
+        const step = Number(item.getAttribute("data-debug-shift") || 0) || 0;
+        const next = this._shiftAnchor(this._debugRange().anchor, this._debugPeriod || "day", step);
+        this._debugAnchorDate = this._formatLocalDate(next);
+        this.render();
+      };
+    });
     this.shadowRoot.querySelectorAll("[data-copy]").forEach((item) => {
       item.onclick = () => {
         const key = item.getAttribute("data-copy");
