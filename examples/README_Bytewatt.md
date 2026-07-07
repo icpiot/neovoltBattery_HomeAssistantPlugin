@@ -75,7 +75,7 @@ type: module
 Debug card:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=002
+url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=003
 type: module
 ```
 
@@ -109,7 +109,7 @@ type: module
 Debug card next iteration:
 
 ```yaml
-url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=002
+url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=003
 type: module
 ```
 
@@ -117,7 +117,7 @@ Current build stamp in this repo:
 
 - Policy card: `049`
 - Reporting card: `167`
-- Debug card: `002`
+- Debug card: `003`
 
 ## Defaults
 

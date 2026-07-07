@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "002";
+const BYTEWATT_DEBUG_CARD_BUILD = "003";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -76,6 +76,38 @@ class ByteWattDebugCard extends HTMLElement {
         <div class="value">${this._escape(value ?? "-")}</div>
       </div>
     `;
+  }
+
+  async _copyText(text, label) {
+    const value = String(text ?? "");
+    if (!value) {
+      this._status = `${label} is empty`;
+      this._statusKind = "error";
+      this.render();
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      this._status = `${label} copied`;
+      this._statusKind = "success";
+    } catch (err) {
+      this._status = `Copy failed for ${label}: ${String(err?.message || err)}`;
+      this._statusKind = "error";
+    }
+    this.render();
   }
 
   async _requestArchiveProbe() {
@@ -182,6 +214,16 @@ class ByteWattDebugCard extends HTMLElement {
           font-weight: 800;
           cursor: pointer;
         }
+        .button-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+        .button.secondary {
+          color: #334155;
+          border-color: rgba(100, 116, 139, 0.22);
+        }
         .grid {
           display: grid;
           gap: 12px;
@@ -262,6 +304,10 @@ class ByteWattDebugCard extends HTMLElement {
           <div class="grid">
             <div class="panel">
               <div class="panel-title">Target Entity</div>
+              <div class="button-row">
+                <button class="button secondary" type="button" data-copy="entity">Copy entity</button>
+                <button class="button secondary" type="button" data-copy="attrs">Copy attributes</button>
+              </div>
               ${this._summaryLine("Entity", this._config.settings_target)}
               ${this._summaryLine("State", selector?.state)}
               ${this._summaryLine("Last changed", this._fmtTime(selector?.last_changed))}
@@ -270,6 +316,9 @@ class ByteWattDebugCard extends HTMLElement {
 
             <div class="panel">
               <div class="panel-title">Archive Metadata</div>
+              <div class="button-row">
+                <button class="button secondary" type="button" data-copy="history">Copy history</button>
+              </div>
               ${this._summaryLine("History configured", Boolean(history.enabled || history.base_url || history.entry_id) ? "yes" : "no")}
               ${this._summaryLine("Entry ID", history.entry_id || "-")}
               ${this._summaryLine("Current scope", history.current_scope || attrs.current_scope || "-")}
@@ -279,6 +328,9 @@ class ByteWattDebugCard extends HTMLElement {
 
             <div class="panel">
               <div class="panel-title">Reporting Summary</div>
+              <div class="button-row">
+                <button class="button secondary" type="button" data-copy="reporting">Copy reporting</button>
+              </div>
               ${this._summaryLine("Reporting date", reporting.reporting_date || reportingMeta.reporting_date || "-")}
               ${this._summaryLine("Label", reporting.label || "-")}
               ${this._summaryLine("Aggregate", reporting.aggregate ? "true" : "false")}
@@ -306,6 +358,32 @@ class ByteWattDebugCard extends HTMLElement {
     if (button) {
       button.onclick = () => this._requestArchiveProbe();
     }
+
+    this.shadowRoot.querySelectorAll("[data-copy]").forEach((item) => {
+      item.onclick = () => {
+        const key = item.getAttribute("data-copy");
+        if (key === "entity") {
+          this._copyText(this._json({
+            entity: this._config.settings_target,
+            state: selector?.state,
+            last_changed: selector?.last_changed,
+            last_updated: selector?.last_updated,
+          }), "Entity state");
+          return;
+        }
+        if (key === "attrs") {
+          this._copyText(this._json(attrs), "Attributes");
+          return;
+        }
+        if (key === "history") {
+          this._copyText(this._json(history), "Archive metadata");
+          return;
+        }
+        if (key === "reporting") {
+          this._copyText(this._json(reporting), "Reporting");
+        }
+      };
+    });
   }
 }
 
