@@ -42,9 +42,12 @@ This branch now includes repo-owned HA helper scripts under [scripts](scripts):
 
 - `scripts/ha_git_pull.sh`
 - `scripts/ha_git_push.sh`
+- `scripts/neovolt_git_pull.sh`
+- `scripts/neovolt_git_push.sh`
 
-Use these as the canonical versions for Home Assistant shell commands. The pull
-script is designed to deploy both:
+Use these as the canonical versions for Home Assistant shell commands. If your
+existing HA flow already runs `neovolt_git_pull.sh`, keep that filename and copy
+the matching script from the repo. The pull script is designed to deploy both:
 
 - `custom_components/bytewatt`
 - `examples/www/bytewatt-policy-card.js`

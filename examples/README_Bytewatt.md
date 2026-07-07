@@ -79,9 +79,9 @@ url: /local/community/bytewatt-card/bytewatt-debug-card.js?v=002
 type: module
 ```
 
-If you are using the repo-managed HA pull script from `scripts/ha_git_pull.sh`,
-it should also deploy `custom_components/bytewatt` at the same time so the card
-and backend stay aligned.
+If you are using the repo-managed HA pull script from `scripts/neovolt_git_pull.sh`
+or `scripts/ha_git_pull.sh`, it should also deploy `custom_components/bytewatt`
+at the same time so the card and backend stay aligned.
 
 ## Resource Counter
 

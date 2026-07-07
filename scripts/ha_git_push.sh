@@ -5,7 +5,7 @@ cd /config || exit 1
 TOKEN_FILE="/config/.github_pat"
 LOG_DIR="/config/www/ha-git"
 LOG="$LOG_DIR/neovolt_git_last.txt"
-SCRIPT_BUILD="2026-07-05.01"
+SCRIPT_BUILD="2026-07-07.01"
 REPO_URL="github.com/icpiot/neovoltBattery_HomeAssistantPlugin.git"
 REPO_DIR="/config/repos/neovoltBattery_HomeAssistantPlugin"
 BRANCH="${BYTEWATT_GIT_BRANCH:-codex/provider-abstraction-refactor}"
