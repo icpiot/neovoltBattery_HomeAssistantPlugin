@@ -49,6 +49,8 @@ from .utilities.diagnostic_service import DiagnosticService
 
 _LOGGER = logging.getLogger(__name__)
 
+HISTORY_BACKFILL_DAYS = 365
+
 # Notification IDs
 NOTIFICATION_RECOVERY = "bytewatt_recovery"
 NOTIFICATION_ERROR = "bytewatt_error"
@@ -481,7 +483,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         today = dt_util.now().date()
         desired_dates = [
             (today - timedelta(days=offset)).isoformat()
-            for offset in range(0, 31)
+            for offset in range(0, HISTORY_BACKFILL_DAYS)
         ]
 
         for scope_key, label, aggregate, fetch_sys_sn in scopes:
