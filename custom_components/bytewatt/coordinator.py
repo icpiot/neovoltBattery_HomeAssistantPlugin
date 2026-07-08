@@ -49,7 +49,8 @@ from .utilities.diagnostic_service import DiagnosticService
 
 _LOGGER = logging.getLogger(__name__)
 
-HISTORY_BACKFILL_DAYS = 365
+# Keep a multi-year rolling archive so historical day selection can reach back well beyond a year.
+HISTORY_BACKFILL_DAYS = 5 * 365
 
 # Notification IDs
 NOTIFICATION_RECOVERY = "bytewatt_recovery"
