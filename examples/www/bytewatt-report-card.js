@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "184";
+const BYTEWATT_REPORT_CARD_BUILD = "185";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -683,9 +683,7 @@ class ByteWattReportCard extends HTMLElement {
       .filter(Boolean)
       .sort((a, b) => a - b);
     if (!dates.length) return anchor;
-    const earliest = dates[0];
     const latest = dates[dates.length - 1];
-    if (anchor < earliest) return earliest;
     if (anchor > latest) return latest;
     return anchor;
   }
@@ -3146,13 +3144,14 @@ class ByteWattReportCard extends HTMLElement {
       button.addEventListener("click", async () => {
         const nextPeriod = button.dataset.reportPeriod || "day";
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
-        const liveAnchor =
+        const savedAnchor =
+          this._parseLocalDate(this._reportAnchorDate) ||
           this._parseLocalDate(this._reporting()?.power_diagram?.date) ||
           this._parseLocalDate(this._reporting()?.reporting_date) ||
           this._parseLocalDate(this._reporting()?.meta?.reporting_date) ||
           this._parseLocalDate(this._historyRange(records).latest) ||
           new Date();
-        const nextAnchor = this._clampAnchor(liveAnchor, records);
+        const nextAnchor = this._clampAnchor(savedAnchor, records);
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._saveReportState();
