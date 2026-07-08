@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "192";
+const BYTEWATT_REPORT_CARD_BUILD = "193";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -707,13 +707,6 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _clampAnchor(anchor, records) {
-    const dates = (records || [])
-      .map((record) => this._parseLocalDate(record?.record_date))
-      .filter(Boolean)
-      .sort((a, b) => a - b);
-    if (!dates.length) return anchor;
-    const latest = dates[dates.length - 1];
-    if (anchor > latest) return latest;
     return anchor;
   }
 
