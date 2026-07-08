@@ -51,6 +51,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Keep a multi-year rolling archive so historical day selection can reach back well beyond a year.
 HISTORY_BACKFILL_DAYS = 5 * 365
+HISTORY_RANGE_RETRY_PASSES = 3
 
 # Notification IDs
 NOTIFICATION_RECOVERY = "bytewatt_recovery"
@@ -405,43 +406,52 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 "end_date": end.isoformat(),
             }
 
-        known_dates = await self._history_store.async_record_dates(scope_key)
-        missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
         downloaded = 0
 
-        for record_date in missing_dates:
-            try:
-                if aggregate:
-                    snapshot = await self._build_aggregate_day_snapshot(
-                        record_date=record_date,
-                        inventory=inventory,
-                    )
-                else:
-                    snapshot = await self.client.get_battery_day_snapshot(
+        for pass_index in range(HISTORY_RANGE_RETRY_PASSES):
+            known_dates = await self._history_store.async_record_dates(scope_key)
+            missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+            if not missing_dates:
+                break
+
+            pass_downloaded = 0
+            for record_date in missing_dates:
+                try:
+                    if aggregate:
+                        snapshot = await self._build_aggregate_day_snapshot(
+                            record_date=record_date,
+                            inventory=inventory,
+                        )
+                    else:
+                        snapshot = await self.client.get_battery_day_snapshot(
+                            record_date,
+                            sys_sn=fetch_sys_sn,
+                        )
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "Historical range fetch failed for %s (%s): %s",
+                        scope_key,
                         record_date,
-                        sys_sn=fetch_sys_sn,
+                        err,
                     )
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.warning(
-                    "Historical range fetch failed for %s (%s): %s",
-                    scope_key,
-                    record_date,
-                    err,
+                    continue
+
+                if not self._snapshot_has_reporting_data(snapshot):
+                    continue
+
+                reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
+                await self._history_store.async_store_snapshot(
+                    scope_key=scope_key,
+                    label=label,
+                    reporting=reporting,
+                    record_date=record_date,
                 )
-                continue
+                downloaded += 1
+                pass_downloaded += 1
+                await asyncio.sleep(0.05)
 
-            if not self._snapshot_has_reporting_data(snapshot):
-                continue
-
-            reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
-            await self._history_store.async_store_snapshot(
-                scope_key=scope_key,
-                label=label,
-                reporting=reporting,
-                record_date=record_date,
-            )
-            downloaded += 1
-            await asyncio.sleep(0.05)
+            if pass_downloaded == 0:
+                break
 
         refreshed_dates = await self._history_store.async_record_dates(scope_key)
         available = sum(1 for record_date in desired_dates if record_date in refreshed_dates)
@@ -488,40 +498,49 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         ]
 
         for scope_key, label, aggregate, fetch_sys_sn in scopes:
-            known_dates = await self._history_store.async_record_dates(scope_key)
-            missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
-            for record_date in reversed(missing_dates):
-                try:
-                    if aggregate:
-                        snapshot = await self._build_aggregate_day_snapshot(
-                            record_date=record_date,
-                            inventory=inventory,
-                        )
-                    else:
-                        snapshot = await self.client.get_battery_day_snapshot(
+            for _pass_index in range(HISTORY_RANGE_RETRY_PASSES):
+                known_dates = await self._history_store.async_record_dates(scope_key)
+                missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+                if not missing_dates:
+                    break
+
+                pass_downloaded = 0
+                for record_date in reversed(missing_dates):
+                    try:
+                        if aggregate:
+                            snapshot = await self._build_aggregate_day_snapshot(
+                                record_date=record_date,
+                                inventory=inventory,
+                            )
+                        else:
+                            snapshot = await self.client.get_battery_day_snapshot(
+                                record_date,
+                                sys_sn=fetch_sys_sn,
+                            )
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.debug(
+                            "Historical backfill failed for %s (%s): %s",
+                            scope_key,
                             record_date,
-                            sys_sn=fetch_sys_sn,
+                            err,
                         )
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.debug(
-                        "Historical backfill failed for %s (%s): %s",
-                        scope_key,
-                        record_date,
-                        err,
+                        continue
+
+                    if not self._snapshot_has_reporting_data(snapshot):
+                        continue
+
+                    reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
+                    await self._history_store.async_store_snapshot(
+                        scope_key=scope_key,
+                        label=label,
+                        reporting=reporting,
+                        record_date=record_date,
                     )
-                    continue
+                    pass_downloaded += 1
+                    await asyncio.sleep(0.05)
 
-                if not self._snapshot_has_reporting_data(snapshot):
-                    continue
-
-                reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
-                await self._history_store.async_store_snapshot(
-                    scope_key=scope_key,
-                    label=label,
-                    reporting=reporting,
-                    record_date=record_date,
-                )
-                await asyncio.sleep(0.05)
+                if pass_downloaded == 0:
+                    break
 
     async def _persist_history_snapshots(
         self,
