@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "193";
+const BYTEWATT_REPORT_CARD_BUILD = "194";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -881,11 +881,25 @@ class ByteWattReportCard extends HTMLElement {
       available_latest: availableRange.latest || "",
     };
     const fallbackDate = baseReporting?.power_diagram?.date || availableRange.latest || availableRange.first || "";
-    if (!this._reportAnchorDate && fallbackDate) {
+    if ((!this._reportAnchorDate || this._reportPeriod === "today") && fallbackDate) {
       this._reportAnchorDate = fallbackDate;
     }
 
-    const anchor = this._clampAnchor(this._parseLocalDate(this._reportAnchorDate || fallbackDate) || new Date(), sorted);
+    const liveAnchor =
+      this._parseLocalDate(
+        baseReporting?.power_diagram?.date ||
+          baseReporting?.reporting_date ||
+          baseReporting?.meta?.reporting_date ||
+          liveRecord?.record_date ||
+          fallbackDate ||
+          new Date()
+      ) || new Date();
+    const anchor = this._clampAnchor(
+      this._reportPeriod === "today"
+        ? liveAnchor
+        : this._parseLocalDate(this._reportAnchorDate || fallbackDate) || new Date(),
+      sorted,
+    );
     this._reportAnchorDate = this._formatLocalDate(anchor);
     this._saveReportState();
     const period = this._reportPeriod || "day";
@@ -3166,14 +3180,19 @@ class ByteWattReportCard extends HTMLElement {
       button.addEventListener("click", async () => {
         const nextPeriod = button.dataset.reportPeriod || "day";
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+        const liveAnchor =
+          this._parseLocalDate(
+            this._reporting()?.power_diagram?.date ||
+              this._reporting()?.reporting_date ||
+              this._reporting()?.meta?.reporting_date ||
+              this._historyRange(records).latest ||
+              new Date()
+          ) || new Date();
         const savedAnchor =
           this._parseLocalDate(this._reportAnchorDate) ||
-          this._parseLocalDate(this._reporting()?.power_diagram?.date) ||
-          this._parseLocalDate(this._reporting()?.reporting_date) ||
-          this._parseLocalDate(this._reporting()?.meta?.reporting_date) ||
           this._parseLocalDate(this._historyRange(records).latest) ||
-          new Date();
-        const nextAnchor = this._clampAnchor(savedAnchor, records);
+          liveAnchor;
+        const nextAnchor = this._clampAnchor(nextPeriod === "today" ? liveAnchor : savedAnchor, records);
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._saveReportState();
