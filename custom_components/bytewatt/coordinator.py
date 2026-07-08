@@ -519,7 +519,22 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             selected_sys_sn = str(getattr(manager, "current_settings_target_sys_sn", "") or "").strip()
 
         scopes: list[tuple[str, str, bool, Optional[str]]] = [("all", "All systems", True, None)]
-        if selected_battery_data and selected_sys_sn and selected_sys_sn.lower() != "all":
+        seen_scopes: set[str] = {"all"}
+        for inverter in inventory:
+            sys_sn = str(getattr(inverter, "sys_sn", "") or "").strip()
+            if not sys_sn or sys_sn.lower() == "all" or sys_sn in seen_scopes:
+                continue
+            scopes.append(
+                (
+                    sys_sn,
+                    self._scope_label_for_sys_sn(sys_sn, inventory),
+                    False,
+                    sys_sn,
+                )
+            )
+            seen_scopes.add(sys_sn)
+
+        if selected_battery_data and selected_sys_sn and selected_sys_sn.lower() != "all" and selected_sys_sn not in seen_scopes:
             scopes.append(
                 (
                     selected_sys_sn,
