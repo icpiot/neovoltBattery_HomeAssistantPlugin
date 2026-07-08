@@ -39,6 +39,25 @@ Configure the integration through the Home Assistant UI:
 3. Search for "ByteWatt"
 4. Enter your ByteWatt/Neovolt account credentials
 
+## Historical Data
+
+Historical reporting is built automatically from daily snapshots.
+
+What users should do:
+
+1. Configure the integration.
+2. Set the **History backfill horizon (years)** option.
+3. Leave Home Assistant running so the integration can backfill history in the background.
+4. Use the report card to select a battery scope, period, and date.
+
+Behavior:
+
+- History is stored locally per scope.
+- Once a day is saved, it should be reused instead of downloaded again.
+- `Today` uses live reporting.
+- The date picker should not query future dates.
+- If the source API has no data for a day, the UI should say so clearly rather than looping.
+
 ## Services
 
 This integration provides several services to control your battery system:

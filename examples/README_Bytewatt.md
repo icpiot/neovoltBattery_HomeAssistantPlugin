@@ -51,6 +51,31 @@ Recommended approach:
 - configure settings from the integration's individual battery selector
 - prefer a per-battery/host-target setup for charge, discharge, and policy changes
 
+## Historical Data Workflow
+
+The reporting card is designed to work without a manual download step.
+
+Expected flow:
+
+1. Configure the integration in Home Assistant.
+2. Set the **History backfill horizon** in the integration options.
+3. Leave HA running so the backend can backfill daily archive rows.
+4. Open the report card and select:
+   - battery scope
+   - period
+   - date
+5. The card reuses already-downloaded rows from local history.
+6. If a selected day is missing, the backend fetches it automatically.
+7. If the source has no data for a date, the card should say that clearly.
+
+Notes:
+
+- The archive is stored per scope, so `All systems` and each battery can keep
+  separate history.
+- The date picker clamps to today. Future dates are not queried.
+- Once a day exists locally, it should load fast on later visits.
+- `Today` is live reporting and should not be treated as an archive download.
+
 ## Installing The Custom Card
 
 Copy the working file from `examples/www/` to your Home Assistant `www` folder:

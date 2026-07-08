@@ -127,6 +127,36 @@ After install, Settings -> Devices & Services -> Byte-Watt -> Configure:
 - **Scan interval** (seconds) - minimum 30, default 60
 - **Host inverter** - choose the device used for shared policy operations when
   the account has multiple inverters
+- **History backfill horizon** (years) - how far back the integration is
+  allowed to build local daily history, default `1`
+
+## Historical Data Workflow
+
+Historical reporting is automatic. Users do not manually trigger downloads.
+
+The expected flow is:
+
+1. Install and configure the integration.
+2. Set the **History backfill horizon** in options.
+3. Leave Home Assistant running so the integration can backfill daily rows in
+   the background.
+4. Open the report card and choose:
+   - battery scope
+   - period
+   - date
+5. The card uses local history when it exists.
+6. If a selected day is missing, the card asks the backend to fetch it.
+7. If the upstream service has no data for a date, the UI says so plainly
+   instead of retrying forever.
+
+Key behavior:
+
+- Data is stored per scope, so `All systems` and each battery keep their own
+  archive.
+- A date only needs to download once. Later visits should reuse the saved
+  local archive.
+- The date picker clamps to today. Future dates are not queried.
+- `Today` uses live reporting and does not force archive backfill.
 
 ## Troubleshooting
 
