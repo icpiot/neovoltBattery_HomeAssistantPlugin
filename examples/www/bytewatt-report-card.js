@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "198";
+const BYTEWATT_REPORT_CARD_BUILD = "199";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -547,7 +547,9 @@ class ByteWattReportCard extends HTMLElement {
     if (!scopeKey || !anchor || this._historyLoading || this._historyEnsureLoading) return;
 
     const startDate = this._formatLocalDate(window.start);
-    const endDate = this._formatLocalDate(window.end);
+    const today = new Date();
+    const effectiveEnd = window.end > today ? today : window.end;
+    const endDate = this._formatLocalDate(effectiveEnd);
     const ensureKey = `${scopeKey}|${period}|${startDate}|${endDate}`;
     if (this._historyEnsureAttemptKey === ensureKey && this._historyEnsureState) return;
 
@@ -558,7 +560,7 @@ class ByteWattReportCard extends HTMLElement {
 
     const desiredDates = [];
     const cursor = new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate());
-    const end = new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate());
+    const end = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), effectiveEnd.getDate());
     while (cursor <= end) {
       desiredDates.push(this._formatLocalDate(cursor));
       cursor.setDate(cursor.getDate() + 1);
