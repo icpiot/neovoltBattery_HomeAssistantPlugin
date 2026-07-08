@@ -121,9 +121,23 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             options[label] = inverter
         return options
 
+    def _selected_scope(self) -> ByteWattScope | None:
+        entry_data = self.hass.data.get(DOMAIN, {}).get(self._config_entry.entry_id, {})
+        scope = entry_data.get("settings_scope")
+        return scope if isinstance(scope, ByteWattScope) else None
+
     def _current_inverter(self) -> DiscoveredInverter | None:
-        current_id = str(self._manager.current_settings_target_id or "").strip()
-        current_sys_sn = str(self._manager.current_settings_target_sys_sn or "").strip()
+        selected_scope = self._selected_scope()
+        current_id = ""
+        current_sys_sn = ""
+        if selected_scope is not None:
+            current_id = str(selected_scope.effective_system_id or selected_scope.system_id or "").strip()
+            current_sys_sn = str(selected_scope.settings_sys_sn or selected_scope.sys_sn or "").strip()
+            if selected_scope.aggregate:
+                return None
+        else:
+            current_id = str(self._manager.current_settings_target_id or "").strip()
+            current_sys_sn = str(self._manager.current_settings_target_sys_sn or "").strip()
         for inverter in self._inventory():
             if current_id and inverter.system_id == current_id:
                 return inverter
@@ -144,6 +158,9 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
+        selected_scope = self._selected_scope()
+        if selected_scope is not None and selected_scope.aggregate:
+            return "All systems" if len(self.options) > 1 else (self.options[0] if self.options else None)
         current = self._current_inverter()
         if current is not None:
             for label, inverter in self._options_map().items():
@@ -151,16 +168,21 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                     current.sys_sn and inverter.sys_sn == current.sys_sn
                 ):
                     return label
-        if len(self.options) > 1:
-            return "All systems"
+        if selected_scope is not None:
+            scope_label = str(selected_scope.label or selected_scope.sys_sn or "").strip()
+            if scope_label and scope_label in self.options:
+                return scope_label
         for label, inverter in self._options_map().items():
             if inverter.system_id == self._manager.current_settings_target_id:
                 return label
+        if len(self.options) > 1:
+            return "All systems"
         return self.options[0] if self.options else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         current = self._current_inverter()
+        selected_scope = self._selected_scope()
         coordinator_data = self.coordinator.data or {}
         aggregate_battery = coordinator_data.get("battery") or {}
         selected_battery = coordinator_data.get("selected_battery") or {}
@@ -172,7 +194,12 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
         history_hint = {
             "enabled": True,
             "base_url": f"/local/bytewatt-history/{self._config_entry.entry_id}/",
-            "current_scope": current.sys_sn if current is not None else "all",
+            "current_scope": (
+                selected_scope.sys_sn
+                if selected_scope is not None and not selected_scope.aggregate
+                else current.sys_sn if current is not None
+                else "all"
+            ),
             "entry_id": self._config_entry.entry_id,
             "last_ensure_result": getattr(self.coordinator, "_last_history_ensure_result", {}) or {},
             "backfill_years": backfill_years,
@@ -195,18 +222,24 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             ],
         }
         monitoring_summary = _compact_summary(
-            selected_battery if current is not None else aggregate_battery,
+            selected_battery if (current is not None or (selected_scope is not None and not selected_scope.aggregate)) else aggregate_battery,
             ["soc", "pbat", "pload", "pgrid", "ppv", "powerSource"],
         )
         selection_summary = {
-            "label": current.display_name if current is not None else "All systems",
-            "system_id": current.system_id if current is not None else "",
-            "sys_sn": current.sys_sn if current is not None else "All",
+            "label": (
+                current.display_name
+                if current is not None
+                else selected_scope.label
+                if selected_scope is not None and not selected_scope.aggregate
+                else "All systems"
+            ),
+            "system_id": current.system_id if current is not None else selected_scope.system_id if selected_scope is not None and not selected_scope.aggregate else "",
+            "sys_sn": current.sys_sn if current is not None else selected_scope.sys_sn if selected_scope is not None and not selected_scope.aggregate else "All",
             "remark": current.remark if current is not None else "",
         }
         reporting = _reporting_payload(
-            aggregate_battery if current is None else selected_battery,
-            aggregate=current is None,
+            aggregate_battery if (current is None and not (selected_scope is not None and not selected_scope.aggregate)) else selected_battery,
+            aggregate=not (current is not None or (selected_scope is not None and not selected_scope.aggregate)),
             label=selection_summary["label"],
             history_hint=history_hint,
         )
