@@ -13,6 +13,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .const import (
+    CONF_HISTORY_BACKFILL_YEARS,
+    DEFAULT_HISTORY_BACKFILL_YEARS,
+    MAX_HISTORY_BACKFILL_YEARS,
+    MIN_HISTORY_BACKFILL_YEARS,
+)
 from .coordinator import ByteWattDataUpdateCoordinator
 from .grid_feedin import async_setup_number_entry as _feedin_setup
 from .settings_manager import SettingsManager, SettingsValidationError
@@ -31,6 +37,7 @@ async def async_setup_entry(
     await _feedin_setup(hass, config_entry, async_add_entities)
 
     async_add_entities([
+        ByteWattHistoryBackfillYearsNumber(coordinator, config_entry),
         ByteWattChargeCapNumber(coordinator, config_entry, manager),
         ByteWattMinimumSOCNumber(coordinator, config_entry, manager),
         ByteWattChargePowerNumber(coordinator, config_entry, manager),
@@ -97,6 +104,65 @@ class _BatteryNumberBase(CoordinatorEntity, NumberEntity):
             detail = result.battery_error or "see logs for details"
             raise HomeAssistantError(f"Battery settings update failed: {detail}")
         await self.coordinator.async_request_refresh()
+        self.async_write_ha_state()
+
+
+class ByteWattHistoryBackfillYearsNumber(CoordinatorEntity, NumberEntity):
+    """History backfill horizon shown on the ByteWatt device card."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = "History Backfill Years"
+    _attr_icon = "mdi:calendar-range"
+    _attr_native_min_value = MIN_HISTORY_BACKFILL_YEARS
+    _attr_native_max_value = MAX_HISTORY_BACKFILL_YEARS
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "years"
+
+    def __init__(
+        self,
+        coordinator: ByteWattDataUpdateCoordinator,
+        config_entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._config_entry = config_entry
+        self._attr_unique_id = f"{config_entry.entry_id}_history_backfill_years"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        return {
+            "identifiers": {(DOMAIN, self._config_entry.entry_id)},
+            "name": "ByteWatt Battery System",
+            "manufacturer": "ByteWatt",
+            "model": "Battery Management System",
+        }
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    @property
+    def native_value(self) -> Optional[float]:
+        value = self._config_entry.options.get(
+            CONF_HISTORY_BACKFILL_YEARS,
+            DEFAULT_HISTORY_BACKFILL_YEARS,
+        )
+        try:
+            return float(int(value))
+        except (TypeError, ValueError):
+            return float(DEFAULT_HISTORY_BACKFILL_YEARS)
+
+    async def async_set_native_value(self, value: float) -> None:
+        years = int(round(value))
+        years = max(MIN_HISTORY_BACKFILL_YEARS, min(MAX_HISTORY_BACKFILL_YEARS, years))
+        new_options = {
+            **self._config_entry.options,
+            CONF_HISTORY_BACKFILL_YEARS: years,
+        }
+        self.hass.config_entries.async_update_entry(
+            self._config_entry,
+            options=new_options,
+        )
+        await self.hass.config_entries.async_reload(self._config_entry.entry_id)
         self.async_write_ha_state()
 
 
