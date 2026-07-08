@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "196";
+const BYTEWATT_REPORT_CARD_BUILD = "197";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -110,10 +110,26 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _historyScopes() {
-    const archiveScopes = this._historyData?.scopes;
-    return archiveScopes && typeof archiveScopes === "object"
-      ? JSON.parse(JSON.stringify(archiveScopes))
-      : {};
+    const localScopes = this._readLocalSnapshots()?.scopes;
+    const remoteScopes = this._historyData?.scopes;
+    const mergeScopes = (source, target) => {
+      const merged = { ...(target || {}) };
+      Object.entries(source || {}).forEach(([scopeKey, scopeValue]) => {
+        const current = merged[scopeKey] || {};
+        const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
+        const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+        merged[scopeKey] = {
+          ...current,
+          ...scopeValue,
+          records: {
+            ...currentRecords,
+            ...incomingRecords,
+          },
+        };
+      });
+      return merged;
+    };
+    return mergeScopes(localScopes, mergeScopes(remoteScopes, {}));
   }
 
   _localSnapshotKey() {
@@ -427,9 +443,16 @@ class ByteWattReportCard extends HTMLElement {
       }
       const data = await response.json();
       this._historyData = data;
+      this._writeLocalSnapshots(data);
     } catch (error) {
-      this._historyLoadError = String(error?.message || error);
-      this._historyData = null;
+      const cached = this._readLocalSnapshots();
+      if (cached && cached.scopes && Object.keys(cached.scopes).length) {
+        this._historyData = cached;
+        this._historyLoadError = "";
+      } else {
+        this._historyLoadError = String(error?.message || error);
+        this._historyData = null;
+      }
     } finally {
       this._historyLoading = false;
       this.render();
