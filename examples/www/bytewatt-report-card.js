@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "203";
+const BYTEWATT_REPORT_CARD_BUILD = "204";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -945,21 +945,23 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodStatus(records, loading, error, context = {}) {
-    if (context.ensure_status) return context.ensure_status;
     if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
-    const selectedCount = (records || []).length;
-    const totalCount = Number(context.total_records ?? 0) || 0;
+    const selectedCount = Number(context.selected_count ?? (records || []).length) || 0;
+    const requestedCount = Number(context.requested_count ?? selectedCount) || 0;
+    const missingCount = Number(context.missing_count ?? Math.max(requestedCount - selectedCount, 0)) || 0;
+    const ensureStatus = String(context.ensure_status || "").trim();
+    if (ensureStatus) return ensureStatus;
     if (context.live_fallback) return "Live reporting shown while selected period archive catches up";
     if (!selectedCount) {
-      return totalCount > 0 ? `No archive rows for selected period (${totalCount} available)` : "No archive rows loaded for selected period";
+      return requestedCount > 0
+        ? `No source data for selected period (${requestedCount} day(s) requested)`
+        : "No archive rows loaded for selected period";
     }
-    const range = this._historyRange(records);
-    const first = range.first ? this._formatDisplayDate(this._parseLocalDate(range.first)) : "";
-    const latest = range.latest ? this._formatDisplayDate(this._parseLocalDate(range.latest)) : "";
-    if (first && latest) return `Archive ready (${first} to ${latest})`;
-    if (latest) return `Archive ready (${latest})`;
-    return "Archive ready";
+    if (requestedCount > 0 && selectedCount < requestedCount) {
+      return `Selected period partially available (${selectedCount}/${requestedCount}). No source data for ${missingCount} day(s).`;
+    }
+    return `Selected period ready (${selectedCount}/${requestedCount || selectedCount})`;
   }
 
   _buildPeriodReporting(baseReporting) {
@@ -1553,7 +1555,6 @@ class ByteWattReportCard extends HTMLElement {
     const period = periodContext?.period || this._reportPeriod || "day";
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
     const selectedCount = (periodContext?.records || []).length;
-    const totalCount = Number(periodContext?.records_total ?? 0) || 0;
     const requestedCount = periodContext?.window?.start && periodContext?.window?.end
       ? (() => {
           const start = new Date(periodContext.window.start.getFullYear(), periodContext.window.start.getMonth(), periodContext.window.start.getDate());
@@ -1567,22 +1568,24 @@ class ByteWattReportCard extends HTMLElement {
           return Math.max(1, count);
         })()
       : selectedCount;
+    const missingCount = Math.max(requestedCount - selectedCount, 0);
     const historyRecords = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const latestRows = historyRecords.slice(-5).reverse();
     const latestDates = latestRows.map((record) => this._recordDisplayDate(record) || record.record_date || "Unknown");
     const historyScope = this._historyScopeKey();
-    const ensureResult = this._historyEnsureResult();
-    const ensureSummary = periodContext?.window?.start && periodContext?.window?.end
-      ? `requested ${requestedCount} | selected ${selectedCount} | archive ${selectedCount}/${requestedCount}`
-      : ensureResult && Object.keys(ensureResult).length
-        ? `requested ${Number(ensureResult.requested ?? 0)} | downloaded ${Number(ensureResult.downloaded ?? 0)} | available ${Number(ensureResult.available ?? 0)}`
-        : "";
     const historyUrl = this._historyUrl();
     const historySourceSummary = `configured ${this._historyConfigured() ? "yes" : "no"} | entry ${this._historyEntryId() || "-"} | url ${historyUrl || "-"}`;
+    const currentEnsureKey =
+      periodContext?.window?.start && periodContext?.window?.end
+        ? `${historyScope}|${period}|${this._formatLocalDate(periodContext.window.start)}|${this._formatLocalDate(periodContext.window.end)}`
+        : "";
+    const ensureStatus = currentEnsureKey && this._historyEnsureAttemptKey === currentEnsureKey ? this._historyEnsureStatus : "";
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
-      total_records: totalCount,
+      selected_count: selectedCount,
+      requested_count: requestedCount,
+      missing_count: missingCount,
       live_fallback: periodContext?.live_fallback,
-      ensure_status: this._historyEnsureStatus,
+      ensure_status: ensureStatus,
     });
     const statusClass = this._historyLoading && !this._historyData
       ? "loading"
@@ -1616,16 +1619,17 @@ class ByteWattReportCard extends HTMLElement {
           <button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>
           <div class="report-status ${statusClass}">
             ${this._escape(status)}
+            ${periodContext?.window?.start && periodContext?.window?.end ? ` <span>(selected ${selectedCount}/${requestedCount} | missing ${missingCount})</span>` : ""}
             ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
           </div>
         </div>
         <div class="archive-inspector">
           <div class="archive-inspector-head">
             <div class="archive-inspector-title">Archive Inspector</div>
-            <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}</div>
+            <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}/${requestedCount}</div>
           </div>
           <div class="archive-inspector-meta">${this._escape(historySourceSummary)}</div>
-          ${ensureSummary ? `<div class="archive-inspector-meta">${this._escape(ensureSummary)}</div>` : ""}
+          ${periodContext?.window?.start && periodContext?.window?.end ? `<div class="archive-inspector-meta">Coverage ${selectedCount}/${requestedCount} | missing ${missingCount}</div>` : ""}
           ${
             latestDates.length
               ? `<div class="archive-inspector-list">${latestDates.map((value) => `<span class="archive-row-chip">${this._escape(value)}</span>`).join("")}</div>`
