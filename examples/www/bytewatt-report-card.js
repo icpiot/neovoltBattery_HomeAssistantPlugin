@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "199";
+const BYTEWATT_REPORT_CARD_BUILD = "200";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -547,7 +547,7 @@ class ByteWattReportCard extends HTMLElement {
     if (!scopeKey || !anchor || this._historyLoading || this._historyEnsureLoading) return;
 
     const startDate = this._formatLocalDate(window.start);
-    const today = new Date();
+    const today = this._todayLocalDate();
     const effectiveEnd = window.end > today ? today : window.end;
     const endDate = this._formatLocalDate(effectiveEnd);
     const ensureKey = `${scopeKey}|${period}|${startDate}|${endDate}`;
@@ -730,6 +730,18 @@ class ByteWattReportCard extends HTMLElement {
     return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
   }
 
+  _todayLocalDate() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  _clampDateToToday(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return this._todayLocalDate();
+    const today = this._todayLocalDate();
+    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return current > today ? today : current;
+  }
+
   _historyRange(records) {
     const dates = (records || [])
       .map((record) => this._parseLocalDate(record?.record_date))
@@ -743,7 +755,9 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodWindow(anchor, period = this._reportPeriod) {
-    const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+    const safeAnchor = this._clampDateToToday(anchor);
+    const today = this._todayLocalDate();
+    const start = new Date(safeAnchor.getFullYear(), safeAnchor.getMonth(), safeAnchor.getDate());
     const end = new Date(start.getTime());
     if (period === "week") {
       const mondayOffset = (start.getDay() + 6) % 7;
@@ -757,7 +771,10 @@ class ByteWattReportCard extends HTMLElement {
       start.setMonth(quarterStartMonth, 1);
       end.setMonth(quarterStartMonth + 3, 0);
     }
-    return { start, end };
+    if (start > today) {
+      return { start: today, end: today };
+    }
+    return { start, end: end > today ? today : end };
   }
 
   _shiftAnchor(anchor, period, step) {
@@ -771,11 +788,11 @@ class ByteWattReportCard extends HTMLElement {
     } else {
       shifted.setDate(shifted.getDate() + step);
     }
-    return shifted;
+    return this._clampDateToToday(shifted);
   }
 
   _clampAnchor(anchor, records) {
-    return anchor;
+    return this._clampDateToToday(anchor);
   }
 
   _recordsForPeriod(records, anchor, period = this._reportPeriod) {
@@ -1542,6 +1559,7 @@ class ByteWattReportCard extends HTMLElement {
             : "empty";
     const windowStart = periodContext?.window?.start || anchor;
     const displayDate = this._formatLocalDate(windowStart);
+    const todayValue = this._formatLocalDate(this._todayLocalDate());
     const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
     const endLabel = periodContext?.window?.end ? this._formatDisplayDate(periodContext.window.end) : "";
     return `
@@ -1558,7 +1576,7 @@ class ByteWattReportCard extends HTMLElement {
         </div>
         <div class="report-control-row">
           <button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>
-          <input class="report-date-input" type="date" data-report-date value="${this._escape(displayDate)}" />
+          <input class="report-date-input" type="date" data-report-date value="${this._escape(displayDate)}" max="${this._escape(todayValue)}" />
           <button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>
           <div class="report-status ${statusClass}">
             ${this._escape(status)}
@@ -3282,7 +3300,8 @@ class ByteWattReportCard extends HTMLElement {
       });
     });
     this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", async (event) => {
-      this._reportAnchorDate = String(event.target.value || "").trim();
+      const picked = this._parseLocalDate(String(event.target.value || "").trim());
+      this._reportAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate()));
       this._saveReportState();
       this._resetHistoryEnsureState();
       await this._syncSelectedHistory();
