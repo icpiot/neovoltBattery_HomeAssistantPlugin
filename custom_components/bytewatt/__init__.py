@@ -252,6 +252,9 @@ def _stop_heartbeat_factory(coordinator):
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload the entry so option changes (e.g. scan_interval) take effect."""
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    if entry_data.get("suppress_entry_reload"):
+        return
     await hass.config_entries.async_reload(entry.entry_id)
 
 
