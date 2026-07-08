@@ -226,7 +226,6 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # (The update listener also fires on data changes, but as a
             # fire-and-forget task — HA's async_reload is idempotent under
             # concurrent calls so the double-reload is harmless.)
-            await self.hass.config_entries.async_reload(entry.entry_id)
             return self.async_abort(reason="reconfigure_successful")
 
         options = _build_inverter_options(self._inverters)
