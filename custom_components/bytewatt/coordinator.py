@@ -31,12 +31,14 @@ from .const import (
     CONF_NOTIFY_ON_RECOVERY,
     CONF_DIAGNOSTICS_MODE,
     CONF_AUTO_RECONNECT_TIME,
+    CONF_HISTORY_BACKFILL_YEARS,
     DEFAULT_HEARTBEAT_INTERVAL,
     DEFAULT_MAX_DATA_AGE,
     DEFAULT_STALE_CHECKS_THRESHOLD,
     DEFAULT_NOTIFY_ON_RECOVERY,
     DEFAULT_DIAGNOSTICS_MODE,
     DEFAULT_AUTO_RECONNECT_TIME,
+    DEFAULT_HISTORY_BACKFILL_YEARS,
     MAX_DIAGNOSTIC_LOGS,
     RECENT_DATA_THRESHOLD,
     STALE_DATA_THRESHOLD,
@@ -49,8 +51,6 @@ from .utilities.diagnostic_service import DiagnosticService
 
 _LOGGER = logging.getLogger(__name__)
 
-# Keep a multi-year rolling archive so historical day selection can reach back well beyond a year.
-HISTORY_BACKFILL_DAYS = 5 * 365
 HISTORY_RANGE_RETRY_PASSES = 3
 
 # Notification IDs
@@ -105,6 +105,15 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         self._notify_on_recovery = options.get(CONF_NOTIFY_ON_RECOVERY, DEFAULT_NOTIFY_ON_RECOVERY)
         self._diagnostics_mode = options.get(CONF_DIAGNOSTICS_MODE, DEFAULT_DIAGNOSTICS_MODE)
         self._auto_reconnect_time = options.get(CONF_AUTO_RECONNECT_TIME, DEFAULT_AUTO_RECONNECT_TIME)
+        history_backfill_years = options.get(
+            CONF_HISTORY_BACKFILL_YEARS,
+            DEFAULT_HISTORY_BACKFILL_YEARS,
+        )
+        try:
+            history_backfill_years = int(history_backfill_years)
+        except (TypeError, ValueError):
+            history_backfill_years = DEFAULT_HISTORY_BACKFILL_YEARS
+        self._history_backfill_days = max(1, history_backfill_years) * 365
         
         if self._diagnostics_mode:
             self.diagnostic_service.enable_diagnostics()
@@ -517,7 +526,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         today = dt_util.now().date()
         desired_dates = [
             (today - timedelta(days=offset)).isoformat()
-            for offset in range(0, HISTORY_BACKFILL_DAYS)
+            for offset in range(0, self._history_backfill_days)
         ]
 
         for scope_key, label, aggregate, fetch_sys_sn in scopes:

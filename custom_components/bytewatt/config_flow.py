@@ -19,11 +19,15 @@ from .bytewatt_client import ByteWattClient
 from .const import (
     CONF_HOST_SYSTEM_ID,
     CONF_HOST_SYS_SN,
+    CONF_HISTORY_BACKFILL_YEARS,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_USERNAME,
     CURRENT_ENTRY_VERSION,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_HISTORY_BACKFILL_YEARS,
+    MAX_HISTORY_BACKFILL_YEARS,
+    MIN_HISTORY_BACKFILL_YEARS,
     DOMAIN,
     MIN_SCAN_INTERVAL,
 )
@@ -251,7 +255,7 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class ByteWattOptionsFlowHandler(config_entries.OptionsFlow):
-    """Options: scan interval only."""
+    """Options for Byte-Watt."""
 
     def __init__(self, config_entry):
         self.config_entry = config_entry
@@ -268,5 +272,17 @@ class ByteWattOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
+                vol.Optional(
+                    CONF_HISTORY_BACKFILL_YEARS,
+                    default=self.config_entry.options.get(
+                        CONF_HISTORY_BACKFILL_YEARS, DEFAULT_HISTORY_BACKFILL_YEARS
+                    ),
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=MIN_HISTORY_BACKFILL_YEARS,
+                        max=MAX_HISTORY_BACKFILL_YEARS,
+                    ),
+                ),
             }),
         )

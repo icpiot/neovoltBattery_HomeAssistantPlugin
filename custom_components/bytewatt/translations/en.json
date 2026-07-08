@@ -47,7 +47,8 @@
       "init": {
         "title": "Byte-Watt Options",
         "data": {
-          "scan_interval": "Scan interval (seconds)"
+          "scan_interval": "Scan interval (seconds)",
+          "history_backfill_years": "History backfill horizon (years)"
         }
       }
     }
