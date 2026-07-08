@@ -407,11 +407,24 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
         downloaded = 0
+        last_available = 0
 
         for pass_index in range(HISTORY_RANGE_RETRY_PASSES):
             known_dates = await self._history_store.async_record_dates(scope_key)
             missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
             if not missing_dates:
+                break
+
+            current_available = len(desired_dates) - len(missing_dates)
+            if current_available <= last_available and pass_index > 0:
+                _LOGGER.warning(
+                    "History fetch stalled for %s (%s to %s): %s missing of %s requested",
+                    scope_key,
+                    start.isoformat(),
+                    end.isoformat(),
+                    len(missing_dates),
+                    len(desired_dates),
+                )
                 break
 
             pass_downloaded = 0
@@ -450,7 +463,17 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 pass_downloaded += 1
                 await asyncio.sleep(0.05)
 
+            last_available = max(last_available, current_available + pass_downloaded)
+
             if pass_downloaded == 0:
+                _LOGGER.warning(
+                    "History fetch made no progress for %s (%s to %s): %s missing of %s requested",
+                    scope_key,
+                    start.isoformat(),
+                    end.isoformat(),
+                    len(missing_dates),
+                    len(desired_dates),
+                )
                 break
 
         refreshed_dates = await self._history_store.async_record_dates(scope_key)
@@ -498,10 +521,21 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         ]
 
         for scope_key, label, aggregate, fetch_sys_sn in scopes:
+            last_available = 0
             for _pass_index in range(HISTORY_RANGE_RETRY_PASSES):
                 known_dates = await self._history_store.async_record_dates(scope_key)
                 missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
                 if not missing_dates:
+                    break
+
+                current_available = len(desired_dates) - len(missing_dates)
+                if current_available <= last_available and _pass_index > 0:
+                    _LOGGER.debug(
+                        "Historical backfill stalled for %s: %s missing of %s available window",
+                        scope_key,
+                        len(missing_dates),
+                        len(desired_dates),
+                    )
                     break
 
                 pass_downloaded = 0
@@ -539,7 +573,15 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     pass_downloaded += 1
                     await asyncio.sleep(0.05)
 
+                last_available = max(last_available, current_available + pass_downloaded)
+
                 if pass_downloaded == 0:
+                    _LOGGER.debug(
+                        "Historical backfill made no progress for %s: %s missing of %s available window",
+                        scope_key,
+                        len(missing_dates),
+                        len(desired_dates),
+                    )
                     break
 
     async def _persist_history_snapshots(
