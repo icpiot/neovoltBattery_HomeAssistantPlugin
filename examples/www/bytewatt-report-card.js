@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "197";
+const BYTEWATT_REPORT_CARD_BUILD = "198";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -132,6 +132,31 @@ class ByteWattReportCard extends HTMLElement {
     return mergeScopes(localScopes, mergeScopes(remoteScopes, {}));
   }
 
+  _mergeSnapshotPayload(base, incoming) {
+    const merged = {
+      ...(base && typeof base === "object" ? base : {}),
+      ...(incoming && typeof incoming === "object" ? incoming : {}),
+    };
+    const baseScopes = base?.scopes && typeof base.scopes === "object" ? base.scopes : {};
+    const incomingScopes = incoming?.scopes && typeof incoming.scopes === "object" ? incoming.scopes : {};
+    const scopes = { ...baseScopes };
+    Object.entries(incomingScopes).forEach(([scopeKey, scopeValue]) => {
+      const current = scopes[scopeKey] || {};
+      const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
+      const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+      scopes[scopeKey] = {
+        ...current,
+        ...scopeValue,
+        records: {
+          ...currentRecords,
+          ...incomingRecords,
+        },
+      };
+    });
+    merged.scopes = scopes;
+    return merged;
+  }
+
   _localSnapshotKey() {
     const entity = String(this._config?.settings_target || "bytewatt").replace(/[^A-Za-z0-9_.-]+/g, "_");
     return `bytewatt-report-history:${entity}`;
@@ -150,7 +175,8 @@ class ByteWattReportCard extends HTMLElement {
 
   _writeLocalSnapshots(data) {
     try {
-      window.localStorage?.setItem(this._localSnapshotKey(), JSON.stringify(data));
+      const merged = this._mergeSnapshotPayload(this._readLocalSnapshots(), data);
+      window.localStorage?.setItem(this._localSnapshotKey(), JSON.stringify(merged));
     } catch (_err) {
       // Browser storage can be disabled; HA archive remains the primary source.
     }
