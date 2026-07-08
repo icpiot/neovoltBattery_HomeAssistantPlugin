@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "205";
+const BYTEWATT_REPORT_CARD_BUILD = "206";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -776,6 +776,94 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
+  _historyBackfillDays() {
+    const history = this._historyMeta();
+    const rawDays = Number(history?.backfill_days ?? 0);
+    if (Number.isFinite(rawDays) && rawDays > 0) return Math.max(1, Math.floor(rawDays));
+    const rawYears = Number(history?.backfill_years ?? 0);
+    if (Number.isFinite(rawYears) && rawYears > 0) return Math.max(1, Math.floor(rawYears * 365));
+    return 365;
+  }
+
+  _historyScopeSummaries() {
+    const scopes = this._historyScopes();
+    const expectedCount = this._historyBackfillDays();
+    const today = this._todayLocalDate();
+    const expectedStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    expectedStart.setDate(expectedStart.getDate() - (expectedCount - 1));
+    const inventoryScopes = Array.isArray(this._historyMeta()?.inventory_scopes) ? this._historyMeta().inventory_scopes : [];
+    const merged = new Map();
+    const addScope = (scopeKey, label, aggregate) => {
+      const current = merged.get(scopeKey) || {
+        scope_key: scopeKey,
+        label: String(label || scopeKey || "all"),
+        aggregate: Boolean(aggregate),
+        stored_count: 0,
+        missing_count: 0,
+        known_count: 0,
+        expected_count: expectedCount,
+        remaining_count: expectedCount,
+        coverage_label: `0/${expectedCount}`,
+        first_date: "",
+        latest_date: "",
+      };
+      current.label = String(label || current.label || scopeKey || "all");
+      current.aggregate = Boolean(aggregate ?? current.aggregate);
+      merged.set(scopeKey, current);
+    };
+
+    addScope("all", "All systems", true);
+    inventoryScopes.forEach((item) => {
+      const scopeKey = String(item?.scope_key || "").trim();
+      if (!scopeKey) return;
+      addScope(scopeKey, item?.label || scopeKey, Boolean(item?.aggregate));
+    });
+    Object.entries(scopes || {}).forEach(([scopeKey, scopeValue]) => {
+      addScope(scopeKey, scopeValue?.label || scopeKey, scopeKey === "all" || Boolean(scopeValue?.aggregate));
+    });
+
+    Object.entries(scopes || {}).forEach(([scopeKey, scopeValue]) => {
+      const current = merged.get(scopeKey) || {
+        scope_key: scopeKey,
+        label: String(scopeValue?.label || scopeKey || "all"),
+        aggregate: scopeKey === "all",
+      };
+      const records = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+      const missing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
+      const recordDates = Object.keys(records).filter(Boolean).sort();
+      const missingDates = Object.keys(missing).filter(Boolean).sort();
+      const knownCount = new Set([...recordDates, ...missingDates]).size;
+      const storedCount = recordDates.length;
+      const missingCount = missingDates.length;
+      const remainingCount = Math.max(expectedCount - knownCount, 0);
+      const range = this._historyRange(recordDates.map((record_date) => ({ record_date })));
+      merged.set(scopeKey, {
+        ...current,
+        scope_key: scopeKey,
+        label: String(current.label || scopeValue?.label || scopeKey || "all"),
+        aggregate: Boolean(scopeKey === "all" || current.aggregate || scopeValue?.aggregate),
+        stored_count: storedCount,
+        missing_count: missingCount,
+        known_count: knownCount,
+        expected_count: expectedCount,
+        remaining_count: remainingCount,
+        coverage_label: `${knownCount}/${expectedCount}`,
+        first_date: range.first || "",
+        latest_date: range.latest || "",
+        expected_start: this._formatLocalDate(expectedStart),
+        expected_end: this._formatLocalDate(today),
+        active: scopeKey === this._historyScopeKey(),
+      });
+    });
+
+    return Array.from(merged.values())
+      .sort((a, b) => {
+        if (a.scope_key === "all") return -1;
+        if (b.scope_key === "all") return 1;
+        return String(a.label).localeCompare(String(b.label));
+      });
+  }
+
   _periodWindow(anchor, period = this._reportPeriod) {
     const safeAnchor = this._clampDateToToday(anchor);
     const today = this._todayLocalDate();
@@ -1250,6 +1338,7 @@ class ByteWattReportCard extends HTMLElement {
     if (!this._historyConfigured()) return "";
     const records = this._selectedHistoryRecords();
     const summary = this._aggregateHistoryRecords(records);
+    const scopeSummaries = this._historyScopeSummaries();
     const loading = this._historyLoading && !this._historyData;
     const error = this._historyLoadError;
     const formatHistoryDate = (value) => {
@@ -1293,6 +1382,34 @@ class ByteWattReportCard extends HTMLElement {
           ${this._historyButton("30 days", "30d")}
           ${this._historyButton("All", "all")}
         </div>
+        ${
+          scopeSummaries.length
+            ? `
+              <div class="history-overview">
+                <div class="history-overview-head">
+                  <div class="history-overview-title">Archive Coverage Overview</div>
+                  <div class="history-overview-subtitle">Stored rows vs the configured ${this._historyBackfillDays()} day history horizon</div>
+                </div>
+                <div class="history-overview-grid">
+                  ${scopeSummaries
+                    .map(
+                      (scope) => `
+                        <div class="history-overview-card ${scope.active ? "active" : ""}">
+                          <div class="history-overview-card-head">
+                            <div class="history-overview-card-title">${this._escape(scope.label)}</div>
+                            <div class="history-overview-card-badge">${this._escape(scope.coverage_label)}</div>
+                          </div>
+                          <div class="history-overview-card-meta">stored ${scope.stored_count} | missing ${scope.missing_count} | remaining ${scope.remaining_count}</div>
+                          <div class="history-overview-card-meta">${this._escape(scope.first_date && scope.latest_date ? `${formatHistoryDate(scope.first_date)} -> ${formatHistoryDate(scope.latest_date)}` : "No stored rows yet")}</div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </div>
+            `
+            : ""
+        }
         ${
           loading
             ? `<div class="empty">Loading local history from ${this._escape(this._historyUrl())}...</div>`
@@ -2293,6 +2410,76 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap:12px;
+        }
+        .history-overview {
+          display:grid;
+          gap:12px;
+          padding:14px;
+          border-radius:18px;
+          background:#f8fbff;
+          border:1px solid rgba(51, 92, 140, 0.12);
+        }
+        .history-overview-head {
+          display:flex;
+          justify-content:space-between;
+          align-items:end;
+          gap:10px;
+          flex-wrap:wrap;
+        }
+        .history-overview-title {
+          font-size:1rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .history-overview-subtitle {
+          font-size:0.8rem;
+          font-weight:700;
+          color:#64748b;
+        }
+        .history-overview-grid {
+          display:grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap:10px;
+        }
+        .history-overview-card {
+          display:grid;
+          gap:8px;
+          padding:12px 14px;
+          border-radius:16px;
+          background:#fff;
+          border:1px solid rgba(51, 92, 140, 0.14);
+        }
+        .history-overview-card.active {
+          border-color:rgba(47,117,216,0.35);
+          box-shadow:0 8px 18px rgba(47,117,216,0.08);
+        }
+        .history-overview-card-head {
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          gap:10px;
+        }
+        .history-overview-card-title {
+          font-size:0.94rem;
+          font-weight:900;
+          color:#17263a;
+        }
+        .history-overview-card-badge {
+          display:inline-flex;
+          align-items:center;
+          padding:5px 9px;
+          border-radius:999px;
+          background:#eef4fb;
+          border:1px solid #d7e3f4;
+          color:#355377;
+          font-size:0.77rem;
+          font-weight:800;
+          white-space:nowrap;
+        }
+        .history-overview-card-meta {
+          font-size:0.82rem;
+          font-weight:700;
+          color:#64748b;
         }
         .history-table-head {
           display:flex;

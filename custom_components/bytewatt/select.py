@@ -12,6 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .const import CONF_HISTORY_BACKFILL_YEARS, DEFAULT_HISTORY_BACKFILL_YEARS
 from .coordinator import ByteWattDataUpdateCoordinator
 from .reporting import build_reporting_payload
 from .settings_manager import SettingsManager
@@ -44,6 +45,16 @@ def _compact_summary(value: dict[str, Any] | None, keys: list[str]) -> dict[str,
     """Keep only a small set of keys for recorder-safe entity attributes."""
     source = value or {}
     return {key: source.get(key) for key in keys if key in source}
+
+
+def _history_backfill_days(config_entry: ConfigEntry) -> int:
+    """Return the configured archive horizon in days."""
+    raw_years = config_entry.options.get(CONF_HISTORY_BACKFILL_YEARS, DEFAULT_HISTORY_BACKFILL_YEARS)
+    try:
+        years = int(raw_years)
+    except (TypeError, ValueError):
+        years = DEFAULT_HISTORY_BACKFILL_YEARS
+    return max(1, years) * 365
 
 
 async def async_setup_entry(
@@ -141,12 +152,35 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
         coordinator_data = self.coordinator.data or {}
         aggregate_battery = coordinator_data.get("battery") or {}
         selected_battery = coordinator_data.get("selected_battery") or {}
+        raw_backfill_years = self._config_entry.options.get(CONF_HISTORY_BACKFILL_YEARS, DEFAULT_HISTORY_BACKFILL_YEARS)
+        try:
+            backfill_years = max(1, int(raw_backfill_years or DEFAULT_HISTORY_BACKFILL_YEARS))
+        except (TypeError, ValueError):
+            backfill_years = DEFAULT_HISTORY_BACKFILL_YEARS
         history_hint = {
             "enabled": True,
             "base_url": f"/local/bytewatt-history/{self._config_entry.entry_id}/",
             "current_scope": current.sys_sn if current is not None else "all",
             "entry_id": self._config_entry.entry_id,
             "last_ensure_result": getattr(self.coordinator, "_last_history_ensure_result", {}) or {},
+            "backfill_years": backfill_years,
+            "backfill_days": _history_backfill_days(self._config_entry),
+            "inventory_scopes": [
+                {
+                    "scope_key": "all",
+                    "label": "All systems",
+                    "aggregate": True,
+                },
+                *[
+                    {
+                        "scope_key": str(inverter.sys_sn or "").strip(),
+                        "label": str(inverter.display_name or inverter.sys_sn or "Battery"),
+                        "aggregate": False,
+                    }
+                    for inverter in self._inventory()
+                    if str(inverter.sys_sn or "").strip() and str(inverter.sys_sn or "").strip().lower() != "all"
+                ],
+            ],
         }
         monitoring_summary = _compact_summary(
             selected_battery if current is not None else aggregate_battery,
