@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "202";
+const BYTEWATT_REPORT_CARD_BUILD = "203";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -534,6 +534,8 @@ class ByteWattReportCard extends HTMLElement {
   async _syncSelectedHistory() {
     if (this._reportPeriod === "today") {
       this._historyEnsureLoading = false;
+      this._historyEnsureState = "live";
+      this._historyEnsureStatus = "Today uses live reporting";
       this.render();
       return;
     }
