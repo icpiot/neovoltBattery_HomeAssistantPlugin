@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "201";
+const BYTEWATT_REPORT_CARD_BUILD = "202";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1552,13 +1552,27 @@ class ByteWattReportCard extends HTMLElement {
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
     const selectedCount = (periodContext?.records || []).length;
     const totalCount = Number(periodContext?.records_total ?? 0) || 0;
+    const requestedCount = periodContext?.window?.start && periodContext?.window?.end
+      ? (() => {
+          const start = new Date(periodContext.window.start.getFullYear(), periodContext.window.start.getMonth(), periodContext.window.start.getDate());
+          const end = new Date(periodContext.window.end.getFullYear(), periodContext.window.end.getMonth(), periodContext.window.end.getDate());
+          let count = 0;
+          const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+          while (cursor <= end) {
+            count += 1;
+            cursor.setDate(cursor.getDate() + 1);
+          }
+          return Math.max(1, count);
+        })()
+      : selectedCount;
     const historyRecords = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const latestRows = historyRecords.slice(-5).reverse();
     const latestDates = latestRows.map((record) => this._recordDisplayDate(record) || record.record_date || "Unknown");
     const historyScope = this._historyScopeKey();
     const ensureResult = this._historyEnsureResult();
-    const ensureSummary =
-      ensureResult && Object.keys(ensureResult).length
+    const ensureSummary = periodContext?.window?.start && periodContext?.window?.end
+      ? `requested ${requestedCount} | selected ${selectedCount} | archive ${selectedCount}/${requestedCount}`
+      : ensureResult && Object.keys(ensureResult).length
         ? `requested ${Number(ensureResult.requested ?? 0)} | downloaded ${Number(ensureResult.downloaded ?? 0)} | available ${Number(ensureResult.available ?? 0)}`
         : "";
     const historyUrl = this._historyUrl();
