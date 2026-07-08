@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "194";
+const BYTEWATT_REPORT_CARD_BUILD = "195";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -471,6 +471,11 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   async _syncSelectedHistory() {
+    if (this._reportPeriod === "today") {
+      this._historyEnsureLoading = false;
+      this.render();
+      return;
+    }
     if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
       await this._reloadHistory();
     }
@@ -484,6 +489,12 @@ class ByteWattReportCard extends HTMLElement {
   async _ensureSelectedPeriodHistory() {
     const scopeKey = this._historyScopeKey();
     const { anchor, period, window } = this._selectedReportWindow();
+    if (period === "today") {
+      this._historyEnsureState = "live";
+      this._historyEnsureStatus = "Today uses live reporting";
+      this.render();
+      return;
+    }
     if (!scopeKey || !anchor || this._historyLoading || this._historyEnsureLoading) return;
 
     const startDate = this._formatLocalDate(window.start);
