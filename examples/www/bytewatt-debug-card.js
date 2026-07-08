@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "006";
+const BYTEWATT_DEBUG_CARD_BUILD = "007";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -9,10 +9,12 @@ class ByteWattDebugCard extends HTMLElement {
       title: config?.title || "ByteWatt Debug",
       ...config,
     };
+    this._debugStorageKey = `bytewatt-debug:${this._config.entity_prefix}:${this._config.settings_target}`;
     this._status = "";
     this._statusKind = "neutral";
-    this._debugPeriod = this._debugPeriod || "day";
-    this._debugAnchorDate = this._debugAnchorDate || "";
+    const saved = this._loadDebugState();
+    this._debugPeriod = saved.period || this._debugPeriod || "day";
+    this._debugAnchorDate = saved.anchor || this._debugAnchorDate || "";
   }
 
   set hass(hass) {
@@ -26,6 +28,33 @@ class ByteWattDebugCard extends HTMLElement {
 
   _stateObj(entityId) {
     return entityId ? this._hass?.states?.[entityId] : null;
+  }
+
+  _loadDebugState() {
+    try {
+      if (!this._debugStorageKey || !window.localStorage) return {};
+      const raw = window.localStorage.getItem(this._debugStorageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  _saveDebugState() {
+    try {
+      if (!this._debugStorageKey || !window.localStorage) return;
+      window.localStorage.setItem(
+        this._debugStorageKey,
+        JSON.stringify({
+          period: this._debugPeriod || "day",
+          anchor: this._debugAnchorDate || "",
+        }),
+      );
+    } catch (_err) {
+      return;
+    }
   }
 
   _selectorState() {
@@ -528,11 +557,13 @@ class ByteWattDebugCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-debug-period]").forEach((item) => {
       item.onclick = () => {
         this._debugPeriod = item.getAttribute("data-debug-period") || "day";
+        this._saveDebugState();
         this.render();
       };
     });
     this.shadowRoot.querySelector("[data-debug-date]")?.addEventListener("change", (event) => {
       this._debugAnchorDate = String(event.target.value || "").trim();
+      this._saveDebugState();
       this.render();
     });
     this.shadowRoot.querySelectorAll("[data-debug-shift]").forEach((item) => {
@@ -540,6 +571,7 @@ class ByteWattDebugCard extends HTMLElement {
         const step = Number(item.getAttribute("data-debug-shift") || 0) || 0;
         const next = this._shiftAnchor(this._debugRange().anchor, this._debugPeriod || "day", step);
         this._debugAnchorDate = this._formatLocalDate(next);
+        this._saveDebugState();
         this.render();
       };
     });
