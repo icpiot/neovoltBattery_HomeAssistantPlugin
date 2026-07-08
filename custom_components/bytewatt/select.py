@@ -121,6 +121,16 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             options[label] = inverter
         return options
 
+    def _current_inverter(self) -> DiscoveredInverter | None:
+        current_id = str(self._manager.current_settings_target_id or "").strip()
+        current_sys_sn = str(self._manager.current_settings_target_sys_sn or "").strip()
+        for inverter in self._inventory():
+            if current_id and inverter.system_id == current_id:
+                return inverter
+            if current_sys_sn and inverter.sys_sn == current_sys_sn:
+                return inverter
+        return None
+
     @property
     def options(self) -> list[str]:
         labels = list(self._options_map())
@@ -134,21 +144,23 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        current_id = self._manager.current_settings_target_id
-        if not current_id and len(self.options) > 1:
+        current = self._current_inverter()
+        if current is not None:
+            for label, inverter in self._options_map().items():
+                if inverter.system_id == current.system_id or (
+                    current.sys_sn and inverter.sys_sn == current.sys_sn
+                ):
+                    return label
+        if len(self.options) > 1:
             return "All systems"
         for label, inverter in self._options_map().items():
-            if inverter.system_id == current_id:
+            if inverter.system_id == self._manager.current_settings_target_id:
                 return label
         return self.options[0] if self.options else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        current_id = self._manager.current_settings_target_id
-        current = next(
-            (inverter for inverter in self._inventory() if inverter.system_id == current_id),
-            None,
-        )
+        current = self._current_inverter()
         coordinator_data = self.coordinator.data or {}
         aggregate_battery = coordinator_data.get("battery") or {}
         selected_battery = coordinator_data.get("selected_battery") or {}
