@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "189";
+const BYTEWATT_REPORT_CARD_BUILD = "190";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -504,7 +504,8 @@ class ByteWattReportCard extends HTMLElement {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    const hasAll = desiredDates.every((date) => this._hasExactHistoryRecord(scopeKey, date));
+    const availableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
+    const hasAll = availableCount === desiredDates.length;
     if (hasAll) {
       this._historyEnsureState = "available";
       this._historyEnsureStatus = "Selected period already in archive";
@@ -527,10 +528,13 @@ class ByteWattReportCard extends HTMLElement {
       await this._hass.callService("bytewatt", "ensure_report_history", payload);
       this._historyData = null;
       await this._reloadHistory();
-      const refreshedHasAll = desiredDates.every((date) => this._hasExactHistoryRecord(scopeKey, date));
-      if (!refreshedHasAll) {
+      const refreshedAvailableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
+      if (refreshedAvailableCount === 0) {
         this._historyEnsureState = "missing";
         this._historyEnsureStatus = "No archive rows available for selected period";
+      } else if (refreshedAvailableCount < desiredDates.length) {
+        this._historyEnsureState = "partial";
+        this._historyEnsureStatus = `Selected period partially available (${refreshedAvailableCount}/${desiredDates.length})`;
       } else {
         this._historyEnsureState = "ready";
         this._historyEnsureStatus = "Selected period archive ready";
@@ -1456,9 +1460,9 @@ class ByteWattReportCard extends HTMLElement {
       ? "loading"
       : this._historyEnsureLoading
         ? "loading"
-        : this._historyLoadError || this._historyEnsureState === "failed" || this._historyEnsureState === "missing"
+      : this._historyLoadError || this._historyEnsureState === "failed" || this._historyEnsureState === "missing"
           ? "error"
-          : this._historyEnsureState === "available" || this._historyEnsureState === "ready" || selectedCount
+          : this._historyEnsureState === "available" || this._historyEnsureState === "ready" || this._historyEnsureState === "partial" || selectedCount
             ? "loaded"
             : "empty";
     const windowStart = periodContext?.window?.start || anchor;
