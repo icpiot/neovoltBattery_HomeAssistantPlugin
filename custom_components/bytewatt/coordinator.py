@@ -459,6 +459,12 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 if not self._snapshot_has_reporting_data(snapshot):
+                    await self._history_store.async_mark_missing_date(
+                        scope_key=scope_key,
+                        label=label,
+                        record_date=record_date,
+                        reason="no_reporting_data",
+                    )
                     continue
 
                 reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)
@@ -570,6 +576,12 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                         continue
 
                     if not self._snapshot_has_reporting_data(snapshot):
+                        await self._history_store.async_mark_missing_date(
+                            scope_key=scope_key,
+                            label=label,
+                            record_date=record_date,
+                            reason="no_reporting_data",
+                        )
                         continue
 
                     reporting = build_reporting_payload(snapshot, aggregate=aggregate, label=label)

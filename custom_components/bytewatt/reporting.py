@@ -195,6 +195,32 @@ class ByteWattReportHistory:
                 err,
             )
 
+    async def async_mark_missing_date(
+        self,
+        *,
+        scope_key: str,
+        label: str,
+        record_date: str,
+        reason: str = "no_reporting_data",
+    ) -> None:
+        """Persist a known-missing date so it is not re-requested forever."""
+        scope_key = _safe_filename(scope_key)
+        try:
+            await self.hass.async_add_executor_job(
+                self._mark_missing_date_sync,
+                scope_key,
+                label or scope_key,
+                record_date,
+                reason,
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "Failed to persist missing ByteWatt history date for %s (%s): %s",
+                scope_key,
+                record_date,
+                err,
+            )
+
     async def async_record_dates(self, scope_key: str) -> set[str]:
         """Return the known record dates for a scope."""
         scope_key = _safe_filename(scope_key)
@@ -234,6 +260,9 @@ class ByteWattReportHistory:
         scope["updated"] = dt_util.utcnow().isoformat()
         records = scope.setdefault("records", {})
         records[record_date] = reporting
+        missing_dates = scope.get("missing_dates")
+        if isinstance(missing_dates, dict) and record_date in missing_dates:
+            missing_dates.pop(record_date, None)
         history["version"] = 1
         history["updated"] = dt_util.utcnow().isoformat()
 
@@ -242,6 +271,53 @@ class ByteWattReportHistory:
             encoding="utf-8",
         )
         self._write_scope_csv(scope_key, label, scope.get("records", {}))
+
+    def _mark_missing_date_sync(
+        self,
+        scope_key: str,
+        label: str,
+        record_date: str,
+        reason: str,
+    ) -> None:
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.history_file.exists():
+            try:
+                history = json.loads(self.history_file.read_text(encoding="utf-8"))
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("Unable to read existing ByteWatt history file: %s", err)
+                history = {}
+        else:
+            history = {}
+
+        scopes = history.setdefault("scopes", {})
+        scope = scopes.setdefault(
+            scope_key,
+            {
+                "label": label,
+                "records": {},
+                "missing_dates": {},
+            },
+        )
+        scope["label"] = label
+        scope["updated"] = dt_util.utcnow().isoformat()
+        records = scope.setdefault("records", {})
+        records.pop(record_date, None)
+        missing_dates = scope.setdefault("missing_dates", {})
+        if isinstance(missing_dates, list):
+            missing_dates = {str(item): {"reason": reason} for item in missing_dates if item}
+            scope["missing_dates"] = missing_dates
+        missing_dates[record_date] = {
+            "reason": reason,
+            "saved_at": dt_util.utcnow().isoformat(),
+        }
+        history["version"] = 1
+        history["updated"] = dt_util.utcnow().isoformat()
+
+        self.history_file.write_text(
+            json.dumps(history, indent=2, ensure_ascii=False, default=_json_default),
+            encoding="utf-8",
+        )
 
     def _record_dates_sync(self, scope_key: str) -> set[str]:
         if not self.history_file.exists():
@@ -254,7 +330,9 @@ class ByteWattReportHistory:
         scopes = history.get("scopes") or {}
         scope = scopes.get(scope_key) or {}
         records = scope.get("records") or {}
-        return {str(key) for key in records.keys() if key}
+        missing = scope.get("missing_dates") or {}
+        missing_keys = missing.keys() if isinstance(missing, dict) else missing
+        return {str(key) for key in records.keys() if key} | {str(key) for key in missing_keys if key}
 
     def _write_scope_csv(
         self,

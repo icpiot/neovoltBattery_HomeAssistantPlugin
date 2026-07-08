@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "200";
+const BYTEWATT_REPORT_CARD_BUILD = "201";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -118,12 +118,18 @@ class ByteWattReportCard extends HTMLElement {
         const current = merged[scopeKey] || {};
         const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
         const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+        const currentMissing = current.missing_dates && typeof current.missing_dates === "object" ? current.missing_dates : {};
+        const incomingMissing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
         merged[scopeKey] = {
           ...current,
           ...scopeValue,
           records: {
             ...currentRecords,
             ...incomingRecords,
+          },
+          missing_dates: {
+            ...currentMissing,
+            ...incomingMissing,
           },
         };
       });
@@ -495,6 +501,12 @@ class ByteWattReportCard extends HTMLElement {
     return Boolean(scopes?.[scopeKey]?.records?.[recordDate]);
   }
 
+  _hasKnownHistoryDate(scopeKey, recordDate) {
+    if (!scopeKey || !recordDate) return false;
+    const scopes = this._historyScopes();
+    return Boolean(scopes?.[scopeKey]?.records?.[recordDate] || scopes?.[scopeKey]?.missing_dates?.[recordDate]);
+  }
+
   _resetHistoryEnsureState() {
     this._historyEnsureAttemptKey = "";
     this._historyEnsureStatus = "";
@@ -567,10 +579,14 @@ class ByteWattReportCard extends HTMLElement {
     }
 
     const availableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
-    const hasAll = availableCount === desiredDates.length;
-    if (hasAll) {
-      this._historyEnsureState = "available";
-      this._historyEnsureStatus = "Selected period already in archive";
+    const knownCount = desiredDates.filter((date) => this._hasKnownHistoryDate(scopeKey, date)).length;
+    const hasAllKnown = knownCount === desiredDates.length;
+    if (hasAllKnown) {
+      this._historyEnsureState = availableCount === desiredDates.length ? "available" : "partial";
+      this._historyEnsureStatus =
+        availableCount === desiredDates.length
+          ? "Selected period already in archive"
+          : `Selected period partially available (${availableCount}/${desiredDates.length})`;
       this.render();
       return;
     }
@@ -591,15 +607,19 @@ class ByteWattReportCard extends HTMLElement {
       this._historyData = null;
       await this._reloadHistory();
       const refreshedAvailableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
-      if (refreshedAvailableCount === 0) {
+      const refreshedKnownCount = desiredDates.filter((date) => this._hasKnownHistoryDate(scopeKey, date)).length;
+      if (refreshedKnownCount === 0) {
         this._historyEnsureState = "missing";
         this._historyEnsureStatus = "No archive rows available for selected period";
-      } else if (refreshedAvailableCount < desiredDates.length) {
+      } else if (refreshedKnownCount < desiredDates.length) {
         this._historyEnsureState = "partial";
         this._historyEnsureStatus = `Selected period partially available (${refreshedAvailableCount}/${desiredDates.length})`;
       } else {
-        this._historyEnsureState = "ready";
-        this._historyEnsureStatus = "Selected period archive ready";
+        this._historyEnsureState = refreshedAvailableCount === desiredDates.length ? "ready" : "partial";
+        this._historyEnsureStatus =
+          refreshedAvailableCount === desiredDates.length
+            ? "Selected period archive ready"
+            : `Selected period partially available (${refreshedAvailableCount}/${desiredDates.length})`;
       }
     } catch (error) {
       console.warn("ByteWatt period archive download failed:", error);
