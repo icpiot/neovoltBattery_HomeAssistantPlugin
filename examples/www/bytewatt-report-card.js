@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "195";
+const BYTEWATT_REPORT_CARD_BUILD = "196";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -613,7 +613,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _reportPeriodLabel(value = this._reportPeriod) {
-    return { today: "Today", day: "Day", week: "Week", month: "Month" }[value] || "Day";
+    return { today: "Today", day: "Day", week: "Week", month: "Month", quarter: "Quarter" }[value] || "Day";
   }
 
   _isDailyPeriod(period = this._reportPeriod) {
@@ -701,6 +701,10 @@ class ByteWattReportCard extends HTMLElement {
     } else if (period === "month") {
       start.setDate(1);
       end.setMonth(start.getMonth() + 1, 0);
+    } else if (period === "quarter") {
+      const quarterStartMonth = Math.floor(start.getMonth() / 3) * 3;
+      start.setMonth(quarterStartMonth, 1);
+      end.setMonth(quarterStartMonth + 3, 0);
     }
     return { start, end };
   }
@@ -711,6 +715,8 @@ class ByteWattReportCard extends HTMLElement {
       shifted.setDate(shifted.getDate() + step * 7);
     } else if (period === "month") {
       shifted.setMonth(shifted.getMonth() + step);
+    } else if (period === "quarter") {
+      shifted.setMonth(shifted.getMonth() + step * 3);
     } else {
       shifted.setDate(shifted.getDate() + step);
     }
@@ -1496,6 +1502,7 @@ class ByteWattReportCard extends HTMLElement {
             ${this._reportPeriodButton("Day", "day", period)}
             ${this._reportPeriodButton("Week", "week", period)}
             ${this._reportPeriodButton("Month", "month", period)}
+            ${this._reportPeriodButton("Quarter", "quarter", period)}
           </div>
         </div>
         <div class="report-control-row">
