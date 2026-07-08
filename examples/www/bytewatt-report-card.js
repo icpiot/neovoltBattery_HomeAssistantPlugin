@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "183";
+const BYTEWATT_REPORT_CARD_BUILD = "184";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -8,8 +8,10 @@ class ByteWattReportCard extends HTMLElement {
       settings_target: config?.settings_target || `select.${prefix}_settings_target`,
       ...config,
     };
-    this._reportPeriod = this._reportPeriod || "day";
-    this._reportAnchorDate = this._reportAnchorDate || "";
+    this._reportStorageKey = `bytewatt-report:${this._config.entity_prefix}:${this._config.settings_target}`;
+    const saved = this._loadReportState();
+    this._reportPeriod = saved.period || this._reportPeriod || "day";
+    this._reportAnchorDate = saved.anchor || this._reportAnchorDate || "";
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -33,6 +35,33 @@ class ByteWattReportCard extends HTMLElement {
 
   _stateObj(entityId) {
     return entityId ? this._hass?.states?.[entityId] : null;
+  }
+
+  _loadReportState() {
+    try {
+      if (!this._reportStorageKey || !window.localStorage) return {};
+      const raw = window.localStorage.getItem(this._reportStorageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  _saveReportState() {
+    try {
+      if (!this._reportStorageKey || !window.localStorage) return;
+      window.localStorage.setItem(
+        this._reportStorageKey,
+        JSON.stringify({
+          period: this._reportPeriod || "day",
+          anchor: this._reportAnchorDate || "",
+        }),
+      );
+    } catch (_err) {
+      return;
+    }
   }
 
   _selectorState() {
@@ -838,6 +867,7 @@ class ByteWattReportCard extends HTMLElement {
 
     const anchor = this._clampAnchor(this._parseLocalDate(this._reportAnchorDate || fallbackDate) || new Date(), sorted);
     this._reportAnchorDate = this._formatLocalDate(anchor);
+    this._saveReportState();
     const period = this._reportPeriod || "day";
     const selected = this._recordsForPeriod(sorted, anchor, period);
     const window = this._periodWindow(anchor, period);
@@ -3125,6 +3155,7 @@ class ByteWattReportCard extends HTMLElement {
         const nextAnchor = this._clampAnchor(liveAnchor, records);
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
+        this._saveReportState();
         this._resetHistoryEnsureState();
         await this._syncSelectedDayHistory();
       });
@@ -3136,12 +3167,14 @@ class ByteWattReportCard extends HTMLElement {
         const fallback = this._parseLocalDate(this._reportAnchorDate) || this._parseLocalDate(this._reporting()?.power_diagram?.date) || null;
         const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records);
         this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
+        this._saveReportState();
         this._resetHistoryEnsureState();
         await this._syncSelectedDayHistory();
       });
     });
     this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", async (event) => {
       this._reportAnchorDate = String(event.target.value || "").trim();
+      this._saveReportState();
       this._resetHistoryEnsureState();
       await this._syncSelectedDayHistory();
     });
