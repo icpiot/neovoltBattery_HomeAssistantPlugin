@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "235";
+const BYTEWATT_REPORT_CARD_BUILD = "236";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2399,7 +2399,7 @@ class ByteWattReportCard extends HTMLElement {
     const batMax = 100;
     const width = 860;
     const height = 334;
-      const padding = { top: 34, right: 44, bottom: 52, left: 60 };
+      const padding = { top: 34, right: 72, bottom: 52, left: 64 };
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
@@ -2442,7 +2442,7 @@ class ByteWattReportCard extends HTMLElement {
     const batLabels = [100, 75, 50, 25, 0]
       .map((value) => {
         const y = padding.top + ((100 - value) / 100) * (height - padding.top - padding.bottom);
-          return `<text class="axis-label axis-label-right" x="${(width - padding.right + 10).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
+          return `<text class="axis-label axis-label-right" x="${(width - padding.right + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
       })
       .join("");
     const axisMidY = padding.top + (height - padding.top - padding.bottom) / 2;
@@ -3629,8 +3629,8 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           position:relative;
             padding:18px;
-            margin-inline:12px;
-            max-width:calc(100% - 24px);
+            margin-inline:16px;
+            max-width:calc(100% - 32px);
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
@@ -3653,7 +3653,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-            padding:16px 18px 18px;
+            padding:16px 28px 20px;
           display:grid;
           gap:10px;
           border:1px solid rgba(214, 219, 225, 0.88);
