@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "238";
+const BYTEWATT_REPORT_CARD_BUILD = "239";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2285,28 +2285,25 @@ class ByteWattReportCard extends HTMLElement {
       if (count <= 1) return padding.left;
       return padding.left + (index / (count - 1)) * (width - padding.left - padding.right);
     };
-    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", 0);
+    const batPressureStart = Math.max(0, Math.floor(count * 0.02));
+    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", batPressureStart);
     const batPeakIndex = this._chartValueIndex(chartValues.bat, "max", 0);
-    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", 0);
-    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
-    const gridPeakIndex = this._chartValueIndex(chartValues.feed, "max", 0);
-    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
-    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
-    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
-    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
-    const solarThreshold = Math.max(0.08, solarPeak * 0.2);
+    const solarWindowStart = Math.max(0, Math.floor(count * 0.18));
+    const solarThresholdProbe = Math.max(...chartValues.solar, 0);
+    const solarThreshold = Math.max(0.08, solarThresholdProbe * 0.2);
     const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
     const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
     const solarBandStart = solarStart >= 0 ? solarStart : Math.max(0, Math.floor(count * 0.3));
     const solarBandEnd = solarEnd >= 0 ? solarEnd : Math.max(solarBandStart + 1, Math.floor(count * 0.7));
+    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", Math.max(solarStart >= 0 ? solarStart : 0, solarWindowStart));
+    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
+    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
+    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
+    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
+    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
     const eveningStart = Math.max(0, Math.floor(count * 0.62));
-    const eveningLoadIndex = this._chartValueIndex(chartValues.load, "max", eveningStart);
-    const eveningGridIndex = this._chartValueIndex(chartValues.feed, "max", eveningStart);
-    const eveningConsumedIndex = this._chartValueIndex(chartValues.consumed, "max", eveningStart);
-    const eveningPeakIndex = [eveningLoadIndex, eveningGridIndex, eveningConsumedIndex]
-      .filter((value) => Number.isFinite(value) && value >= 0)
-      .sort((a, b) => (Number(chartValues.load[b] ?? 0) + Number(chartValues.feed[b] ?? 0)) - (Number(chartValues.load[a] ?? 0) + Number(chartValues.feed[a] ?? 0)))[0] ?? eveningLoadIndex;
-    const morningPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
+    const eveningComposite = chartValues.load.map((value, index) => (Number(value) || 0) + (Number(chartValues.feed[index]) || 0) + (Number(chartValues.consumed[index]) || 0));
+    const eveningPeakIndex = this._chartValueIndex(eveningComposite, "max", Math.max(eveningStart, Math.floor(count * 0.55)));
     const batteryEventLabel = this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
     const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
@@ -2320,7 +2317,7 @@ class ByteWattReportCard extends HTMLElement {
         tone: "bat",
         title: "1. Battery pressure",
         value: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
-        note: batMin <= 15 ? "The battery hits its low point early and has to recover later." : "The battery eases through the day without dropping to the floor.",
+        note: batMin <= 15 ? "The battery reaches its caution zone early and has to recover later." : "The battery eases through the day without dropping to the floor.",
       },
       {
         tone: "solar",
@@ -4402,10 +4399,24 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns:1fr;
           }
           .power-story-cards {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .power-story-headline {
             max-width:none;
+          }
+          .power-story-card:last-child {
+            grid-column:1 / -1;
+          }
+        }
+        @media (max-width: 560px) {
+          .power-story-cards {
+            grid-template-columns: 1fr;
+          }
+          .power-story-card:last-child {
+            grid-column:auto;
+          }
+          .power-story-note {
+            font-size:0.8rem;
           }
         }
         @media (max-width: 700px) {
