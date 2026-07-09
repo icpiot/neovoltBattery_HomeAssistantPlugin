@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "212";
+const BYTEWATT_REPORT_CARD_BUILD = "214";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -24,6 +24,7 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureState = this._historyEnsureState || "";
     this._historyEnsureRunId = this._historyEnsureRunId || 0;
     this._historySyncLoading = this._historySyncLoading || false;
+    this._historySyncRequested = this._historySyncRequested || false;
   }
 
   set hass(hass) {
@@ -478,11 +479,13 @@ class ByteWattReportCard extends HTMLElement {
       const data = await response.json();
       this._historyData = data;
       this._writeLocalSnapshots(data);
+      this._historySyncRequested = true;
     } catch (error) {
       const cached = this._readLocalSnapshots();
       if (cached && cached.scopes && Object.keys(cached.scopes).length) {
         this._historyData = cached;
         this._historyLoadError = "";
+        this._historySyncRequested = true;
       } else {
         this._historyLoadError = String(error?.message || error);
         this._historyData = null;
@@ -517,6 +520,11 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureState = "";
   }
 
+  _queueHistorySync() {
+    this._historySyncRequested = true;
+    this.render();
+  }
+
   _selectedReportWindow() {
     const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     const fallbackAnchor =
@@ -538,6 +546,7 @@ class ByteWattReportCard extends HTMLElement {
   async _syncSelectedHistory() {
     if (this._historySyncLoading) return;
     this._historySyncLoading = true;
+    this._historySyncRequested = false;
     try {
       if (this._reportPeriod === "today") {
         this._historyEnsureLoading = false;
@@ -2127,11 +2136,12 @@ class ByteWattReportCard extends HTMLElement {
       this._historyLoadError = "";
       this._historyAttempted = false;
       this._resetHistoryEnsureState();
+      this._historySyncRequested = true;
     }
     if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
       this._ensureHistoryLoaded();
     }
-    if (this._historyConfigured() && this._historyData && !this._historyLoading && !this._historyEnsureLoading && !this._historySyncLoading) {
+    if (this._historyConfigured() && this._historyData && this._historySyncRequested && !this._historyLoading && !this._historyEnsureLoading && !this._historySyncLoading) {
       this._syncSelectedHistory();
     }
     const periodContext = this._buildPeriodReporting(baseReporting);
@@ -3497,11 +3507,12 @@ class ByteWattReportCard extends HTMLElement {
         entity_id: this._config.settings_target,
         option: event.target.value,
       });
+      this._queueHistorySync();
     });
     this.shadowRoot.querySelectorAll("[data-history-period]").forEach((button) => {
       button.addEventListener("click", () => {
         this._historyPeriod = button.dataset.historyPeriod;
-        this.render();
+        this._queueHistorySync();
       });
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
@@ -3525,7 +3536,7 @@ class ByteWattReportCard extends HTMLElement {
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._saveReportState();
         this._resetHistoryEnsureState();
-        await this._syncSelectedHistory();
+        this._queueHistorySync();
       });
     });
     this.shadowRoot.querySelectorAll("[data-report-shift]").forEach((button) => {
@@ -3537,7 +3548,7 @@ class ByteWattReportCard extends HTMLElement {
         this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
         this._saveReportState();
         this._resetHistoryEnsureState();
-        await this._syncSelectedHistory();
+        this._queueHistorySync();
       });
     });
     this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", async (event) => {
@@ -3545,7 +3556,7 @@ class ByteWattReportCard extends HTMLElement {
       this._reportAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate()));
       this._saveReportState();
       this._resetHistoryEnsureState();
-      await this._syncSelectedHistory();
+      this._queueHistorySync();
     });
     this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
       try {
