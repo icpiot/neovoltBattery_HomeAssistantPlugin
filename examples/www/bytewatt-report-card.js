@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "248";
+const BYTEWATT_REPORT_CARD_BUILD = "249";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4538,6 +4538,9 @@ class ByteWattReportCard extends HTMLElement {
           .power-story-card:last-child {
             grid-column:1 / -1;
           }
+          .power-chart {
+            height:clamp(270px, 66vw, 420px);
+          }
           .overview-panel,
           .hero-banner,
           .panel {
@@ -4585,6 +4588,9 @@ class ByteWattReportCard extends HTMLElement {
           }
           .power-story-card:last-child {
             grid-column:auto;
+          }
+          .power-chart {
+            height:clamp(300px, 74vw, 460px);
           }
         }
         @media (max-width: 700px) {
