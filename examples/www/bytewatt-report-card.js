@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "246";
+const BYTEWATT_REPORT_CARD_BUILD = "247";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3972,9 +3972,9 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           position:relative;
           padding:18px 24px 20px;
-          margin-inline:0;
-          width:100%;
-          max-width:100%;
+          margin-inline:8px;
+          width:calc(100% - 16px);
+          max-width:calc(100% - 16px);
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
@@ -4450,8 +4450,8 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .power-chart-shell {
-            margin-inline:0;
-            max-width:100%;
+            margin-inline:6px;
+            max-width:calc(100% - 12px);
           }
         }
         @media (max-width: 1440px) {
@@ -4519,8 +4519,8 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
           .power-chart-shell {
-            margin-inline:0;
-            max-width:100%;
+            margin-inline:6px;
+            max-width:calc(100% - 12px);
             padding:14px 14px 16px;
           }
           .ring-grid {
@@ -4549,8 +4549,8 @@ class ByteWattReportCard extends HTMLElement {
             padding:14px 10px;
           }
           .power-chart-shell {
-            margin-inline:0;
-            max-width:100%;
+            margin-inline:4px;
+            max-width:calc(100% - 8px);
             padding:12px 12px 14px;
           }
           .ring-grid {
