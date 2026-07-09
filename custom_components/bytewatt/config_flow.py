@@ -219,7 +219,15 @@ class ByteWattConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_HOST_SYSTEM_ID: selected_id,
                 CONF_HOST_SYS_SN: sys_sn,
             }
-            self.hass.config_entries.async_update_entry(entry, data=new_data)
+            entry_data = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
+            if entry_data is not None:
+                entry_data["suppress_entry_reload"] = True
+            try:
+                self.hass.config_entries.async_update_entry(entry, data=new_data)
+                self.hass.async_create_task(self.hass.config_entries.async_reload(entry.entry_id))
+            finally:
+                if entry_data is not None:
+                    entry_data.pop("suppress_entry_reload", None)
             # Reload explicitly so the abort is shown to the user only AFTER
             # the integration is running with the new Host inverter — gives
             # deterministic completion ordering for the reconfigure flow.
