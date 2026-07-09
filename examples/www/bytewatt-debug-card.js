@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "008";
+const BYTEWATT_DEBUG_CARD_BUILD = "009";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -149,6 +149,101 @@ class ByteWattDebugCard extends HTMLElement {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
     const pad = (number) => String(number).padStart(2, "0");
     return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+  }
+
+  _parseFloat(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  _valueAtPath(value, path) {
+    let current = value;
+    for (const segment of path) {
+      if (current == null || typeof current !== "object" || !(segment in current)) {
+        return undefined;
+      }
+      current = current[segment];
+    }
+    return current;
+  }
+
+  _recordValue(record, paths = []) {
+    for (const path of paths) {
+      const value = this._valueAtPath(record, path);
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  _recordFloat(record, paths = []) {
+    return this._parseFloat(this._recordValue(record, paths));
+  }
+
+  _aggregateHistoryRecords(records) {
+    const aggregate = {
+      count: 0,
+      first_date: "",
+      latest_date: "",
+      latest_saved_at: "",
+      live_soc: 0,
+      solar_generation_today: 0,
+      load_consumption_today: 0,
+      feed_in_today: 0,
+      grid_consumption_today: 0,
+      battery_charged_today: 0,
+      battery_discharged_today: 0,
+      total_solar_generation: 0,
+      total_feed_in: 0,
+      total_battery_charge: 0,
+      total_battery_discharge: 0,
+      total_house_consumption: 0,
+      total_grid_consumption: 0,
+      pv_power_house: 0,
+      pv_charging_battery: 0,
+      grid_battery_charge: 0,
+    };
+
+    const firstRecord = records[0] || {};
+    const latestRecord = records[records.length - 1] || {};
+
+    records.forEach((record) => {
+      aggregate.count += 1;
+      if (!aggregate.first_date) {
+        aggregate.first_date = record.reporting_date || record.record_date || "";
+      }
+      aggregate.latest_date = record.reporting_date || record.record_date || aggregate.latest_date;
+      aggregate.latest_saved_at = record.saved_at || aggregate.latest_saved_at;
+      aggregate.solar_generation_today += this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]);
+      aggregate.load_consumption_today += this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]);
+      aggregate.feed_in_today += this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]);
+      aggregate.grid_consumption_today += this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]);
+      aggregate.battery_charged_today += this._recordFloat(record, [["battery_charged_today"], ["today", "battery_charge"]]);
+      aggregate.battery_discharged_today += this._recordFloat(record, [["battery_discharged_today"], ["today", "battery_discharge"]]);
+    });
+
+    const periodDelta = (paths) => {
+      const start = this._recordFloat(firstRecord, paths);
+      const end = this._recordFloat(latestRecord, paths);
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        return Math.max(end - start, 0);
+      }
+      return end || 0;
+    };
+
+    aggregate.live_soc = this._recordFloat(latestRecord, [["live_soc"], ["live", "soc"]]);
+    aggregate.total_solar_generation = periodDelta([["total_solar_generation"], ["totals", "solar_generation"]]);
+    aggregate.total_feed_in = periodDelta([["total_feed_in"], ["totals", "feed_in"]]);
+    aggregate.total_battery_charge = periodDelta([["total_battery_charge"], ["totals", "battery_charge"]]);
+    aggregate.total_battery_discharge = periodDelta([["total_battery_discharge"], ["totals", "battery_discharge"]]);
+    aggregate.total_house_consumption = periodDelta([["total_house_consumption"], ["totals", "house_consumption"]]);
+    aggregate.total_grid_consumption = periodDelta([["total_grid_consumption"], ["totals", "grid_consumption"]]);
+    aggregate.pv_power_house = periodDelta([["pv_power_house"], ["totals", "pv_power_house"]]);
+    aggregate.pv_charging_battery = periodDelta([["pv_charging_battery"], ["totals", "pv_charging_battery"]]);
+    aggregate.grid_battery_charge = periodDelta([["grid_battery_charge"], ["totals", "grid_battery_charge"]]);
+
+    return aggregate;
   }
 
   _periodWindow(anchor, period = this._debugPeriod) {
