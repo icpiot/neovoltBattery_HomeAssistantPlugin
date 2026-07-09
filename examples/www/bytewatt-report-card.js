@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "225";
+const BYTEWATT_REPORT_CARD_BUILD = "226";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2388,8 +2388,8 @@ class ByteWattReportCard extends HTMLElement {
     const activeSeries = seriesMeta.filter((item) => visibility[item.key]);
     const chartMax = Math.max(1, ...((activeSeries.length ? activeSeries : seriesMeta).flatMap((item) => item.values)));
     const width = 860;
-    const height = 320;
-    const padding = { top: 28, right: 20, bottom: 42, left: 54 };
+    const height = 334;
+    const padding = { top: 34, right: 24, bottom: 52, left: 60 };
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
@@ -3587,6 +3587,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
+          padding-bottom:14px;
         }
         .chart-toolbar {
           display:grid;
@@ -3596,7 +3597,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-          padding-bottom:4px;
+          padding:2px 2px 10px;
           display:grid;
           gap:10px;
         }
@@ -3606,6 +3607,7 @@ class ByteWattReportCard extends HTMLElement {
           display:block;
           background:#fff;
           border-radius:18px;
+          overflow:visible;
         }
         .chart-hover-card {
           border-radius:18px;
@@ -3663,17 +3665,18 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.16;
+          fill-opacity:0.02;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.16; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.14; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.025; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.025; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.025; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.025; }
         .series-line {
           fill:none;
-          stroke-width:2.6;
+          stroke-width:3;
           stroke-linecap:round;
           stroke-linejoin:round;
+          vector-effect:non-scaling-stroke;
         }
         .series-marker {
           fill:#fff;
