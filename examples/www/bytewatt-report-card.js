@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "211";
+const BYTEWATT_REPORT_CARD_BUILD = "212";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -23,6 +23,7 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureStatus = this._historyEnsureStatus || "";
     this._historyEnsureState = this._historyEnsureState || "";
     this._historyEnsureRunId = this._historyEnsureRunId || 0;
+    this._historySyncLoading = this._historySyncLoading || false;
   }
 
   set hass(hass) {
@@ -535,20 +536,26 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   async _syncSelectedHistory() {
-    if (this._reportPeriod === "today") {
-      this._historyEnsureLoading = false;
-      this._historyEnsureState = "live";
-      this._historyEnsureStatus = "Today uses live reporting";
-      this.render();
-      return;
-    }
-    if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
-      await this._reloadHistory();
-    }
-    if (this._historyConfigured()) {
-      await this._ensureSelectedPeriodHistory();
-    } else {
-      this.render();
+    if (this._historySyncLoading) return;
+    this._historySyncLoading = true;
+    try {
+      if (this._reportPeriod === "today") {
+        this._historyEnsureLoading = false;
+        this._historyEnsureState = "live";
+        this._historyEnsureStatus = "Today uses live reporting";
+        this.render();
+        return;
+      }
+      if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
+        await this._reloadHistory();
+      }
+      if (this._historyConfigured()) {
+        await this._ensureSelectedPeriodHistory();
+      } else {
+        this.render();
+      }
+    } finally {
+      this._historySyncLoading = false;
     }
   }
 
@@ -2124,7 +2131,7 @@ class ByteWattReportCard extends HTMLElement {
     if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
       this._ensureHistoryLoaded();
     }
-    if (this._historyConfigured() && this._historyData && !this._historyLoading) {
+    if (this._historyConfigured() && this._historyData && !this._historyLoading && !this._historyEnsureLoading && !this._historySyncLoading) {
       this._syncSelectedHistory();
     }
     const periodContext = this._buildPeriodReporting(baseReporting);
