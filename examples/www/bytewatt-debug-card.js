@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "007";
+const BYTEWATT_DEBUG_CARD_BUILD = "008";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -15,6 +15,11 @@ class ByteWattDebugCard extends HTMLElement {
     const saved = this._loadDebugState();
     this._debugPeriod = saved.period || this._debugPeriod || "day";
     this._debugAnchorDate = saved.anchor || this._debugAnchorDate || "";
+    this._historyPeriod = saved.historyPeriod || this._historyPeriod || "7d";
+    this._historyLoading = this._historyLoading || false;
+    this._historyData = this._historyData || null;
+    this._historyLoadError = this._historyLoadError || "";
+    this._historySourceKey = this._historySourceKey || "";
   }
 
   set hass(hass) {
@@ -50,6 +55,7 @@ class ByteWattDebugCard extends HTMLElement {
         JSON.stringify({
           period: this._debugPeriod || "day",
           anchor: this._debugAnchorDate || "",
+          historyPeriod: this._historyPeriod || "7d",
         }),
       );
     } catch (_err) {
@@ -155,6 +161,10 @@ class ByteWattDebugCard extends HTMLElement {
     } else if (period === "month") {
       start.setDate(1);
       end.setMonth(start.getMonth() + 1, 0);
+    } else if (period === "quarter") {
+      const quarterStartMonth = Math.floor(start.getMonth() / 3) * 3;
+      start.setMonth(quarterStartMonth, 1);
+      end.setMonth(quarterStartMonth + 3, 0);
     }
     return { start, end };
   }
@@ -165,19 +175,33 @@ class ByteWattDebugCard extends HTMLElement {
       shifted.setDate(shifted.getDate() + step * 7);
     } else if (period === "month") {
       shifted.setMonth(shifted.getMonth() + step);
+    } else if (period === "quarter") {
+      shifted.setMonth(shifted.getMonth() + step * 3);
     } else {
       shifted.setDate(shifted.getDate() + step);
     }
     return shifted;
   }
 
+  _todayLocalDate() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  _clampDateToToday(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return this._todayLocalDate();
+    const today = this._todayLocalDate();
+    const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return current > today ? today : current;
+  }
+
   _clampAnchor(anchor) {
     const latest = this._parseLocalDate(this._reporting()?.power_diagram?.date)
       || this._parseLocalDate(this._reporting()?.reporting_date)
       || this._parseLocalDate(this._reporting()?.meta?.reporting_date)
-      || new Date();
+      || this._todayLocalDate();
     if (!anchor) return latest;
-    return anchor > latest ? latest : anchor;
+    return this._clampDateToToday(anchor > latest ? latest : anchor);
   }
 
   _debugAnchor() {
@@ -185,7 +209,7 @@ class ByteWattDebugCard extends HTMLElement {
       || this._parseLocalDate(this._reporting()?.power_diagram?.date)
       || this._parseLocalDate(this._reporting()?.reporting_date)
       || this._parseLocalDate(this._reporting()?.meta?.reporting_date)
-      || new Date();
+      || this._todayLocalDate();
   }
 
   _debugRange() {
@@ -196,6 +220,469 @@ class ByteWattDebugCard extends HTMLElement {
       window,
       displayDate: this._formatLocalDate(anchor),
     };
+  }
+
+  _historyConfigured() {
+    const history = this._history();
+    return Boolean(history?.enabled || history?.base_url || history?.entry_id);
+  }
+
+  _historyEntryId() {
+    return String(this._history()?.entry_id || "").trim();
+  }
+
+  _historyUrl() {
+    const history = this._history();
+    const explicitBase = String(history?.base_url || "").trim();
+    const entryId = String(history?.entry_id || "").trim();
+    const base = explicitBase
+      ? explicitBase.replace(/\/+$/, "")
+      : entryId
+        ? `/local/bytewatt-history/${entryId}`
+        : "";
+    if (!base) return "";
+    return `${base}/history.json`;
+  }
+
+  _historyBackfillDays() {
+    const history = this._history();
+    const rawDays = Number(history?.backfill_days ?? 0);
+    if (Number.isFinite(rawDays) && rawDays > 0) return Math.max(1, Math.floor(rawDays));
+    const rawYears = Number(history?.backfill_years ?? 0);
+    if (Number.isFinite(rawYears) && rawYears > 0) return Math.max(1, Math.floor(rawYears * 365));
+    return 365;
+  }
+
+  _localHistoryKey() {
+    const entity = String(this._config?.settings_target || "bytewatt").replace(/[^A-Za-z0-9_.-]+/g, "_");
+    return `bytewatt-debug-history:${entity}`;
+  }
+
+  _readLocalHistory() {
+    try {
+      const raw = window.localStorage?.getItem(this._localHistoryKey());
+      if (!raw) return { scopes: {} };
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : { scopes: {} };
+    } catch (_err) {
+      return { scopes: {} };
+    }
+  }
+
+  _mergeSnapshotPayload(base, incoming) {
+    const merged = {
+      ...(base && typeof base === "object" ? base : {}),
+      ...(incoming && typeof incoming === "object" ? incoming : {}),
+    };
+    const baseScopes = base?.scopes && typeof base.scopes === "object" ? base.scopes : {};
+    const incomingScopes = incoming?.scopes && typeof incoming.scopes === "object" ? incoming.scopes : {};
+    const scopes = { ...baseScopes };
+    Object.entries(incomingScopes).forEach(([scopeKey, scopeValue]) => {
+      const current = scopes[scopeKey] || {};
+      const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
+      const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+      const currentMissing = current.missing_dates && typeof current.missing_dates === "object" ? current.missing_dates : {};
+      const incomingMissing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
+      scopes[scopeKey] = {
+        ...current,
+        ...scopeValue,
+        records: {
+          ...currentRecords,
+          ...incomingRecords,
+        },
+        missing_dates: {
+          ...currentMissing,
+          ...incomingMissing,
+        },
+      };
+    });
+    merged.scopes = scopes;
+    return merged;
+  }
+
+  _writeLocalHistory(data) {
+    try {
+      const merged = this._mergeSnapshotPayload(this._readLocalHistory(), data);
+      window.localStorage?.setItem(this._localHistoryKey(), JSON.stringify(merged));
+    } catch (_err) {
+      // Storage can be unavailable; remote history remains the source of truth.
+    }
+  }
+
+  _historyScopes() {
+    const localScopes = this._readLocalHistory()?.scopes;
+    const remoteScopes = this._historyData?.scopes;
+    const mergeScopes = (source, target) => {
+      const merged = { ...(target || {}) };
+      Object.entries(source || {}).forEach(([scopeKey, scopeValue]) => {
+        const current = merged[scopeKey] || {};
+        const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
+        const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+        const currentMissing = current.missing_dates && typeof current.missing_dates === "object" ? current.missing_dates : {};
+        const incomingMissing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
+        merged[scopeKey] = {
+          ...current,
+          ...scopeValue,
+          records: {
+            ...currentRecords,
+            ...incomingRecords,
+          },
+          missing_dates: {
+            ...currentMissing,
+            ...incomingMissing,
+          },
+        };
+      });
+      return merged;
+    };
+    return mergeScopes(localScopes, mergeScopes(remoteScopes, {}));
+  }
+
+  _historyScopeKey() {
+    const history = this._history();
+    const reportAttrs = this._reportAttrs();
+    const selectorAttrs = this._attrs();
+    return String(history.current_scope || reportAttrs.current_scope || selectorAttrs.current_scope || "all").trim() || "all";
+  }
+
+  _historyScopeData() {
+    const scopes = this._historyScopes();
+    const requested = this._historyScopeKey();
+    if (scopes?.[requested]?.records) {
+      return { requested, key: requested, scope: scopes[requested], fallback: false };
+    }
+    return {
+      requested,
+      key: requested,
+      scope: scopes?.[requested] || null,
+      fallback: false,
+    };
+  }
+
+  _historyRange(records) {
+    const dates = (records || [])
+      .map((record) => this._parseLocalDate(record?.record_date))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+    if (!dates.length) return { first: "", latest: "" };
+    return {
+      first: this._formatLocalDate(dates[0]),
+      latest: this._formatLocalDate(dates[dates.length - 1]),
+    };
+  }
+
+  _historyRecordWindow(recordDates) {
+    const dates = (recordDates || [])
+      .map((item) => new Date(`${item}T00:00:00`))
+      .filter((item) => !Number.isNaN(item.getTime()))
+      .sort((a, b) => a - b);
+    if (!dates.length) return [];
+    if (this._historyPeriod === "all") return dates;
+    const end = dates[dates.length - 1];
+    const start = new Date(end.getTime());
+    start.setDate(start.getDate() - (this._historyPeriodDays() - 1));
+    return dates.filter((item) => item >= start && item <= end);
+  }
+
+  _historyPeriodDays() {
+    return this._historyPeriod === "30d" ? 30 : this._historyPeriod === "all" ? 3650 : 7;
+  }
+
+  _historyRecords() {
+    const scopeInfo = this._historyScopeData();
+    const data = scopeInfo.scope?.records || {};
+    return Object.entries(data).map(([recordDate, reporting]) => {
+      const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
+      const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
+      const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
+      return {
+        ...(reporting || {}),
+        record_date: normalizedDate,
+        record_date_display: displayDate,
+        record_date_raw: String(recordDate || ""),
+        history_scope: scopeInfo.key,
+        requested_scope: scopeInfo.requested,
+      };
+    });
+  }
+
+  _selectedHistoryRecords() {
+    const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+    if (!records.length) return [];
+    const windowDates = this._historyRecordWindow(records.map((record) => record.record_date));
+    if (!windowDates.length) return records;
+    const allowed = new Set(windowDates.map((date) => date.toISOString().slice(0, 10)));
+    return records.filter((record) => allowed.has(record.record_date));
+  }
+
+  _historyScopeSummaries() {
+    const scopes = this._historyScopes();
+    const expectedCount = this._historyBackfillDays();
+    const today = this._todayLocalDate();
+    const expectedStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    expectedStart.setDate(expectedStart.getDate() - (expectedCount - 1));
+    const inventoryScopes = Array.isArray(this._history()?.inventory_scopes) ? this._history().inventory_scopes : [];
+    const merged = new Map();
+    const addScope = (scopeKey, label, aggregate) => {
+      const current = merged.get(scopeKey) || {
+        scope_key: scopeKey,
+        label: String(label || scopeKey || "all"),
+        aggregate: Boolean(aggregate),
+        stored_count: 0,
+        missing_count: 0,
+        known_count: 0,
+        expected_count: expectedCount,
+        remaining_count: expectedCount,
+        coverage_label: `0/${expectedCount}`,
+        first_date: "",
+        latest_date: "",
+        active: false,
+      };
+      current.label = String(label || current.label || scopeKey || "all");
+      current.aggregate = Boolean(aggregate);
+      merged.set(scopeKey, current);
+    };
+    addScope("all", "All systems", true);
+    inventoryScopes.forEach((scope) => addScope(String(scope?.scope_key || scope?.key || scope?.value || ""), scope?.label || scope?.name || scope?.scope_key || scope?.key || "System", scope?.aggregate ?? false));
+    Object.entries(scopes || {}).forEach(([scopeKey, scopeValue]) => {
+      addScope(scopeKey, scopeValue?.label || scopeValue?.name || scopeKey, Boolean(scopeValue?.aggregate));
+      const current = merged.get(scopeKey);
+      const recordDates = Object.keys(scopeValue?.records || {}).sort();
+      const missingDates = Object.keys(scopeValue?.missing_dates || {}).sort();
+      const knownCount = new Set([...recordDates, ...missingDates]).size;
+      const storedCount = recordDates.length;
+      const missingCount = missingDates.length;
+      const remainingCount = Math.max(expectedCount - knownCount, 0);
+      const range = this._historyRange(recordDates.map((record_date) => ({ record_date })));
+      current.stored_count = storedCount;
+      current.missing_count = missingCount;
+      current.known_count = knownCount;
+      current.expected_count = expectedCount;
+      current.remaining_count = remainingCount;
+      current.coverage_label = `${knownCount}/${expectedCount}`;
+      current.first_date = range.first;
+      current.latest_date = range.latest;
+      current.active = scopeKey === this._historyScopeKey();
+    });
+    if (!merged.has(this._historyScopeKey())) {
+      const scopeValue = scopes?.[this._historyScopeKey()] || {};
+      const recordDates = Object.keys(scopeValue?.records || {}).sort();
+      const missingDates = Object.keys(scopeValue?.missing_dates || {}).sort();
+      const knownCount = new Set([...recordDates, ...missingDates]).size;
+      const storedCount = recordDates.length;
+      const missingCount = missingDates.length;
+      const remainingCount = Math.max(expectedCount - knownCount, 0);
+      const range = this._historyRange(recordDates.map((record_date) => ({ record_date })));
+      merged.set(this._historyScopeKey(), {
+        scope_key: this._historyScopeKey(),
+        label: this._historyScopeKey(),
+        aggregate: this._historyScopeKey() === "all",
+        stored_count: storedCount,
+        missing_count: missingCount,
+        known_count: knownCount,
+        expected_count: expectedCount,
+        remaining_count: remainingCount,
+        coverage_label: `${knownCount}/${expectedCount}`,
+        first_date: range.first,
+        latest_date: range.latest,
+        active: true,
+      });
+    }
+    return Array.from(merged.values()).sort((a, b) => {
+      if (a.scope_key === "all") return -1;
+      if (b.scope_key === "all") return 1;
+      return String(a.label).localeCompare(String(b.label));
+    });
+  }
+
+  _historyButton(label, value) {
+    return `<button class="history-pill ${this._historyPeriod === value ? "active" : ""}" data-history-period="${value}">${label}</button>`;
+  }
+
+  _fmtNumber(value, digits = 1) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "Unavailable";
+    return number
+      .toFixed(digits)
+      .replace(/\.0+$/, "")
+      .replace(/(\.\d*[1-9])0+$/, "$1");
+  }
+
+  _fmtEnergy(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "Unavailable";
+    return `${this._fmtNumber(number, 1)} kWh`;
+  }
+
+  _fmtPercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "Unavailable";
+    return `${this._fmtNumber(number, 1)} %`;
+  }
+
+  _renderHistoryPanel() {
+    if (!this._historyConfigured()) return "";
+    const records = this._selectedHistoryRecords();
+    const summary = this._aggregateHistoryRecords(records);
+    const scopeSummaries = this._historyScopeSummaries();
+    const loading = this._historyLoading && !this._historyData;
+    const error = this._historyLoadError;
+    const formatHistoryDate = (value) => {
+      const parsed = this._parseLocalDate(value);
+      return parsed ? this._formatDisplayDate(parsed) : String(value || "");
+    };
+    const rowCount = Math.min(records.length, 10);
+    const rows = records
+      .slice(-rowCount)
+      .map((record) => {
+        const rowDate = record.record_date_display || record.record_date || "Unknown";
+        const solar = record?.today?.solar_generation ?? record?.solar_generation_today ?? 0;
+        const load = record?.today?.load_consumption ?? record?.load_consumption_today ?? 0;
+        const feed = record?.today?.feed_in ?? record?.feed_in_today ?? 0;
+        const grid = record?.today?.grid_consumption ?? record?.grid_consumption_today ?? 0;
+        const charge = record?.today?.battery_charge ?? record?.battery_charged_today ?? 0;
+        const discharge = record?.today?.battery_discharge ?? record?.battery_discharged_today ?? 0;
+        return `
+          <tr>
+            <td>${this._escape(rowDate)}</td>
+            <td>${this._escape(this._fmtEnergy(solar))}</td>
+            <td>${this._escape(this._fmtEnergy(load))}</td>
+            <td>${this._escape(this._fmtEnergy(feed))}</td>
+            <td>${this._escape(this._fmtEnergy(grid))}</td>
+            <td>${this._escape(this._fmtEnergy(charge))}</td>
+            <td>${this._escape(this._fmtEnergy(discharge))}</td>
+          </tr>
+        `;
+      })
+      .join("");
+    return `
+      <div class="panel history-panel">
+        <div class="panel-header">
+          <div class="panel-title">Local Archive</div>
+          <div class="panel-date">
+            ${this._escape(summary.first_date ? `${formatHistoryDate(summary.first_date)} -> ${formatHistoryDate(summary.latest_date || summary.first_date)}` : this._historyUrl())}
+          </div>
+        </div>
+        <div class="history-controls">
+          ${this._historyButton("7 days", "7d")}
+          ${this._historyButton("30 days", "30d")}
+          ${this._historyButton("All", "all")}
+        </div>
+        ${
+          scopeSummaries.length
+            ? `
+              <div class="history-overview">
+                <div class="history-overview-head">
+                  <div class="history-overview-title">Archive Coverage Overview</div>
+                  <div class="history-overview-subtitle">Stored rows vs the configured ${this._historyBackfillDays()} day history horizon</div>
+                </div>
+                <div class="history-overview-grid">
+                  ${scopeSummaries
+                    .map(
+                      (scope) => `
+                        <div class="history-overview-card ${scope.active ? "active" : ""}">
+                          <div class="history-overview-card-head">
+                            <div class="history-overview-card-title">${this._escape(scope.label)}</div>
+                            <div class="history-overview-card-badge">${this._escape(scope.coverage_label)}</div>
+                          </div>
+                          <div class="history-overview-card-meta">stored ${scope.stored_count} | missing ${scope.missing_count} | remaining ${scope.remaining_count}</div>
+                          <div class="history-overview-card-meta">${this._escape(scope.first_date && scope.latest_date ? `${formatHistoryDate(scope.first_date)} -> ${formatHistoryDate(scope.latest_date)}` : "No stored rows yet")}</div>
+                        </div>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              </div>
+            `
+            : ""
+        }
+        ${
+          loading
+            ? `<div class="empty">Loading local history from ${this._escape(this._historyUrl())}...</div>`
+            : error
+              ? `<div class="empty">Local history unavailable: ${this._escape(error)}</div>`
+              : records.length
+                ? `
+                  <div class="history-summary">
+                    ${this._metric("Records", summary.count)}
+                    ${this._metric("Latest Date", this._escape(summary.latest_date ? formatHistoryDate(summary.latest_date) : "Unavailable"))}
+                    ${this._metric("Solar", this._fmtEnergy(summary.solar_generation_today))}
+                    ${this._metric("Load", this._fmtEnergy(summary.load_consumption_today))}
+                    ${this._metric("Feed-in", this._fmtEnergy(summary.feed_in_today))}
+                    ${this._metric("Grid", this._fmtEnergy(summary.grid_consumption_today))}
+                  </div>
+                  <div class="history-summary">
+                    ${this._metric("Battery Charge", this._fmtEnergy(summary.battery_charged_today))}
+                    ${this._metric("Battery Discharge", this._fmtEnergy(summary.battery_discharged_today))}
+                    ${this._metric("PV to House", this._fmtEnergy(summary.pv_power_house))}
+                    ${this._metric("PV to Battery", this._fmtEnergy(summary.pv_charging_battery))}
+                    ${this._metric("Grid to Battery", this._fmtEnergy(summary.grid_battery_charge))}
+                    ${this._metric("SOC", this._fmtPercent(summary.live_soc))}
+                  </div>
+                  <div class="history-table-head">
+                    <div class="history-table-title">Archive Inspector</div>
+                    <div class="history-table-subtitle">Latest ${rowCount} row(s) for the selected scope</div>
+                  </div>
+                  <div class="history-table-wrap">
+                    <table class="history-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Solar</th>
+                          <th>Load</th>
+                          <th>Feed-in</th>
+                          <th>Grid</th>
+                          <th>Charge</th>
+                          <th>Discharge</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${rows}
+                      </tbody>
+                    </table>
+                  </div>
+                `
+                : `<div class="empty">No history rows loaded for the current scope.</div>`
+        }
+      </div>
+    `;
+  }
+
+  _metric(label, value) {
+    return `
+      <div class="metric">
+        <div class="metric-label">${this._escape(label)}</div>
+        <div class="metric-value">${this._escape(value)}</div>
+      </div>
+    `;
+  }
+
+  async _reloadHistory() {
+    const url = this._historyUrl();
+    if (!url || this._historyLoading) return;
+    this._historyLoading = true;
+    this._historyLoadError = "";
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      this._historyData = data;
+      this._writeLocalHistory(data);
+    } catch (error) {
+      const cached = this._readLocalHistory();
+      if (cached && cached.scopes && Object.keys(cached.scopes).length) {
+        this._historyData = cached;
+        this._historyLoadError = "";
+      } else {
+        this._historyLoadError = String(error?.message || error);
+        this._historyData = null;
+      }
+    } finally {
+      this._historyLoading = false;
+      this.render();
+    }
   }
 
   async _copyText(text, label) {
@@ -252,6 +739,9 @@ class ByteWattDebugCard extends HTMLElement {
       await this._hass.callService("bytewatt", "ensure_report_history", payload);
       this._status = `Archive probe sent for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
       this._statusKind = "success";
+      if (this._historyConfigured()) {
+        await this._reloadHistory();
+      }
     } catch (err) {
       this._status = `Archive probe failed: ${String(err?.message || err)}`;
       this._statusKind = "error";
@@ -270,10 +760,21 @@ class ByteWattDebugCard extends HTMLElement {
     const reporting = this._reporting();
     const history = this._history();
     const reportingMeta = reporting.meta || {};
+    const historyKey = `${this._historyUrl()}|${this._historyScopeKey()}`;
+    if (historyKey !== this._historySourceKey) {
+      this._historySourceKey = historyKey;
+      this._historyData = null;
+      this._historyLoadError = "";
+    }
+    if (this._historyConfigured() && !this._historyData && !this._historyLoading) {
+      this._reloadHistory();
+    }
     const historyUrl = history.base_url || history.url || "";
     const statusClass = this._statusKind;
     const range = this._debugRange();
     const rangeLabel = `${this._formatDisplayDate(range.window.start)} to ${this._formatDisplayDate(range.window.end)}`;
+    const showShiftControls = this._debugPeriod !== "today";
+    const todayValue = this._formatLocalDate(this._todayLocalDate());
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -349,6 +850,10 @@ class ByteWattDebugCard extends HTMLElement {
         .button.secondary {
           color: #334155;
           border-color: rgba(100, 116, 139, 0.22);
+        }
+        .button.secondary.shift-button {
+          min-width: 40px;
+          padding-inline: 10px;
         }
         .controls {
           display: grid;
@@ -457,6 +962,165 @@ class ByteWattDebugCard extends HTMLElement {
           line-height: 1.45;
           white-space: pre;
         }
+        .history-panel {
+          display: grid;
+          gap: 12px;
+        }
+        .panel-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .panel-date {
+          color: var(--muted);
+          font-size: 0.86rem;
+          font-weight: 700;
+        }
+        .history-controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .history-pill {
+          border: 1px solid rgba(47, 117, 216, 0.18);
+          background: #f4f7fb;
+          color: #475569;
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .history-pill.active {
+          background: #101828;
+          color: #fff;
+          border-color: #101828;
+        }
+        .history-overview {
+          border: 1px solid rgba(47, 117, 216, 0.12);
+          background: #fbfcff;
+          border-radius: 16px;
+          padding: 12px;
+          display: grid;
+          gap: 12px;
+        }
+        .history-overview-head,
+        .history-table-head {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .history-overview-title,
+        .history-table-title {
+          font-weight: 900;
+          font-size: 0.92rem;
+        }
+        .history-overview-subtitle,
+        .history-table-subtitle {
+          color: var(--muted);
+          font-size: 0.78rem;
+          font-weight: 700;
+        }
+        .history-overview-grid {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        }
+        .history-overview-card {
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          background: #fff;
+          padding: 10px 12px;
+          display: grid;
+          gap: 6px;
+        }
+        .history-overview-card.active {
+          border-color: rgba(47, 117, 216, 0.35);
+          box-shadow: inset 0 0 0 1px rgba(47, 117, 216, 0.12);
+        }
+        .history-overview-card-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .history-overview-card-title {
+          font-weight: 900;
+          font-size: 0.88rem;
+        }
+        .history-overview-card-badge {
+          font-size: 0.75rem;
+          font-weight: 900;
+          color: #1d4f91;
+          background: #eef5ff;
+          border-radius: 999px;
+          padding: 3px 8px;
+        }
+        .history-overview-card-meta {
+          font-size: 0.76rem;
+          font-weight: 700;
+          color: var(--muted);
+        }
+        .history-summary {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        }
+        .metric {
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          background: #fff;
+          padding: 10px 12px;
+          display: grid;
+          gap: 4px;
+        }
+        .metric-label {
+          color: var(--muted);
+          font-size: 0.76rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .metric-value {
+          font-size: 0.92rem;
+          font-weight: 900;
+          color: var(--text);
+        }
+        .history-table-wrap {
+          overflow: auto;
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          background: #fff;
+        }
+        .history-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 560px;
+          font-size: 0.82rem;
+        }
+        .history-table th,
+        .history-table td {
+          padding: 9px 10px;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+          text-align: left;
+          white-space: nowrap;
+        }
+        .history-table th {
+          background: #f8fafc;
+          color: var(--muted);
+          font-weight: 900;
+        }
+        .empty {
+          border: 1px dashed rgba(100, 116, 139, 0.3);
+          border-radius: 14px;
+          padding: 14px;
+          color: var(--muted);
+          background: #fafbfc;
+          font-weight: 700;
+        }
       </style>
       <ha-card>
         <div class="shell">
@@ -479,15 +1143,18 @@ class ByteWattDebugCard extends HTMLElement {
                 <button class="period-button ${this._debugPeriod === "day" ? "active" : ""}" type="button" data-debug-period="day">Day</button>
                 <button class="period-button ${this._debugPeriod === "week" ? "active" : ""}" type="button" data-debug-period="week">Week</button>
                 <button class="period-button ${this._debugPeriod === "month" ? "active" : ""}" type="button" data-debug-period="month">Month</button>
+                <button class="period-button ${this._debugPeriod === "quarter" ? "active" : ""}" type="button" data-debug-period="quarter">Quarter</button>
               </div>
               <div class="control-row">
-                <input class="date-input" type="date" data-debug-date value="${this._escape(range.displayDate)}" />
-                <button class="button secondary" type="button" data-debug-shift="-1">&lt;</button>
-                <button class="button secondary" type="button" data-debug-shift="1">&gt;</button>
+                <input class="date-input" type="date" data-debug-date value="${this._escape(range.displayDate)}" max="${this._escape(todayValue)}" />
+                ${showShiftControls ? `<button class="button secondary shift-button" type="button" data-debug-shift="-1">&lt;</button>` : ""}
+                ${showShiftControls ? `<button class="button secondary shift-button" type="button" data-debug-shift="1">&gt;</button>` : ""}
                 <span class="range-pill">${this._escape(rangeLabel)}</span>
               </div>
             </div>
           </div>
+
+          ${this._renderHistoryPanel()}
 
           <div class="grid">
             <div class="panel">
@@ -557,12 +1224,16 @@ class ByteWattDebugCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-debug-period]").forEach((item) => {
       item.onclick = () => {
         this._debugPeriod = item.getAttribute("data-debug-period") || "day";
+        if (this._debugPeriod === "today") {
+          this._debugAnchorDate = this._formatLocalDate(this._todayLocalDate());
+        }
         this._saveDebugState();
         this.render();
       };
     });
     this.shadowRoot.querySelector("[data-debug-date]")?.addEventListener("change", (event) => {
-      this._debugAnchorDate = String(event.target.value || "").trim();
+      const picked = this._parseLocalDate(String(event.target.value || "").trim());
+      this._debugAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate()));
       this._saveDebugState();
       this.render();
     });
@@ -570,7 +1241,14 @@ class ByteWattDebugCard extends HTMLElement {
       item.onclick = () => {
         const step = Number(item.getAttribute("data-debug-shift") || 0) || 0;
         const next = this._shiftAnchor(this._debugRange().anchor, this._debugPeriod || "day", step);
-        this._debugAnchorDate = this._formatLocalDate(next);
+        this._debugAnchorDate = this._formatLocalDate(this._clampDateToToday(next));
+        this._saveDebugState();
+        this.render();
+      };
+    });
+    this.shadowRoot.querySelectorAll("[data-history-period]").forEach((item) => {
+      item.onclick = () => {
+        this._historyPeriod = item.getAttribute("data-history-period") || "7d";
         this._saveDebugState();
         this.render();
       };
