@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "210";
+const BYTEWATT_REPORT_CARD_BUILD = "211";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -22,6 +22,7 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureAttemptKey = this._historyEnsureAttemptKey || "";
     this._historyEnsureStatus = this._historyEnsureStatus || "";
     this._historyEnsureState = this._historyEnsureState || "";
+    this._historyEnsureRunId = this._historyEnsureRunId || 0;
   }
 
   set hass(hass) {
@@ -508,6 +509,8 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _resetHistoryEnsureState() {
+    this._historyEnsureRunId += 1;
+    this._historyEnsureLoading = false;
     this._historyEnsureAttemptKey = "";
     this._historyEnsureStatus = "";
     this._historyEnsureState = "";
@@ -550,6 +553,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   async _ensureSelectedPeriodHistory() {
+    const runId = this._historyEnsureRunId;
     const scopeKey = this._historyScopeKey();
     const { anchor, period, window } = this._selectedReportWindow();
     if (period === "today") {
@@ -606,8 +610,10 @@ class ByteWattReportCard extends HTMLElement {
       const entryId = this._historyEntryId();
       if (entryId) payload.entry_id = entryId;
       await this._hass.callService("bytewatt", "ensure_report_history", payload);
+      if (runId !== this._historyEnsureRunId) return;
       this._historyData = null;
       await this._reloadHistory();
+      if (runId !== this._historyEnsureRunId) return;
       const refreshedAvailableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
       const refreshedKnownCount = desiredDates.filter((date) => this._hasKnownHistoryDate(scopeKey, date)).length;
       if (refreshedKnownCount === 0) {
@@ -628,6 +634,7 @@ class ByteWattReportCard extends HTMLElement {
       this._historyEnsureState = "failed";
       this._historyEnsureStatus = "Archive download failed";
     } finally {
+      if (runId !== this._historyEnsureRunId) return;
       this._historyEnsureLoading = false;
       this.render();
     }
