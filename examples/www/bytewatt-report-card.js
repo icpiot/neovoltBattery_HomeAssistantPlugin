@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "244";
+const BYTEWATT_REPORT_CARD_BUILD = "245";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1134,13 +1134,14 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodStatus(records, loading, error, context = {}) {
-    if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
     const selectedCount = Number(context.selected_count ?? (records || []).length) || 0;
     const requestedCount = Number(context.requested_count ?? selectedCount) || 0;
     const missingCount = Number(context.missing_count ?? Math.max(requestedCount - selectedCount, 0)) || 0;
     const ensureStatus = String(context.ensure_status || "").trim();
-    if (ensureStatus) return missingCount > 0 || !selectedCount ? ensureStatus : "";
+    if (selectedCount > 0 && missingCount === 0) return "";
+    if (loading) return "Downloading local archive...";
+    if (ensureStatus) return ensureStatus;
     if (context.live_fallback) return "Live reporting shown while selected period archive catches up";
     if (!selectedCount) {
       return requestedCount > 0
