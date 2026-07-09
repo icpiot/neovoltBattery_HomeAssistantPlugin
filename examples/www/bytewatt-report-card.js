@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "222";
+const BYTEWATT_REPORT_CARD_BUILD = "223";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2165,9 +2165,9 @@ class ByteWattReportCard extends HTMLElement {
   _chartToggleChip(label, tone, key, active) {
     const stateClass = active ? "active" : "inactive";
     return `
-      <button class="legend-chip legend-toggle legend-${tone} ${stateClass}" type="button" data-chart-toggle="${this._escape(key)}" aria-pressed="${active ? "true" : "false"}">
+      <button class="legend-chip legend-toggle legend-${tone} ${stateClass}" type="button" data-chart-toggle="${this._escape(key)}" aria-pressed="${active ? "true" : "false"}" title="${this._escape(label)}">
         <span class="legend-dot"></span>
-        <span>${this._escape(label)}</span>
+        <span class="legend-text">${this._escape(label)}</span>
       </button>
     `;
   }
@@ -2211,8 +2211,11 @@ class ByteWattReportCard extends HTMLElement {
   _chartHoverCardMarkup(state = {}) {
     const title = state.label || "Hover chart";
     const rows = Array.isArray(state.rows) ? state.rows : [];
+    const left = Number.isFinite(state.left) ? `${state.left.toFixed(1)}px` : "16px";
+    const top = Number.isFinite(state.top) ? `${state.top.toFixed(1)}px` : "16px";
+    const visible = state.visible === false ? "0" : "1";
     return `
-      <div class="chart-hover-card" data-chart-hover-card>
+      <div class="chart-hover-card ${state.floating ? "chart-hover-floating" : ""}" data-chart-hover-card style="left:${left}; top:${top}; opacity:${visible};">
         <div class="chart-hover-title">${this._escape(title)}</div>
         ${
           rows.length
@@ -2248,11 +2251,17 @@ class ByteWattReportCard extends HTMLElement {
     this.shadowRoot?.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((row) => {
       row.classList.remove("active");
     });
-    this._setChartHoverCard({ empty: "Hover the chart to inspect values." });
+    this._setChartHoverCard({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false });
   }
 
-  _updatePowerChartHover(index, mode = "daily") {
+  _updatePowerChartHover(index, mode = "daily", coords = null) {
     const model = this._powerChartModel || {};
+    const shell = this.shadowRoot?.querySelector("[data-power-chart-shell]");
+    const shellRect = shell?.getBoundingClientRect?.();
+    const defaultLeft = shellRect ? Math.min(shellRect.width - 280, 18) : 18;
+    const defaultTop = shellRect ? 18 : 18;
+    const left = Number.isFinite(coords?.cardX) ? Math.max(12, Math.min(coords.cardX, shellRect ? shellRect.width - 292 : coords.cardX)) : defaultLeft;
+    const top = Number.isFinite(coords?.cardY) ? Math.max(12, Math.min(coords.cardY, shellRect ? shellRect.height - 132 : coords.cardY)) : defaultTop;
     if (mode === "overview" || model.mode === "overview") {
       const rows = Array.isArray(model.rows) ? model.rows : [];
       const row = rows[index];
@@ -2267,6 +2276,9 @@ class ByteWattReportCard extends HTMLElement {
         label: row.label || "Day",
         rows: hoverRows,
         empty: "No visible series are enabled.",
+        floating: true,
+        left,
+        top,
       });
       this.shadowRoot?.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((item) => {
         item.classList.toggle("active", Number(item.dataset.chartIndex || -1) === index);
@@ -2287,12 +2299,16 @@ class ByteWattReportCard extends HTMLElement {
       label: labels[safeIndex] || `Point ${safeIndex + 1}`,
       rows: hoverRows,
       empty: "All series are hidden.",
+      floating: true,
+      left,
+      top,
     });
     const line = this.shadowRoot?.querySelector("[data-power-hover-line]");
     if (line) {
-      const x = model.width - model.padding.left - model.padding.right;
-      const step = labels.length > 1 ? x / (labels.length - 1) : 0;
-      const cursorX = model.padding.left + safeIndex * step;
+      const x = (Number.isFinite(coords?.chartX) ? coords.chartX : 0);
+      const svgLeft = model.padding.left;
+      const svgRight = model.width - model.padding.right;
+      const cursorX = Math.max(svgLeft, Math.min(x, svgRight));
       line.setAttribute("x1", cursorX.toFixed(1));
       line.setAttribute("x2", cursorX.toFixed(1));
       line.setAttribute("opacity", hoverRows.length ? "1" : "0");
@@ -2339,9 +2355,9 @@ class ByteWattReportCard extends HTMLElement {
     };
     const visibility = this._chartVisibility();
     const seriesMeta = [
-      { key: "solar", label: "Solar", tone: "solar", values: chartValues.solar },
-      { key: "load", label: "Load", tone: "load", values: chartValues.load },
-      { key: "feed", label: "Feed-in", tone: "feed", values: chartValues.feed },
+      { key: "solar", label: "Solar PV", tone: "solar", values: chartValues.solar },
+      { key: "load", label: "House Load", tone: "load", values: chartValues.load },
+      { key: "feed", label: "Grid Feed-in", tone: "feed", values: chartValues.feed },
       { key: "consumed", label: "Consumed", tone: "consumed", values: chartValues.consumed },
     ];
     const activeSeries = seriesMeta.filter((item) => visibility[item.key]);
@@ -2399,7 +2415,6 @@ class ByteWattReportCard extends HTMLElement {
           <div class="chart-toggle-row">
             ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
           </div>
-          ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values." })}
         </div>
         <div class="power-chart-wrap">
           <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
@@ -2415,6 +2430,7 @@ class ByteWattReportCard extends HTMLElement {
             </g>
             ${xLabels}
           </svg>
+          ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
         </div>
       </div>
     `;
@@ -2453,15 +2469,14 @@ class ByteWattReportCard extends HTMLElement {
         <div class="chart-toolbar">
           <div class="chart-toggle-row">
             ${[
-              { key: "solar", label: "Solar", tone: "solar" },
-              { key: "load", label: "Load", tone: "load" },
-              { key: "feed", label: "Feed-in", tone: "feed" },
+              { key: "solar", label: "Solar PV", tone: "solar" },
+              { key: "load", label: "House Load", tone: "load" },
+              { key: "feed", label: "Grid Feed-in", tone: "feed" },
               { key: "grid", label: "Grid", tone: "grid" },
             ]
               .map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key])))
               .join("")}
           </div>
-          ${this._chartHoverCardMarkup({ empty: `Hover a ${this._escape(periodLabel.toLowerCase())} row to inspect values.` })}
         </div>
         ${rows.length
           ? rows
@@ -2483,6 +2498,7 @@ class ByteWattReportCard extends HTMLElement {
               )
               .join("")
           : `<div class="empty">No chart data available for the selected ${this._escape(periodLabel.toLowerCase())}.</div>`}
+        ${this._chartHoverCardMarkup({ empty: `Hover a ${this._escape(periodLabel.toLowerCase())} row to inspect values.`, floating: true, left: 18, top: 18, visible: false })}
       </div>
     `;
   }
@@ -2493,8 +2509,9 @@ class ByteWattReportCard extends HTMLElement {
     const isDaily = this._isDailyPeriod(period);
     const rangeStart = this._formatDisplayDate(periodContext?.window?.start);
     const rangeEnd = this._formatDisplayDate(periodContext?.window?.end);
+    const diagramDate = this._formatDisplayDate(this._parseLocalDate(reporting?.power_diagram?.date || ""));
     const subtitle = isDaily
-      ? this._escape(reporting?.power_diagram?.date || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
+      ? this._escape(diagramDate || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
       : this._escape(rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : "");
     return `
       <section class="panel power-panel">
@@ -3552,6 +3569,7 @@ class ByteWattReportCard extends HTMLElement {
         .power-chart-shell {
           display:grid;
           gap:12px;
+          position:relative;
         }
         .chart-toolbar {
           display:grid;
@@ -3575,12 +3593,20 @@ class ByteWattReportCard extends HTMLElement {
         }
         .chart-hover-card {
           border-radius:18px;
-          border:1px solid #dbe3ec;
-          background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+          border:1px solid rgba(214, 219, 225, 0.92);
+          background:rgba(255,255,255,0.96);
+          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.10);
+          backdrop-filter: blur(8px);
           padding:14px 16px;
           display:grid;
           gap:8px;
+          min-width:240px;
+        }
+        .chart-hover-floating {
+          position:absolute;
+          z-index:4;
+          pointer-events:none;
+          transform:translate(14px, 14px);
         }
         .chart-hover-title {
           font-size:0.88rem;
@@ -3661,12 +3687,13 @@ class ByteWattReportCard extends HTMLElement {
           gap:8px;
           cursor:pointer;
           border:1px solid #d6dbe1;
-          background:#fff;
+          background:#ffffff;
+          color:#22354d;
+          box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
         }
         .chart-toggle-row .legend-toggle.active {
-          background:#111827;
-          color:#fff;
-          border-color:#111827;
+          color:#22354d;
+          box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
         }
         .chart-toggle-row .legend-toggle.inactive {
           opacity:0.72;
@@ -3683,6 +3710,16 @@ class ByteWattReportCard extends HTMLElement {
         .legend-toggle.legend-feed .legend-dot { background:var(--bw-feed); }
         .legend-toggle.legend-grid .legend-dot { background:var(--bw-grid); }
         .legend-toggle.legend-consumed .legend-dot { background:var(--bw-consumed); }
+        .legend-toggle.legend-solar.active { background:#fff8d8; border-color:rgba(240,196,25,0.42); }
+        .legend-toggle.legend-load.active { background:#e8f4ff; border-color:rgba(47,155,232,0.34); }
+        .legend-toggle.legend-feed.active { background:#fff0e4; border-color:rgba(240,138,36,0.30); }
+        .legend-toggle.legend-grid.active { background:#eef2f7; border-color:rgba(152,162,168,0.34); }
+        .legend-toggle.legend-consumed.active { background:#f5eadf; border-color:rgba(211,154,99,0.34); }
+        .legend-text {
+          font-size:0.92rem;
+          font-weight:800;
+          letter-spacing:0.01em;
+        }
         .power-summary-grid .sankey-summary {
           min-height:76px;
         }
@@ -3718,6 +3755,7 @@ class ByteWattReportCard extends HTMLElement {
           max-height:460px;
           overflow:auto;
           padding-right:4px;
+          position:relative;
         }
         .stats-row {
           display:grid;
@@ -4036,12 +4074,15 @@ class ByteWattReportCard extends HTMLElement {
       const svg = chartShell.querySelector("[data-power-chart]");
       const handleDailyMove = (event) => {
         if (!svg || !this._powerChartModel || this._powerChartModel.mode !== "daily") return;
-        const bounds = svg.getBoundingClientRect();
-        if (!bounds.width || !bounds.height) return;
-        const x = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
+        const svgBounds = svg.getBoundingClientRect();
+        const shellBounds = chartShell.getBoundingClientRect();
+        if (!svgBounds.width || !svgBounds.height) return;
+        const chartX = Math.max(0, Math.min(event.clientX - svgBounds.left, svgBounds.width));
+        const cardX = Math.max(0, Math.min(event.clientX - shellBounds.left, shellBounds.width));
+        const cardY = Math.max(0, Math.min(event.clientY - shellBounds.top, shellBounds.height));
         const labels = Array.isArray(this._powerChartModel.labels) ? this._powerChartModel.labels : [];
-        const index = labels.length > 1 ? Math.round((x / bounds.width) * (labels.length - 1)) : 0;
-        this._updatePowerChartHover(index, "daily");
+        const index = labels.length > 1 ? Math.round((chartX / svgBounds.width) * (labels.length - 1)) : 0;
+        this._updatePowerChartHover(index, "daily", { chartX, cardX, cardY });
       };
       svg?.addEventListener("pointermove", handleDailyMove);
       svg?.addEventListener("pointerenter", handleDailyMove);
@@ -4051,8 +4092,14 @@ class ByteWattReportCard extends HTMLElement {
     if (chartShell && model.mode === "overview") {
       chartShell.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((row) => {
         const index = Number(row.dataset.chartIndex || -1);
-        row.addEventListener("pointerenter", () => this._updatePowerChartHover(index, "overview"));
-        row.addEventListener("pointermove", () => this._updatePowerChartHover(index, "overview"));
+        row.addEventListener("pointerenter", (event) => {
+          const bounds = chartShell.getBoundingClientRect();
+          this._updatePowerChartHover(index, "overview", { cardX: event.clientX - bounds.left, cardY: event.clientY - bounds.top });
+        });
+        row.addEventListener("pointermove", (event) => {
+          const bounds = chartShell.getBoundingClientRect();
+          this._updatePowerChartHover(index, "overview", { cardX: event.clientX - bounds.left, cardY: event.clientY - bounds.top });
+        });
         row.addEventListener("pointerleave", () => this._clearPowerChartHover());
       });
     }
