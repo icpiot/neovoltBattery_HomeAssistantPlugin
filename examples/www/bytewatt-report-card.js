@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "253";
+const BYTEWATT_REPORT_CARD_BUILD = "241";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -278,26 +278,11 @@ class ByteWattReportCard extends HTMLElement {
     scopeKeys.forEach((scopeKey) => {
       const scope = history.scopes[scopeKey] || { records: {} };
       scope.records = scope.records || {};
-      const existing = scope.records[liveRecord.record_date] || {};
-      const existingPowerDiagram = existing?.power_diagram || {};
-      const incomingPowerDiagram = reporting?.power_diagram || {};
-      const mergedPowerDiagram = {
-        ...existingPowerDiagram,
-        ...incomingPowerDiagram,
-      };
-      mergedPowerDiagram.series = incomingPowerDiagram.series || existingPowerDiagram.series || {};
-      mergedPowerDiagram.time = incomingPowerDiagram.time || existingPowerDiagram.time || [];
-      if (!mergedPowerDiagram.date) {
-        mergedPowerDiagram.date = liveRecord.record_date;
-      }
       scope.records[liveRecord.record_date] = {
-        ...existing,
         ...reporting,
         reporting_date: liveRecord.record_date,
         record_date: liveRecord.record_date,
-        power_diagram: mergedPowerDiagram,
         meta: {
-          ...(existing?.meta || {}),
           ...(reporting?.meta || {}),
           reporting_date: liveRecord.record_date,
         },
@@ -1149,14 +1134,13 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodStatus(records, loading, error, context = {}) {
+    if (loading) return "Downloading local archive...";
     if (error) return `Archive unavailable: ${error}`;
     const selectedCount = Number(context.selected_count ?? (records || []).length) || 0;
     const requestedCount = Number(context.requested_count ?? selectedCount) || 0;
     const missingCount = Number(context.missing_count ?? Math.max(requestedCount - selectedCount, 0)) || 0;
     const ensureStatus = String(context.ensure_status || "").trim();
-    if (selectedCount > 0 && missingCount === 0) return "";
-    if (loading) return "Downloading local archive...";
-    if (ensureStatus) return ensureStatus;
+    if (ensureStatus) return missingCount > 0 || !selectedCount ? ensureStatus : "";
     if (context.live_fallback) return "Live reporting shown while selected period archive catches up";
     if (!selectedCount) {
       return requestedCount > 0
@@ -1176,18 +1160,9 @@ class ByteWattReportCard extends HTMLElement {
     const liveRecord = this._liveReportingRecord(baseReporting);
     const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
     if (liveRecord?.record_date) {
-      const existing = recordsByDate.get(liveRecord.record_date) || {};
-      const existingPowerDiagram = existing?.power_diagram || {};
-      const incomingPowerDiagram = liveRecord?.power_diagram || {};
       recordsByDate.set(liveRecord.record_date, {
-        ...existing,
+        ...(recordsByDate.get(liveRecord.record_date) || {}),
         ...liveRecord,
-        power_diagram: {
-          ...existingPowerDiagram,
-          ...incomingPowerDiagram,
-          series: incomingPowerDiagram.series || existingPowerDiagram.series || {},
-          time: incomingPowerDiagram.time || existingPowerDiagram.time || [],
-        },
       });
     }
     const records = Array.from(recordsByDate.values());
@@ -1233,22 +1208,13 @@ class ByteWattReportCard extends HTMLElement {
       : this._expandDailyRecords(selected, window);
     if (!selected.length) {
       const fallbackRecord = this._dailyLiveFallbackRecord(baseReporting, anchor, period);
-    if (fallbackRecord) {
-      const fallbackSelected = [fallbackRecord];
-      const fallbackSummary = this._periodSummary(fallbackSelected);
-      const fallbackEnergyModel = this._selectedPeriodEnergyModel(fallbackSelected, fallbackSummary);
-      const fallbackPowerDiagram = {
-        ...(baseReporting?.power_diagram || {}),
-        ...(fallbackRecord?.power_diagram || {}),
-      };
-      fallbackPowerDiagram.series = fallbackRecord?.power_diagram?.series || baseReporting?.power_diagram?.series || {};
-      fallbackPowerDiagram.time = fallbackRecord?.power_diagram?.time || baseReporting?.power_diagram?.time || [];
-      if (!fallbackPowerDiagram.date) {
-        fallbackPowerDiagram.date = this._formatLocalDate(anchor);
-      }
-      this._reportAnchorDate = this._formatLocalDate(anchor);
-      return {
-        reporting: {
+      if (fallbackRecord) {
+        const fallbackSelected = [fallbackRecord];
+        const fallbackSummary = this._periodSummary(fallbackSelected);
+        const fallbackEnergyModel = this._selectedPeriodEnergyModel(fallbackSelected, fallbackSummary);
+        this._reportAnchorDate = this._formatLocalDate(anchor);
+        return {
+          reporting: {
             ...(baseReporting || {}),
             aggregate: false,
             label: baseReporting?.label || "ByteWatt",
@@ -1304,7 +1270,7 @@ class ByteWattReportCard extends HTMLElement {
               period_start: this._formatLocalDate(window.start),
               period_end: this._formatLocalDate(window.end),
             },
-            power_diagram: fallbackPowerDiagram,
+            power_diagram: fallbackRecord?.power_diagram || baseReporting?.power_diagram || {},
             summary: fallbackSummary,
           },
           records: fallbackSelected,
@@ -1426,15 +1392,6 @@ class ByteWattReportCard extends HTMLElement {
       ...periodToday,
     };
     const sankey = { ...energyModel };
-    const powerDiagram = {
-      ...(baseReporting?.power_diagram || {}),
-      ...(latest.power_diagram || {}),
-    };
-    powerDiagram.series = latest.power_diagram?.series || baseReporting?.power_diagram?.series || {};
-    powerDiagram.time = latest.power_diagram?.time || baseReporting?.power_diagram?.time || [];
-    if (!powerDiagram.date) {
-      powerDiagram.date = this._formatLocalDate(anchor);
-    }
     return {
       reporting: {
         ...(baseReporting || {}),
@@ -1464,7 +1421,7 @@ class ByteWattReportCard extends HTMLElement {
           period_start: this._formatLocalDate(window.start),
           period_end: this._formatLocalDate(window.end),
         },
-        power_diagram: powerDiagram,
+        power_diagram: latest.power_diagram || baseReporting?.power_diagram || {},
         summary,
       },
       records: selected,
@@ -2542,9 +2499,10 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
-  _formatChartPower(value) {
+  _formatChartPower(value, unitFactor) {
     const amount = Math.max(Number(value) || 0, 0);
-    return `${this._fmtNumber(amount, 2)} kW`;
+    if (unitFactor === 1000) return `${this._fmtNumber(amount, 2)} kW`;
+    return `${this._fmtNumber(amount, 0)} W`;
   }
 
   _chartHoverCardMarkup(state = {}) {
@@ -2689,7 +2647,7 @@ class ByteWattReportCard extends HTMLElement {
       1,
       ...[...solar, ...load, ...feed, ...consumed].map((value) => Math.max(Number(value) || 0, 0)),
     );
-    const unitFactor = maxSeriesValue > 1000 ? 1000 : 1;
+    const unitFactor = maxSeriesValue > 100 ? 1000 : 1;
     const toChartValue = (value) => Math.max(Number(value) || 0, 0) / unitFactor;
     const chartValues = {
       bat: bat.map((value) => Math.max(Number(value) || 0, 0)),
@@ -2713,7 +2671,7 @@ class ByteWattReportCard extends HTMLElement {
     const width = 860;
     const height = 334;
       const padding = { top: 34, right: 72, bottom: 52, left: 64 };
-    const tickCount = 5;
+    const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
     const viewportWidth = Number(window?.innerWidth) || 1280;
@@ -2753,7 +2711,7 @@ class ByteWattReportCard extends HTMLElement {
       const y = padding.top + (index / tickCount) * (height - padding.top - padding.bottom);
       return `
         <line class="grid" x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" />
-        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, 1)} kW</text>
+        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
       `;
     }).join("");
     const batLabels = [100, 75, 50, 25, 0]
@@ -3194,7 +3152,6 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid var(--bw-border);
           padding:16px 18px;
           box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
-          min-width:0;
         }
         .hero-banner {
           display:grid;
@@ -3385,7 +3342,6 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap:10px;
-          min-width:0;
         }
         .hero-chip {
           background:#f8fafc;
@@ -3489,7 +3445,6 @@ class ByteWattReportCard extends HTMLElement {
           gap:10px;
           align-content:start;
           padding:12px 14px;
-          min-width:0;
         }
         .overview-metrics {
           display:grid;
@@ -3564,7 +3519,6 @@ class ByteWattReportCard extends HTMLElement {
         .stats-grid {
           display:grid;
           gap:14px;
-          min-width:0;
         }
         .summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
         .live-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -3574,12 +3528,10 @@ class ByteWattReportCard extends HTMLElement {
           grid-template-columns: 0.95fr 1.05fr;
           gap:18px;
           align-items:start;
-          min-width:0;
         }
         .stack-grid {
           display:grid;
           gap:18px;
-          min-width:0;
         }
         .panel {
           background:#fff;
@@ -3587,7 +3539,6 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid var(--bw-border);
           padding:18px;
           box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
-          min-width:0;
         }
         .panel-header {
           display:flex;
@@ -3997,7 +3948,6 @@ class ByteWattReportCard extends HTMLElement {
         .power-panel {
           display:grid;
           gap:14px;
-          min-width:0;
         }
         .power-panel {
           width:100%;
@@ -4012,16 +3962,14 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding:18px 24px 20px;
-          margin-inline:8px;
-          width:calc(100% - 16px);
-          max-width:calc(100% - 16px);
+            padding:18px 20px 20px;
+            margin-inline:16px;
+            max-width:calc(100% - 32px);
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
           background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
           box-shadow: 0 14px 32px rgba(47, 155, 232, 0.08), 0 8px 24px rgba(15, 23, 42, 0.05);
-          min-width:0;
         }
         .power-chart-shell::before {
           content:"";
@@ -4036,7 +3984,6 @@ class ByteWattReportCard extends HTMLElement {
           grid-template-columns:minmax(0, 1fr) minmax(240px, 320px);
           gap:12px;
           align-items:start;
-          min-width:0;
         }
         .story-toggle {
           display:inline-flex;
@@ -4181,27 +4128,23 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-          box-sizing:border-box;
-          width:100%;
-          max-width:100%;
-          justify-self:stretch;
-          padding:18px 24px 22px;
-          display:grid;
-          gap:10px;
-          border:1px solid rgba(214, 219, 225, 0.88);
-          border-radius:20px;
+            width:min(100%, calc(100% - 24px));
+            justify-self:center;
+            padding:18px 24px 22px;
+            display:grid;
+            gap:10px;
+            border:1px solid rgba(214, 219, 225, 0.88);
+            border-radius:20px;
           background:
             linear-gradient(180deg, rgba(47,155,232,0.04) 0%, rgba(255,255,255,0.98) 32%, rgba(240,196,25,0.03) 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
-          width:100%;
-          max-width:100%;
-          min-width:0;
-          display:block;
-          background:transparent;
-          border-radius:16px;
-          box-sizing:border-box;
+            width:100%;
+            min-width:0;
+            display:block;
+            background:transparent;
+            border-radius:16px;
           overflow:visible;
         }
         .chart-hover-card {
@@ -4260,20 +4203,19 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.28;
+          fill-opacity:0.16;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.36; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.30; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.24; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.24; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.34; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.20; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.18; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.18; }
         .series-line {
           fill:none;
-          stroke-width:4.6;
+          stroke-width:3;
           stroke-linecap:round;
           stroke-linejoin:round;
           vector-effect:non-scaling-stroke;
-          filter:drop-shadow(0 0 2px rgba(15,23,42,0.10));
         }
         .series-marker {
           fill:#fff;
@@ -4491,10 +4433,6 @@ class ByteWattReportCard extends HTMLElement {
           .detail-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-          .power-chart-shell {
-            margin-inline:6px;
-            max-width:calc(100% - 12px);
-          }
         }
         @media (max-width: 1440px) {
           .sankey-stage {
@@ -4560,14 +4498,6 @@ class ByteWattReportCard extends HTMLElement {
           .power-header {
             grid-template-columns: 1fr;
           }
-          .power-chart-shell {
-            margin-inline:6px;
-            max-width:calc(100% - 12px);
-            padding:14px 14px 16px;
-          }
-          .ring-grid {
-            grid-template-columns: 1fr;
-          }
           .chart-toolbar {
             grid-template-columns:1fr;
           }
@@ -4580,65 +4510,16 @@ class ByteWattReportCard extends HTMLElement {
           .power-story-card:last-child {
             grid-column:1 / -1;
           }
-          .power-chart {
-            height:clamp(270px, 66vw, 420px);
-          }
-          .series-line {
-            stroke-width:4.8;
-          }
-          .overview-panel,
-          .hero-banner,
-          .panel {
-            padding:14px;
-          }
         }
         @media (max-width: 560px) {
-          .shell {
-            padding:14px 10px;
-          }
-          .power-chart-shell {
-            margin-inline:4px;
-            max-width:calc(100% - 8px);
-            padding:12px 12px 14px;
-          }
-          .ring-grid {
-            grid-template-columns: 1fr;
-          }
           .power-story-cards {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap:8px;
-          }
-          .power-story-card {
-            padding:10px 10px 11px;
-            gap:4px;
-          }
-          .power-story-card-head {
-            gap:6px;
-          }
-          .power-story-title {
-            font-size:0.7rem;
-            white-space:normal;
-            line-height:1.15;
-          }
-          .power-story-value {
-            font-size:0.86rem;
-            line-height:1.2;
-          }
-          .power-story-note {
-            display:none;
-          }
-          .power-story-headline {
-            font-size:0.92rem;
-            line-height:1.3;
+            grid-template-columns: 1fr;
           }
           .power-story-card:last-child {
             grid-column:auto;
           }
-          .power-chart {
-            height:clamp(300px, 74vw, 460px);
-          }
-          .series-line {
-            stroke-width:5;
+          .power-story-note {
+            font-size:0.8rem;
           }
         }
         @media (max-width: 700px) {
@@ -4686,8 +4567,7 @@ class ByteWattReportCard extends HTMLElement {
             min-width:720px;
           }
           .power-chart {
-            min-width:0;
-            width:100%;
+            min-width:720px;
           }
         }
       </style>
