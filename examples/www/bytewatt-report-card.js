@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "221";
+const BYTEWATT_REPORT_CARD_BUILD = "222";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -9,9 +9,11 @@ class ByteWattReportCard extends HTMLElement {
       ...config,
     };
     this._reportStorageKey = `bytewatt-report:${this._config.entity_prefix}:${this._config.settings_target}`;
+    this._chartStorageKey = `bytewatt-chart:${this._config.entity_prefix}:${this._config.settings_target}`;
     const saved = this._loadReportState();
     this._reportPeriod = saved.period || this._reportPeriod || "day";
     this._reportAnchorDate = saved.anchor || this._reportAnchorDate || "";
+    this._chartState = this._loadChartState();
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -65,6 +67,57 @@ class ByteWattReportCard extends HTMLElement {
     } catch (_err) {
       return;
     }
+  }
+
+  _defaultChartVisibility() {
+    return {
+      solar: true,
+      load: true,
+      feed: true,
+      consumed: true,
+      grid: true,
+    };
+  }
+
+  _loadChartState() {
+    try {
+      if (!this._chartStorageKey || !window.localStorage) return { visibility: this._defaultChartVisibility() };
+      const raw = window.localStorage.getItem(this._chartStorageKey);
+      if (!raw) return { visibility: this._defaultChartVisibility() };
+      const parsed = JSON.parse(raw);
+      const visibility = parsed?.visibility && typeof parsed.visibility === "object" ? parsed.visibility : {};
+      return {
+        visibility: {
+          ...this._defaultChartVisibility(),
+          ...visibility,
+        },
+      };
+    } catch (_err) {
+      return { visibility: this._defaultChartVisibility() };
+    }
+  }
+
+  _saveChartState() {
+    try {
+      if (!this._chartStorageKey || !window.localStorage) return;
+      window.localStorage.setItem(this._chartStorageKey, JSON.stringify(this._chartState || { visibility: this._defaultChartVisibility() }));
+    } catch (_err) {
+      return;
+    }
+  }
+
+  _chartVisibility() {
+    return {
+      ...this._defaultChartVisibility(),
+      ...((this._chartState && typeof this._chartState.visibility === "object") ? this._chartState.visibility : {}),
+    };
+  }
+
+  _setChartSeriesVisible(key, visible) {
+    const next = this._chartVisibility();
+    next[key] = Boolean(visible);
+    this._chartState = { visibility: next };
+    this._saveChartState();
   }
 
   _selectorState() {
@@ -2109,6 +2162,16 @@ class ByteWattReportCard extends HTMLElement {
     return `<span class="legend-chip ${tone ? `legend-${tone}` : ""}">${this._escape(label)}</span>`;
   }
 
+  _chartToggleChip(label, tone, key, active) {
+    const stateClass = active ? "active" : "inactive";
+    return `
+      <button class="legend-chip legend-toggle legend-${tone} ${stateClass}" type="button" data-chart-toggle="${this._escape(key)}" aria-pressed="${active ? "true" : "false"}">
+        <span class="legend-dot"></span>
+        <span>${this._escape(label)}</span>
+      </button>
+    `;
+  }
+
   _chartPath(values, width, height, padding, maxValue) {
     const usableWidth = Math.max(width - padding.left - padding.right, 1);
     const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
@@ -2139,6 +2202,121 @@ class ByteWattReportCard extends HTMLElement {
     });
   }
 
+  _formatChartPower(value, unitFactor) {
+    const amount = Math.max(Number(value) || 0, 0);
+    if (unitFactor === 1000) return `${this._fmtNumber(amount, 2)} kW`;
+    return `${this._fmtNumber(amount, 0)} W`;
+  }
+
+  _chartHoverCardMarkup(state = {}) {
+    const title = state.label || "Hover chart";
+    const rows = Array.isArray(state.rows) ? state.rows : [];
+    return `
+      <div class="chart-hover-card" data-chart-hover-card>
+        <div class="chart-hover-title">${this._escape(title)}</div>
+        ${
+          rows.length
+            ? rows
+                .map(
+                  (row) => `
+                    <div class="chart-hover-value">
+                      <span class="hover-dot ${this._escape(row.tone || "")}"></span>
+                      <span>${this._escape(row.label || "")}:</span>
+                      <span>${this._escape(row.value || "")}</span>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<div class="chart-hover-empty">${this._escape(state.empty || "Hover the chart to inspect values.")}</div>`
+        }
+      </div>
+    `;
+  }
+
+  _setChartHoverCard(state) {
+    const card = this.shadowRoot?.querySelector("[data-chart-hover-card]");
+    if (!card) return;
+    card.outerHTML = this._chartHoverCardMarkup(state);
+  }
+
+  _clearPowerChartHover() {
+    const line = this.shadowRoot?.querySelector("[data-power-hover-line]");
+    if (line) line.setAttribute("opacity", "0");
+    this.shadowRoot?.querySelectorAll("[data-power-hover-point]").forEach((point) => {
+      point.setAttribute("opacity", "0");
+    });
+    this.shadowRoot?.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((row) => {
+      row.classList.remove("active");
+    });
+    this._setChartHoverCard({ empty: "Hover the chart to inspect values." });
+  }
+
+  _updatePowerChartHover(index, mode = "daily") {
+    const model = this._powerChartModel || {};
+    if (mode === "overview" || model.mode === "overview") {
+      const rows = Array.isArray(model.rows) ? model.rows : [];
+      const row = rows[index];
+      if (!row) return;
+      const hoverRows = [
+        model.visibility?.solar !== false ? { tone: "solar", label: "Solar", value: this._fmtEnergy(row.solar) } : null,
+        model.visibility?.load !== false ? { tone: "load", label: "Load", value: this._fmtEnergy(row.load) } : null,
+        model.visibility?.feed !== false ? { tone: "feed", label: "Feed-in", value: this._fmtEnergy(row.feed) } : null,
+        model.visibility?.grid !== false ? { tone: "grid", label: "Grid", value: this._fmtEnergy(row.grid) } : null,
+      ].filter(Boolean);
+      this._setChartHoverCard({
+        label: row.label || "Day",
+        rows: hoverRows,
+        empty: "No visible series are enabled.",
+      });
+      this.shadowRoot?.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((item) => {
+        item.classList.toggle("active", Number(item.dataset.chartIndex || -1) === index);
+      });
+      return;
+    }
+    const labels = Array.isArray(model.labels) ? model.labels : [];
+    const series = Array.isArray(model.series) ? model.series : [];
+    if (!labels.length || !series.length) return;
+    const safeIndex = Math.max(0, Math.min(Number(index) || 0, labels.length - 1));
+    const visibleSeries = series.filter((item) => model.visibility?.[item.key] !== false);
+    const hoverRows = visibleSeries.map((item) => ({
+      tone: item.tone,
+      label: item.label,
+      value: this._formatChartPower(item.values?.[safeIndex] ?? 0, model.unitFactor),
+    }));
+    this._setChartHoverCard({
+      label: labels[safeIndex] || `Point ${safeIndex + 1}`,
+      rows: hoverRows,
+      empty: "All series are hidden.",
+    });
+    const line = this.shadowRoot?.querySelector("[data-power-hover-line]");
+    if (line) {
+      const x = model.width - model.padding.left - model.padding.right;
+      const step = labels.length > 1 ? x / (labels.length - 1) : 0;
+      const cursorX = model.padding.left + safeIndex * step;
+      line.setAttribute("x1", cursorX.toFixed(1));
+      line.setAttribute("x2", cursorX.toFixed(1));
+      line.setAttribute("opacity", hoverRows.length ? "1" : "0");
+    }
+    const chartMax = Math.max(1, Number(model.chartMax) || 0, ...(series.filter((item) => model.visibility?.[item.key] !== false).flatMap((item) => item.values || [])));
+    const pointsByKey = {};
+    series.forEach((item) => {
+      const points = this._chartPoints(item.values || [], model.width, model.height, model.padding, chartMax);
+      pointsByKey[item.key] = points[safeIndex];
+    });
+    this.shadowRoot?.querySelectorAll("[data-power-hover-point]").forEach((point) => {
+      const key = point.getAttribute("data-power-hover-point");
+      const visible = model.visibility?.[key] !== false && pointsByKey[key];
+      if (!visible) {
+        point.setAttribute("opacity", "0");
+        return;
+      }
+      const pos = pointsByKey[key];
+      point.setAttribute("cx", pos.x.toFixed(1));
+      point.setAttribute("cy", pos.y.toFixed(1));
+      point.setAttribute("opacity", "1");
+    });
+  }
+
   _renderDailyPowerChart(reporting) {
     const powerDiagram = reporting?.power_diagram || {};
     const series = powerDiagram.series || {};
@@ -2159,7 +2337,15 @@ class ByteWattReportCard extends HTMLElement {
       feed: feed.map(toChartValue),
       consumed: consumed.map(toChartValue),
     };
-    const chartMax = Math.max(1, ...Object.values(chartValues).flat());
+    const visibility = this._chartVisibility();
+    const seriesMeta = [
+      { key: "solar", label: "Solar", tone: "solar", values: chartValues.solar },
+      { key: "load", label: "Load", tone: "load", values: chartValues.load },
+      { key: "feed", label: "Feed-in", tone: "feed", values: chartValues.feed },
+      { key: "consumed", label: "Consumed", tone: "consumed", values: chartValues.consumed },
+    ];
+    const activeSeries = seriesMeta.filter((item) => visibility[item.key]);
+    const chartMax = Math.max(1, ...((activeSeries.length ? activeSeries : seriesMeta).flatMap((item) => item.values)));
     const width = 860;
     const height = 320;
     const padding = { top: 28, right: 20, bottom: 42, left: 54 };
@@ -2167,21 +2353,27 @@ class ByteWattReportCard extends HTMLElement {
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
     const labelStep = Math.max(1, Math.floor(labels.length / 8));
-    const seriesMeta = [
-      { key: "solar", label: "Solar", tone: "solar", values: chartValues.solar },
-      { key: "load", label: "Load", tone: "load", values: chartValues.load },
-      { key: "feed", label: "Feed-in", tone: "feed", values: chartValues.feed },
-      { key: "consumed", label: "Consumed", tone: "grid", values: chartValues.consumed },
-    ];
+    this._powerChartModel = {
+      mode: "daily",
+      width,
+      height,
+      padding,
+      labels,
+      unitFactor,
+      visibility,
+      chartMax,
+      series: seriesMeta,
+    };
     const paths = seriesMeta
       .map((item) => {
         const points = this._chartPoints(item.values, width, height, padding, chartMax);
         const path = this._chartPath(item.values, width, height, padding, chartMax);
+        const active = Boolean(visibility[item.key]);
         return `
-          <path class="series-line marker-${item.tone}" d="${path}" />
+          <path class="series-line marker-${item.tone} ${active ? "" : "series-hidden"}" d="${path}" style="${active ? "" : "display:none"}" />
           ${points
             .filter((_, index) => index % Math.max(1, Math.ceil(points.length / 12)) === 0)
-            .map((point) => `<circle class="series-marker marker-${item.tone}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" />`)
+            .map((point) => `<circle class="series-marker marker-${item.tone} ${active ? "" : "series-hidden"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" style="${active ? "" : "display:none"}" />`)
             .join("")}
         `;
       })
@@ -2202,15 +2394,27 @@ class ByteWattReportCard extends HTMLElement {
       })
       .join("");
     return `
-      <div class="power-chart-shell">
-        <svg class="power-chart chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
-          ${gridLines}
-          ${paths}
-          <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
-          ${xLabels}
-        </svg>
-        <div class="legend-row">
-          ${seriesMeta.map((item) => this._chartLegendChip(item.label, item.tone)).join("")}
+      <div class="power-chart-shell" data-power-chart-shell>
+        <div class="chart-toolbar">
+          <div class="chart-toggle-row">
+            ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
+          </div>
+          ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values." })}
+        </div>
+        <div class="power-chart-wrap">
+          <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
+            <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+            ${gridLines}
+            ${paths}
+            <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
+            <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
+            <g class="power-hover-points" data-power-hover-points>
+              ${seriesMeta
+                .map((item) => `<circle class="power-hover-point marker-${item.tone}" data-power-hover-point="${item.key}" cx="${padding.left}" cy="${padding.top}" r="4.6" opacity="0"></circle>`)
+                .join("")}
+            </g>
+            ${xLabels}
+          </svg>
         </div>
       </div>
     `;
@@ -2235,36 +2439,50 @@ class ByteWattReportCard extends HTMLElement {
       };
     });
     const maxTotal = Math.max(1, ...rows.map((row) => row.total));
+    const visibility = this._chartVisibility();
     const periodLabel = this._reportPeriodLabel(periodContext?.period || this._reportPeriod);
     const widthFor = (value) => `${Math.max(0, Math.min((value / maxTotal) * 100, 100)).toFixed(1)}%`;
+    this._powerChartModel = {
+      mode: "overview",
+      period: periodContext?.period || this._reportPeriod || "day",
+      rows,
+      visibility,
+    };
     return `
-      <div class="stats-diagram">
+      <div class="stats-diagram" data-power-chart-shell>
+        <div class="chart-toolbar">
+          <div class="chart-toggle-row">
+            ${[
+              { key: "solar", label: "Solar", tone: "solar" },
+              { key: "load", label: "Load", tone: "load" },
+              { key: "feed", label: "Feed-in", tone: "feed" },
+              { key: "grid", label: "Grid", tone: "grid" },
+            ]
+              .map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key])))
+              .join("")}
+          </div>
+          ${this._chartHoverCardMarkup({ empty: `Hover a ${this._escape(periodLabel.toLowerCase())} row to inspect values.` })}
+        </div>
         ${rows.length
           ? rows
               .map(
-                (row) => `
-                  <div class="stats-row">
+                (row, index) => `
+                  <div class="stats-row" data-chart-index="${this._escape(String(index))}" data-chart-mode="overview">
                     <div class="stats-row-head">
                       <div class="stats-row-label">${this._escape(row.label)}</div>
                       <div class="stats-row-value">${this._fmtEnergy(row.total)}</div>
                     </div>
                     <div class="stats-bar-track">
-                      <div class="stats-bar-fill tone-solar" style="width:${widthFor(row.solar)}"></div>
-                      <div class="stats-bar-fill tone-load" style="width:${widthFor(row.load)}"></div>
-                      <div class="stats-bar-fill tone-feed" style="width:${widthFor(row.feed)}"></div>
-                      <div class="stats-bar-fill tone-grid" style="width:${widthFor(row.grid)}"></div>
+                      ${visibility.solar ? `<div class="stats-bar-fill tone-solar" style="width:${widthFor(row.solar)}"></div>` : ""}
+                      ${visibility.load ? `<div class="stats-bar-fill tone-load" style="width:${widthFor(row.load)}"></div>` : ""}
+                      ${visibility.feed ? `<div class="stats-bar-fill tone-feed" style="width:${widthFor(row.feed)}"></div>` : ""}
+                      ${visibility.grid ? `<div class="stats-bar-fill tone-grid" style="width:${widthFor(row.grid)}"></div>` : ""}
                     </div>
                   </div>
                 `,
               )
               .join("")
           : `<div class="empty">No chart data available for the selected ${this._escape(periodLabel.toLowerCase())}.</div>`}
-        <div class="legend-row">
-          ${this._chartLegendChip("Solar", "solar")}
-          ${this._chartLegendChip("Load", "load")}
-          ${this._chartLegendChip("Feed-in", "feed")}
-          ${this._chartLegendChip("Grid", "grid")}
-        </div>
       </div>
     `;
   }
@@ -2325,6 +2543,7 @@ class ByteWattReportCard extends HTMLElement {
           --bw-battery:#2fc96e;
           --bw-feed:#f08a24;
           --bw-grid:#98a2a8;
+          --bw-consumed:#d39a63;
           --bw-surface:#f4f5f7;
           --bw-surface-2:#ffffff;
           --bw-border:#d6dbe1;
@@ -3321,6 +3540,9 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:14px;
         }
+        .power-panel {
+          width:100%;
+        }
         .power-header {
           display:grid;
           grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
@@ -3330,6 +3552,12 @@ class ByteWattReportCard extends HTMLElement {
         .power-chart-shell {
           display:grid;
           gap:12px;
+        }
+        .chart-toolbar {
+          display:grid;
+          grid-template-columns:minmax(0, 1fr) minmax(240px, 320px);
+          gap:12px;
+          align-items:start;
         }
         .power-chart-wrap {
           overflow-x:auto;
@@ -3383,6 +3611,7 @@ class ByteWattReportCard extends HTMLElement {
         .hover-dot.solar { background:var(--bw-solar); }
         .hover-dot.feed { background:var(--bw-feed); }
         .hover-dot.grid { background:var(--bw-grid); }
+        .hover-dot.consumed { background:var(--bw-consumed); }
         .chart-toggle-row {
           display:flex;
           flex-wrap:wrap;
@@ -3406,9 +3635,54 @@ class ByteWattReportCard extends HTMLElement {
         .marker-solar { stroke:var(--bw-solar); }
         .marker-feed { stroke:var(--bw-feed); }
         .marker-grid { stroke:var(--bw-grid); }
+        .marker-consumed { stroke:var(--bw-consumed); }
+        .series-hidden {
+          opacity:0.12;
+        }
         .power-hover-zone {
           cursor:crosshair;
         }
+        .power-hover-line {
+          stroke:#1f2937;
+          stroke-width:1.2;
+          stroke-dasharray:4 4;
+          opacity:0;
+          pointer-events:none;
+        }
+        .power-hover-point {
+          opacity:0;
+          pointer-events:none;
+          fill:#fff;
+          stroke-width:3;
+        }
+        .chart-toggle-row .legend-toggle {
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          cursor:pointer;
+          border:1px solid #d6dbe1;
+          background:#fff;
+        }
+        .chart-toggle-row .legend-toggle.active {
+          background:#111827;
+          color:#fff;
+          border-color:#111827;
+        }
+        .chart-toggle-row .legend-toggle.inactive {
+          opacity:0.72;
+        }
+        .legend-dot {
+          width:10px;
+          height:10px;
+          border-radius:999px;
+          flex:0 0 auto;
+          background:currentColor;
+        }
+        .legend-toggle.legend-solar .legend-dot { background:var(--bw-solar); }
+        .legend-toggle.legend-load .legend-dot { background:var(--bw-load); }
+        .legend-toggle.legend-feed .legend-dot { background:var(--bw-feed); }
+        .legend-toggle.legend-grid .legend-dot { background:var(--bw-grid); }
+        .legend-toggle.legend-consumed .legend-dot { background:var(--bw-consumed); }
         .power-summary-grid .sankey-summary {
           min-height:76px;
         }
@@ -3451,6 +3725,15 @@ class ByteWattReportCard extends HTMLElement {
           padding:12px 0;
           border-bottom:1px solid #e1eaf4;
         }
+        .stats-row[data-chart-mode="overview"] {
+          cursor:pointer;
+        }
+        .stats-row.active {
+          background:#f8fbff;
+          border-radius:14px;
+          padding:12px 12px 10px;
+          margin:0 -12px;
+        }
         .stats-row:last-child {
           border-bottom:none;
         }
@@ -3489,6 +3772,7 @@ class ByteWattReportCard extends HTMLElement {
         .tone-battery { background:linear-gradient(90deg, var(--bw-battery), #66d98b); }
         .tone-feed { background:linear-gradient(90deg, var(--bw-feed), #f0a15c); }
         .tone-grid { background:linear-gradient(90deg, var(--bw-grid), #b1bac0); }
+        .tone-consumed { background:linear-gradient(90deg, var(--bw-consumed), #e0b282); }
         .tone-info { background:linear-gradient(90deg, #4b8fff, #6ca7ff); }
         .empty {
           padding:24px;
@@ -3594,6 +3878,9 @@ class ByteWattReportCard extends HTMLElement {
           .power-header {
             grid-template-columns: 1fr;
           }
+          .chart-toolbar {
+            grid-template-columns:1fr;
+          }
         }
         @media (max-width: 700px) {
           .sankey-stage {
@@ -3658,6 +3945,7 @@ class ByteWattReportCard extends HTMLElement {
             reporting
               ? `
             ${this._renderHeroBanner(reporting)}
+            ${this._renderEnergyDiagram(reporting, periodContext)}
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
             ${this._renderOverviewBands(reporting)}
@@ -3666,7 +3954,6 @@ class ByteWattReportCard extends HTMLElement {
             <div class="body-grid">
               <div class="stack-grid">
                 ${this._renderRealtimePanel(reporting)}
-                ${this._renderEnergyDiagram(reporting, periodContext)}
                 ${this._renderDetailsPanel(reporting)}
               </div>
             </div>
@@ -3731,6 +4018,44 @@ class ByteWattReportCard extends HTMLElement {
       this._resetHistoryEnsureState();
       this._queueHistorySync();
     });
+    this.shadowRoot.querySelectorAll("[data-chart-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = String(button.dataset.chartToggle || "").trim();
+        if (!key) return;
+        const current = this._chartVisibility();
+        const nextVisible = !Boolean(current[key]);
+        const activeKeys = Object.entries(current).filter(([seriesKey, visible]) => visible && ["solar", "load", "feed", "consumed", "grid"].includes(seriesKey));
+        if (!nextVisible && activeKeys.length <= 1) return;
+        this._setChartSeriesVisible(key, nextVisible);
+        this.render();
+      });
+    });
+    const chartShell = this.shadowRoot.querySelector("[data-power-chart-shell]");
+    const model = this._powerChartModel || {};
+    if (chartShell && model.mode === "daily") {
+      const svg = chartShell.querySelector("[data-power-chart]");
+      const handleDailyMove = (event) => {
+        if (!svg || !this._powerChartModel || this._powerChartModel.mode !== "daily") return;
+        const bounds = svg.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const x = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
+        const labels = Array.isArray(this._powerChartModel.labels) ? this._powerChartModel.labels : [];
+        const index = labels.length > 1 ? Math.round((x / bounds.width) * (labels.length - 1)) : 0;
+        this._updatePowerChartHover(index, "daily");
+      };
+      svg?.addEventListener("pointermove", handleDailyMove);
+      svg?.addEventListener("pointerenter", handleDailyMove);
+      svg?.addEventListener("pointerleave", () => this._clearPowerChartHover());
+      svg?.addEventListener("pointerdown", handleDailyMove);
+    }
+    if (chartShell && model.mode === "overview") {
+      chartShell.querySelectorAll('.stats-row[data-chart-mode="overview"]').forEach((row) => {
+        const index = Number(row.dataset.chartIndex || -1);
+        row.addEventListener("pointerenter", () => this._updatePowerChartHover(index, "overview"));
+        row.addEventListener("pointermove", () => this._updatePowerChartHover(index, "overview"));
+        row.addEventListener("pointerleave", () => this._clearPowerChartHover());
+      });
+    }
     this.shadowRoot.querySelector("[data-clear-cache]")?.addEventListener("click", async () => {
       try {
         if ("caches" in window && window.caches?.keys) {
