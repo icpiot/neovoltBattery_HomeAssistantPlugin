@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "215";
+const BYTEWATT_REPORT_CARD_BUILD = "216";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3478,7 +3478,6 @@ class ByteWattReportCard extends HTMLElement {
           ${
             reporting
               ? `
-            ${this._renderHistoryPanel()}
             ${this._renderHeroBanner(reporting)}
             ${this._renderAggregateStrip(reporting)}
             ${this._renderAggregateTable(reporting)}
@@ -3509,12 +3508,6 @@ class ByteWattReportCard extends HTMLElement {
         option: event.target.value,
       });
       this._queueHistorySync();
-    });
-    this.shadowRoot.querySelectorAll("[data-history-period]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._historyPeriod = button.dataset.historyPeriod;
-        this._queueHistorySync();
-      });
     });
     this.shadowRoot.querySelectorAll("[data-report-period]").forEach((button) => {
       button.addEventListener("click", async () => {
