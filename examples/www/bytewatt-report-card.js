@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "249";
+const BYTEWATT_REPORT_CARD_BUILD = "250";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4219,19 +4219,20 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.16;
+          fill-opacity:0.22;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.20; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.18; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.18; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.28; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.24; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.20; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.20; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.24; }
         .series-line {
           fill:none;
-          stroke-width:3;
+          stroke-width:4;
           stroke-linecap:round;
           stroke-linejoin:round;
           vector-effect:non-scaling-stroke;
+          filter:drop-shadow(0 0 0.75px rgba(255,255,255,0.72));
         }
         .series-marker {
           fill:#fff;
@@ -4541,6 +4542,9 @@ class ByteWattReportCard extends HTMLElement {
           .power-chart {
             height:clamp(270px, 66vw, 420px);
           }
+          .series-line {
+            stroke-width:4.8;
+          }
           .overview-panel,
           .hero-banner,
           .panel {
@@ -4591,6 +4595,9 @@ class ByteWattReportCard extends HTMLElement {
           }
           .power-chart {
             height:clamp(300px, 74vw, 460px);
+          }
+          .series-line {
+            stroke-width:5;
           }
         }
         @media (max-width: 700px) {
