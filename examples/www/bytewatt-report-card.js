@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "226";
+const BYTEWATT_REPORT_CARD_BUILD = "228";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2359,6 +2359,7 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _renderDailyPowerChart(reporting) {
+    const today = reporting?.today || {};
     const powerDiagram = reporting?.power_diagram || {};
     const series = powerDiagram.series || {};
     const times = Array.isArray(powerDiagram.time) ? powerDiagram.time : [];
@@ -2393,7 +2394,7 @@ class ByteWattReportCard extends HTMLElement {
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
-    const labelStep = Math.max(1, Math.floor(labels.length / 8));
+    const labelStep = labels.length <= 24 ? 1 : labels.length <= 48 ? 2 : Math.max(1, Math.floor(labels.length / 16));
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2424,6 +2425,7 @@ class ByteWattReportCard extends HTMLElement {
         <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
       `;
     }).join("");
+    const axisMidY = padding.top + (height - padding.top - padding.bottom) / 2;
     const xLabels = labels
       .map((label, index) => {
         if (index !== 0 && index !== labels.length - 1 && index % labelStep !== 0) return "";
@@ -2433,6 +2435,13 @@ class ByteWattReportCard extends HTMLElement {
       .join("");
     return `
       <div class="power-chart-shell" data-power-chart-shell>
+        <div class="ring-grid power-summary-grid">
+          ${this._ring("Today's Generation", this._fmtEnergy(today.solar_generation), "solar")}
+          ${this._ring("Today's Consumption", this._fmtEnergy(today.load_consumption), "load")}
+          ${this._ring("BAT SOC", this._fmtPercent(reporting?.live?.soc), "bat")}
+          ${this._ring("Today's Feed in", this._fmtEnergy(today.feed_in), "feed")}
+          ${this._ring("Today's Grid Consumption", this._fmtEnergy(today.grid_consumption), "grid")}
+        </div>
         <div class="chart-toolbar">
           <div class="chart-toggle-row">
             ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
@@ -2445,6 +2454,8 @@ class ByteWattReportCard extends HTMLElement {
             ${paths}
             <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
             <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
+            <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
+            <text class="axis-title axis-title-bat" x="${(width - 20).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 20).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
             ${xLabels}
           </svg>
         </div>
@@ -3541,6 +3552,9 @@ class ByteWattReportCard extends HTMLElement {
           gap:14px;
           margin-bottom:18px;
         }
+        .power-summary-grid {
+          margin-bottom:0;
+        }
         .ring-card {
           border-radius:20px;
           padding:16px 14px;
@@ -3597,16 +3611,20 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-          padding:2px 2px 10px;
+          padding:12px 12px 14px;
           display:grid;
           gap:10px;
+          border:1px solid rgba(214, 219, 225, 0.9);
+          border-radius:20px;
+          background:linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
           width:100%;
           min-width:0;
           display:block;
-          background:#fff;
-          border-radius:18px;
+          background:transparent;
+          border-radius:16px;
           overflow:visible;
         }
         .chart-hover-card {
@@ -3754,11 +3772,23 @@ class ByteWattReportCard extends HTMLElement {
           stroke:#d8e3ef;
           stroke-width:1;
         }
+        .axis-title {
+          fill:#5f7a99;
+          font-size:11px;
+          font-weight:800;
+          letter-spacing:0.16em;
+          paint-order:stroke;
+          stroke:#ffffff;
+          stroke-width:4px;
+        }
         .tick,
         .axis-label {
-          fill:#6280a2;
-          font-size:12px;
+          fill:#5b7694;
+          font-size:11px;
           font-weight:700;
+          paint-order:stroke;
+          stroke:#ffffff;
+          stroke-width:3px;
         }
         .legend-row {
           display:flex;
