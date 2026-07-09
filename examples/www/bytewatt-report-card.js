@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "234";
+const BYTEWATT_REPORT_CARD_BUILD = "235";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2399,7 +2399,7 @@ class ByteWattReportCard extends HTMLElement {
     const batMax = 100;
     const width = 860;
     const height = 334;
-    const padding = { top: 34, right: 24, bottom: 52, left: 60 };
+      const padding = { top: 34, right: 44, bottom: 52, left: 60 };
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
@@ -2442,7 +2442,7 @@ class ByteWattReportCard extends HTMLElement {
     const batLabels = [100, 75, 50, 25, 0]
       .map((value) => {
         const y = padding.top + ((100 - value) / 100) * (height - padding.top - padding.bottom);
-        return `<text class="axis-label axis-label-right" x="${(width - padding.right + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
+          return `<text class="axis-label axis-label-right" x="${(width - padding.right + 10).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
       })
       .join("");
     const axisMidY = padding.top + (height - padding.top - padding.bottom) / 2;
@@ -2475,7 +2475,7 @@ class ByteWattReportCard extends HTMLElement {
             <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
             <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
             <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
-            <text class="axis-title axis-title-bat" x="${(width - 20).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 20).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
+              <text class="axis-title axis-title-bat" x="${(width - 30).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 30).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
             ${batLabels}
             ${xLabels}
           </svg>
@@ -3628,9 +3628,9 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding:16px;
-          margin-inline:4px;
-          max-width:calc(100% - 8px);
+            padding:18px;
+            margin-inline:12px;
+            max-width:calc(100% - 24px);
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
@@ -3653,7 +3653,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-          padding:12px 12px 14px;
+            padding:16px 18px 18px;
           display:grid;
           gap:10px;
           border:1px solid rgba(214, 219, 225, 0.88);
