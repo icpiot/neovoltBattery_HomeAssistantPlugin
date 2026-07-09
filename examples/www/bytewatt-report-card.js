@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "243";
+const BYTEWATT_REPORT_CARD_BUILD = "244";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4552,13 +4552,34 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
           .power-story-cards {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap:8px;
+          }
+          .power-story-card {
+            padding:10px 10px 11px;
+            gap:4px;
+          }
+          .power-story-card-head {
+            gap:6px;
+          }
+          .power-story-title {
+            font-size:0.7rem;
+            white-space:normal;
+            line-height:1.15;
+          }
+          .power-story-value {
+            font-size:0.86rem;
+            line-height:1.2;
+          }
+          .power-story-note {
+            display:none;
+          }
+          .power-story-headline {
+            font-size:0.92rem;
+            line-height:1.3;
           }
           .power-story-card:last-child {
             grid-column:auto;
-          }
-          .power-story-note {
-            font-size:0.8rem;
           }
         }
         @media (max-width: 700px) {
