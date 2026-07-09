@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "229";
+const BYTEWATT_REPORT_CARD_BUILD = "233";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2403,7 +2403,9 @@ class ByteWattReportCard extends HTMLElement {
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
-    const labelStep = labels.length <= 24 ? 1 : labels.length <= 48 ? 2 : labels.length <= 96 ? 3 : labels.length <= 192 ? 4 : 6;
+    const viewportWidth = Number(window?.innerWidth) || 1280;
+    const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
+    const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2454,11 +2456,11 @@ class ByteWattReportCard extends HTMLElement {
     return `
       <div class="power-chart-shell" data-power-chart-shell>
         <div class="ring-grid power-summary-grid">
-          ${this._ring("Generation", this._fmtEnergy(today.solar_generation), "solar")}
-          ${this._ring("Consumption", this._fmtEnergy(today.load_consumption), "load")}
-          ${this._ring("BAT SOC", this._fmtPercent(reporting?.live?.soc), "bat")}
-          ${this._ring("Feed-in", this._fmtEnergy(today.feed_in), "feed")}
-          ${this._ring("Grid Used", this._fmtEnergy(today.grid_consumption), "grid")}
+          ${this._ring("Gen", this._fmtEnergy(today.solar_generation), "solar")}
+          ${this._ring("Load", this._fmtEnergy(today.load_consumption), "load")}
+          ${this._ring("SOC", this._fmtPercent(reporting?.live?.soc), "bat")}
+          ${this._ring("Feed", this._fmtEnergy(today.feed_in), "feed")}
+          ${this._ring("Grid", this._fmtEnergy(today.grid_consumption), "grid")}
         </div>
         <div class="chart-toolbar">
           <div class="chart-toggle-row">
@@ -3580,13 +3582,14 @@ class ByteWattReportCard extends HTMLElement {
           text-align:center;
           border:2px solid transparent;
           background:#ffffff;
+          box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
           min-width:0;
         }
-        .ring-solar { border-color:var(--bw-solar); }
-        .ring-load { border-color:var(--bw-load); }
-        .ring-bat { border-color:var(--bw-battery); }
-        .ring-feed { border-color:var(--bw-feed); }
-        .ring-grid { border-color:var(--bw-grid); }
+        .ring-solar { border-color:var(--bw-solar); background:linear-gradient(180deg, rgba(240,196,25,0.10) 0%, #ffffff 58%); }
+        .ring-load { border-color:var(--bw-load); background:linear-gradient(180deg, rgba(47,155,232,0.10) 0%, #ffffff 58%); }
+        .ring-bat { border-color:var(--bw-battery); background:linear-gradient(180deg, rgba(47,201,110,0.10) 0%, #ffffff 58%); }
+        .ring-feed { border-color:var(--bw-feed); background:linear-gradient(180deg, rgba(240,138,36,0.10) 0%, #ffffff 58%); }
+        .ring-grid { border-color:var(--bw-grid); background:linear-gradient(180deg, rgba(152,162,168,0.08) 0%, #ffffff 58%); }
         .ring-value {
           font-size:1.1rem;
           font-weight:800;
@@ -3628,8 +3631,16 @@ class ByteWattReportCard extends HTMLElement {
           padding:16px;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
-          background:linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+          background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+          box-shadow: 0 14px 32px rgba(47, 155, 232, 0.08), 0 8px 24px rgba(15, 23, 42, 0.05);
+        }
+        .power-chart-shell::before {
+          content:"";
+          position:absolute;
+          inset:0 0 auto 0;
+          height:4px;
+          border-radius:24px 24px 0 0;
+          background:linear-gradient(90deg, var(--bw-solar) 0%, var(--bw-load) 28%, var(--bw-battery) 50%, var(--bw-feed) 72%, var(--bw-consumed) 100%);
         }
         .chart-toolbar {
           display:grid;
@@ -3644,7 +3655,8 @@ class ByteWattReportCard extends HTMLElement {
           gap:10px;
           border:1px solid rgba(214, 219, 225, 0.88);
           border-radius:20px;
-          background:linear-gradient(180deg, #ffffff 0%, #f9fbfd 100%);
+          background:
+            linear-gradient(180deg, rgba(47,155,232,0.04) 0%, rgba(255,255,255,0.98) 32%, rgba(240,196,25,0.03) 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
@@ -3711,13 +3723,13 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.08;
+          fill-opacity:0.16;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.09; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.09; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.08; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.08; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.08; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.20; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.18; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.18; }
         .series-line {
           fill:none;
           stroke-width:3;
