@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "010";
+const BYTEWATT_DEBUG_CARD_BUILD = "011";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -15,7 +15,6 @@ class ByteWattDebugCard extends HTMLElement {
     const saved = this._loadDebugState();
     this._debugPeriod = saved.period || this._debugPeriod || "day";
     this._debugAnchorDate = saved.anchor || this._debugAnchorDate || "";
-    this._historyPeriod = saved.historyPeriod || this._historyPeriod || "7d";
     this._historyLoading = this._historyLoading || false;
     this._historyData = this._historyData || null;
     this._historyLoadError = this._historyLoadError || "";
@@ -55,7 +54,6 @@ class ByteWattDebugCard extends HTMLElement {
         JSON.stringify({
           period: this._debugPeriod || "day",
           anchor: this._debugAnchorDate || "",
-          historyPeriod: this._historyPeriod || "7d",
         }),
       );
     } catch (_err) {
@@ -466,23 +464,6 @@ class ByteWattDebugCard extends HTMLElement {
     };
   }
 
-  _historyRecordWindow(recordDates) {
-    const dates = (recordDates || [])
-      .map((item) => new Date(`${item}T00:00:00`))
-      .filter((item) => !Number.isNaN(item.getTime()))
-      .sort((a, b) => a - b);
-    if (!dates.length) return [];
-    if (this._historyPeriod === "all") return dates;
-    const end = dates[dates.length - 1];
-    const start = new Date(end.getTime());
-    start.setDate(start.getDate() - (this._historyPeriodDays() - 1));
-    return dates.filter((item) => item >= start && item <= end);
-  }
-
-  _historyPeriodDays() {
-    return this._historyPeriod === "30d" ? 30 : this._historyPeriod === "all" ? 3650 : 7;
-  }
-
   _historyRecords() {
     const scopeInfo = this._historyScopeData();
     const data = scopeInfo.scope?.records || {};
@@ -504,9 +485,17 @@ class ByteWattDebugCard extends HTMLElement {
   _selectedHistoryRecords() {
     const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
     if (!records.length) return [];
-    const windowDates = this._historyRecordWindow(records.map((record) => record.record_date));
-    if (!windowDates.length) return records;
-    const allowed = new Set(windowDates.map((date) => date.toISOString().slice(0, 10)));
+    const period = this._debugPeriod || "day";
+    const anchor = this._debugRange().anchor || this._todayLocalDate();
+    const window = this._periodWindow(anchor, period);
+    if (!window?.start || !window?.end) return records;
+    const allowed = new Set();
+    const cursor = new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate());
+    const end = new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate());
+    while (cursor <= end) {
+      allowed.add(this._formatLocalDate(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
     return records.filter((record) => allowed.has(record.record_date));
   }
 
@@ -591,7 +580,26 @@ class ByteWattDebugCard extends HTMLElement {
   }
 
   _historyButton(label, value) {
-    return `<button class="history-pill ${this._historyPeriod === value ? "active" : ""}" data-history-period="${value}">${label}</button>`;
+    return `<button class="history-pill ${this._debugPeriod === value ? "active" : ""}" data-debug-period="${value}">${label}</button>`;
+  }
+
+  _renderSelector() {
+    const selector = this._selectorState();
+    const options = selector?.attributes?.options || [];
+    const current = selector?.state || "";
+    return `
+      <div class="selector-row">
+        <div class="label">Battery Selection</div>
+        <select data-select-target>
+          ${options
+            .map(
+              (option) =>
+                `<option value="${this._escape(option)}" ${option === current ? "selected" : ""}>${this._escape(option)}</option>`,
+            )
+            .join("")}
+        </select>
+      </div>
+    `;
   }
 
   _fmtNumber(value, digits = 1) {
@@ -622,13 +630,14 @@ class ByteWattDebugCard extends HTMLElement {
     const scopeSummaries = this._historyScopeSummaries();
     const loading = this._historyLoading && !this._historyData;
     const error = this._historyLoadError;
+    const periodLabel = { today: "Today", day: "Day", week: "Week", month: "Month", quarter: "Quarter" }[this._debugPeriod] || "Day";
     const formatHistoryDate = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
     };
-    const rowCount = Math.min(records.length, 25);
+    const rowCount = records.length;
     const rows = records
-      .slice(-rowCount)
+      .slice()
       .map((record) => {
         const rowDate = record.record_date_display || record.record_date || "Unknown";
         const solar = record?.today?.solar_generation ?? record?.solar_generation_today ?? 0;
@@ -659,9 +668,8 @@ class ByteWattDebugCard extends HTMLElement {
           </div>
         </div>
         <div class="history-controls">
-          ${this._historyButton("7 days", "7d")}
-          ${this._historyButton("30 days", "30d")}
-          ${this._historyButton("All", "all")}
+          <span class="history-pill active">Selected period: ${this._escape(periodLabel)}</span>
+          <span class="history-pill">Range: ${this._escape(this._formatDisplayDate(this._debugRange().window.start))} to ${this._escape(this._formatDisplayDate(this._debugRange().window.end))}</span>
         </div>
         ${
           scopeSummaries.length
@@ -716,7 +724,7 @@ class ByteWattDebugCard extends HTMLElement {
                   </div>
                   <div class="history-table-head">
                     <div class="history-table-title">Archive Inspector</div>
-                    <div class="history-table-subtitle">Latest ${rowCount} row(s) for the selected scope</div>
+                    <div class="history-table-subtitle">Latest ${rowCount} row(s) for the selected period</div>
                   </div>
                   <div class="history-table-wrap">
                     <table class="history-table">
@@ -1230,6 +1238,8 @@ class ByteWattDebugCard extends HTMLElement {
 
           ${this._status ? `<div class="status ${statusClass}">${this._escape(this._status)}</div>` : ""}
 
+          ${this._renderSelector()}
+
           <div class="panel">
             <div class="panel-title">Archive Selection</div>
             <div class="controls">
@@ -1316,6 +1326,19 @@ class ByteWattDebugCard extends HTMLElement {
       button.onclick = () => this._requestArchiveProbe();
     }
 
+    this.shadowRoot.querySelector("[data-select-target]")?.addEventListener("change", async (event) => {
+      try {
+        await this._hass.callService("select", "select_option", {
+          entity_id: this._config.settings_target,
+          option: event.target.value,
+        });
+      } finally {
+        this._historySourceKey = "";
+        this._historyData = null;
+        this.render();
+      }
+    });
+
     this.shadowRoot.querySelectorAll("[data-debug-period]").forEach((item) => {
       item.onclick = () => {
         this._debugPeriod = item.getAttribute("data-debug-period") || "day";
@@ -1337,13 +1360,6 @@ class ByteWattDebugCard extends HTMLElement {
         const step = Number(item.getAttribute("data-debug-shift") || 0) || 0;
         const next = this._shiftAnchor(this._debugRange().anchor, this._debugPeriod || "day", step);
         this._debugAnchorDate = this._formatLocalDate(this._clampDateToToday(next));
-        this._saveDebugState();
-        this.render();
-      };
-    });
-    this.shadowRoot.querySelectorAll("[data-history-period]").forEach((item) => {
-      item.onclick = () => {
-        this._historyPeriod = item.getAttribute("data-history-period") || "7d";
         this._saveDebugState();
         this.render();
       };
