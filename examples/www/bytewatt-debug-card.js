@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "011";
+const BYTEWATT_DEBUG_CARD_BUILD = "012";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -489,14 +489,34 @@ class ByteWattDebugCard extends HTMLElement {
     const anchor = this._debugRange().anchor || this._todayLocalDate();
     const window = this._periodWindow(anchor, period);
     if (!window?.start || !window?.end) return records;
-    const allowed = new Set();
-    const cursor = new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate());
-    const end = new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate());
+    return this._expandDailyRecords(records, window);
+  }
+
+  _expandDailyRecords(records, window) {
+    const start = window?.start instanceof Date
+      ? new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate())
+      : null;
+    const end = window?.end instanceof Date
+      ? new Date(window.end.getFullYear(), window.end.getMonth(), window.end.getDate())
+      : null;
+    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      return records || [];
+    }
+    const mapped = new Map((records || []).map((record) => [String(record?.record_date || ""), record]));
+    const expanded = [];
+    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     while (cursor <= end) {
-      allowed.add(this._formatLocalDate(cursor));
+      const key = this._formatLocalDate(cursor);
+      const record = mapped.get(key) || {};
+      expanded.push({
+        record_date: key,
+        record_date_display: this._formatDisplayDate(cursor),
+        __missing: !mapped.has(key),
+        ...record,
+      });
       cursor.setDate(cursor.getDate() + 1);
     }
-    return records.filter((record) => allowed.has(record.record_date));
+    return expanded;
   }
 
   _historyScopeSummaries() {
@@ -612,14 +632,16 @@ class ByteWattDebugCard extends HTMLElement {
   }
 
   _fmtEnergy(value) {
+    if (value === "-" || value === null || value === undefined || value === "") return "-";
     const number = Number(value);
-    if (!Number.isFinite(number)) return "Unavailable";
+    if (!Number.isFinite(number)) return String(value);
     return `${this._fmtNumber(number, 1)} kWh`;
   }
 
   _fmtPercent(value) {
+    if (value === "-" || value === null || value === undefined || value === "") return "-";
     const number = Number(value);
-    if (!Number.isFinite(number)) return "Unavailable";
+    if (!Number.isFinite(number)) return String(value);
     return `${this._fmtNumber(number, 1)} %`;
   }
 
@@ -631,6 +653,7 @@ class ByteWattDebugCard extends HTMLElement {
     const loading = this._historyLoading && !this._historyData;
     const error = this._historyLoadError;
     const periodLabel = { today: "Today", day: "Day", week: "Week", month: "Month", quarter: "Quarter" }[this._debugPeriod] || "Day";
+    const periodWindow = this._debugRange().window;
     const formatHistoryDate = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
@@ -640,12 +663,13 @@ class ByteWattDebugCard extends HTMLElement {
       .slice()
       .map((record) => {
         const rowDate = record.record_date_display || record.record_date || "Unknown";
-        const solar = record?.today?.solar_generation ?? record?.solar_generation_today ?? 0;
-        const load = record?.today?.load_consumption ?? record?.load_consumption_today ?? 0;
-        const feed = record?.today?.feed_in ?? record?.feed_in_today ?? 0;
-        const grid = record?.today?.grid_consumption ?? record?.grid_consumption_today ?? 0;
-        const charge = record?.today?.battery_charge ?? record?.battery_charged_today ?? 0;
-        const discharge = record?.today?.battery_discharge ?? record?.battery_discharged_today ?? 0;
+        const missing = Boolean(record.__missing);
+        const solar = missing ? "-" : (record?.today?.solar_generation ?? record?.solar_generation_today ?? 0);
+        const load = missing ? "-" : (record?.today?.load_consumption ?? record?.load_consumption_today ?? 0);
+        const feed = missing ? "-" : (record?.today?.feed_in ?? record?.feed_in_today ?? 0);
+        const grid = missing ? "-" : (record?.today?.grid_consumption ?? record?.grid_consumption_today ?? 0);
+        const charge = missing ? "-" : (record?.today?.battery_charge ?? record?.battery_charged_today ?? 0);
+        const discharge = missing ? "-" : (record?.today?.battery_discharge ?? record?.battery_discharged_today ?? 0);
         return `
           <tr>
             <td>${this._escape(rowDate)}</td>
@@ -669,7 +693,7 @@ class ByteWattDebugCard extends HTMLElement {
         </div>
         <div class="history-controls">
           <span class="history-pill active">Selected period: ${this._escape(periodLabel)}</span>
-          <span class="history-pill">Range: ${this._escape(this._formatDisplayDate(this._debugRange().window.start))} to ${this._escape(this._formatDisplayDate(this._debugRange().window.end))}</span>
+          <span class="history-pill">Range: ${this._escape(this._formatDisplayDate(periodWindow.start))} to ${this._escape(this._formatDisplayDate(periodWindow.end))}</span>
         </div>
         ${
           scopeSummaries.length
