@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "009";
+const BYTEWATT_DEBUG_CARD_BUILD = "010";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -626,7 +626,7 @@ class ByteWattDebugCard extends HTMLElement {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
     };
-    const rowCount = Math.min(records.length, 10);
+    const rowCount = Math.min(records.length, 25);
     const rows = records
       .slice(-rowCount)
       .map((record) => {
