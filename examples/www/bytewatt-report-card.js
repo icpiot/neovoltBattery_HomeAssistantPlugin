@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "220";
+const BYTEWATT_REPORT_CARD_BUILD = "221";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1196,6 +1196,7 @@ class ByteWattReportCard extends HTMLElement {
             summary: fallbackSummary,
           },
           records: fallbackSelected,
+          chart_records: fallbackSelected,
           anchor,
           period,
           window,
@@ -1264,6 +1265,7 @@ class ByteWattReportCard extends HTMLElement {
           },
         },
         records: selected,
+        chart_records: selected,
         anchor,
         period,
         window,
@@ -1345,6 +1347,7 @@ class ByteWattReportCard extends HTMLElement {
         summary,
       },
       records: selected,
+      chart_records: chartRecords,
       anchor,
       period,
       window,
@@ -2099,6 +2102,191 @@ class ByteWattReportCard extends HTMLElement {
         <div class="stat-label">${label}</div>
         <div class="stat-value">${value}</div>
       </div>
+    `;
+  }
+
+  _chartLegendChip(label, tone) {
+    return `<span class="legend-chip ${tone ? `legend-${tone}` : ""}">${this._escape(label)}</span>`;
+  }
+
+  _chartPath(values, width, height, padding, maxValue) {
+    const usableWidth = Math.max(width - padding.left - padding.right, 1);
+    const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
+    const divisor = maxValue > 0 ? maxValue : 1;
+    const count = Math.max(values.length, 1);
+    const step = count > 1 ? usableWidth / (count - 1) : 0;
+    return values
+      .map((value, index) => {
+        const x = padding.left + index * step;
+        const normalized = Math.max(Number(value) || 0, 0) / divisor;
+        const y = padding.top + (1 - normalized) * usableHeight;
+        return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  }
+
+  _chartPoints(values, width, height, padding, maxValue) {
+    const usableWidth = Math.max(width - padding.left - padding.right, 1);
+    const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
+    const divisor = maxValue > 0 ? maxValue : 1;
+    const count = Math.max(values.length, 1);
+    const step = count > 1 ? usableWidth / (count - 1) : 0;
+    return values.map((value, index) => {
+      const x = padding.left + index * step;
+      const normalized = Math.max(Number(value) || 0, 0) / divisor;
+      const y = padding.top + (1 - normalized) * usableHeight;
+      return { x, y };
+    });
+  }
+
+  _renderDailyPowerChart(reporting) {
+    const powerDiagram = reporting?.power_diagram || {};
+    const series = powerDiagram.series || {};
+    const times = Array.isArray(powerDiagram.time) ? powerDiagram.time : [];
+    const load = Array.isArray(series.load) ? series.load : [];
+    const solar = Array.isArray(series.solar) ? series.solar : [];
+    const feed = Array.isArray(series.feed_in) ? series.feed_in : [];
+    const consumed = Array.isArray(series.consumed) ? series.consumed : [];
+    const maxSeriesValue = Math.max(
+      1,
+      ...[...solar, ...load, ...feed, ...consumed].map((value) => Math.max(Number(value) || 0, 0)),
+    );
+    const unitFactor = maxSeriesValue > 100 ? 1000 : 1;
+    const toChartValue = (value) => Math.max(Number(value) || 0, 0) / unitFactor;
+    const chartValues = {
+      solar: solar.map(toChartValue),
+      load: load.map(toChartValue),
+      feed: feed.map(toChartValue),
+      consumed: consumed.map(toChartValue),
+    };
+    const chartMax = Math.max(1, ...Object.values(chartValues).flat());
+    const width = 860;
+    const height = 320;
+    const padding = { top: 28, right: 20, bottom: 42, left: 54 };
+    const tickCount = 4;
+    const tickStep = chartMax / tickCount;
+    const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
+    const labelStep = Math.max(1, Math.floor(labels.length / 8));
+    const seriesMeta = [
+      { key: "solar", label: "Solar", tone: "solar", values: chartValues.solar },
+      { key: "load", label: "Load", tone: "load", values: chartValues.load },
+      { key: "feed", label: "Feed-in", tone: "feed", values: chartValues.feed },
+      { key: "consumed", label: "Consumed", tone: "grid", values: chartValues.consumed },
+    ];
+    const paths = seriesMeta
+      .map((item) => {
+        const points = this._chartPoints(item.values, width, height, padding, chartMax);
+        const path = this._chartPath(item.values, width, height, padding, chartMax);
+        return `
+          <path class="series-line marker-${item.tone}" d="${path}" />
+          ${points
+            .filter((_, index) => index % Math.max(1, Math.ceil(points.length / 12)) === 0)
+            .map((point) => `<circle class="series-marker marker-${item.tone}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" />`)
+            .join("")}
+        `;
+      })
+      .join("");
+    const gridLines = Array.from({ length: tickCount + 1 }, (_, index) => {
+      const value = chartMax - index * tickStep;
+      const y = padding.top + (index / tickCount) * (height - padding.top - padding.bottom);
+      return `
+        <line class="grid" x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" />
+        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)}${unitFactor === 1000 ? "kW" : ""}</text>
+      `;
+    }).join("");
+    const xLabels = labels
+      .map((label, index) => {
+        if (index !== 0 && index !== labels.length - 1 && index % labelStep !== 0) return "";
+        const x = padding.left + (labels.length > 1 ? (index / (labels.length - 1)) * (width - padding.left - padding.right) : 0);
+        return `<text class="axis-label" x="${x.toFixed(1)}" y="${height - 12}" text-anchor="middle">${this._escape(label)}</text>`;
+      })
+      .join("");
+    return `
+      <div class="power-chart-shell">
+        <svg class="power-chart chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
+          ${gridLines}
+          ${paths}
+          <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
+          ${xLabels}
+        </svg>
+        <div class="legend-row">
+          ${seriesMeta.map((item) => this._chartLegendChip(item.label, item.tone)).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderPeriodOverviewChart(periodContext) {
+    const records = (periodContext?.chart_records || periodContext?.records || []).filter(Boolean);
+    const rows = records.map((record) => {
+      const solar = Math.max(this._recordFloat(record, [["solar_generation_today"], ["today", "solar_generation"]]), 0);
+      const load = Math.max(this._recordFloat(record, [["load_consumption_today"], ["today", "load_consumption"]]), 0);
+      const feed = Math.max(this._recordFloat(record, [["feed_in_today"], ["today", "feed_in"]]), 0);
+      const grid = Math.max(this._recordFloat(record, [["grid_consumption_today"], ["today", "grid_consumption"]]), 0);
+      const total = solar + load + feed + grid;
+      return {
+        label: this._recordDisplayDate(record) || record.record_date_display || record.record_date || "-",
+        solar,
+        load,
+        feed,
+        grid,
+        total,
+        missing: Boolean(record.__missing),
+      };
+    });
+    const maxTotal = Math.max(1, ...rows.map((row) => row.total));
+    const periodLabel = this._reportPeriodLabel(periodContext?.period || this._reportPeriod);
+    const widthFor = (value) => `${Math.max(0, Math.min((value / maxTotal) * 100, 100)).toFixed(1)}%`;
+    return `
+      <div class="stats-diagram">
+        ${rows.length
+          ? rows
+              .map(
+                (row) => `
+                  <div class="stats-row">
+                    <div class="stats-row-head">
+                      <div class="stats-row-label">${this._escape(row.label)}</div>
+                      <div class="stats-row-value">${this._fmtEnergy(row.total)}</div>
+                    </div>
+                    <div class="stats-bar-track">
+                      <div class="stats-bar-fill tone-solar" style="width:${widthFor(row.solar)}"></div>
+                      <div class="stats-bar-fill tone-load" style="width:${widthFor(row.load)}"></div>
+                      <div class="stats-bar-fill tone-feed" style="width:${widthFor(row.feed)}"></div>
+                      <div class="stats-bar-fill tone-grid" style="width:${widthFor(row.grid)}"></div>
+                    </div>
+                  </div>
+                `,
+              )
+              .join("")
+          : `<div class="empty">No chart data available for the selected ${this._escape(periodLabel.toLowerCase())}.</div>`}
+        <div class="legend-row">
+          ${this._chartLegendChip("Solar", "solar")}
+          ${this._chartLegendChip("Load", "load")}
+          ${this._chartLegendChip("Feed-in", "feed")}
+          ${this._chartLegendChip("Grid", "grid")}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderEnergyDiagram(reporting, periodContext) {
+    const period = periodContext?.period || this._reportPeriod || "day";
+    const periodLabel = this._reportPeriodLabel(period);
+    const isDaily = this._isDailyPeriod(period);
+    const rangeStart = this._formatDisplayDate(periodContext?.window?.start);
+    const rangeEnd = this._formatDisplayDate(periodContext?.window?.end);
+    const subtitle = isDaily
+      ? this._escape(reporting?.power_diagram?.date || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
+      : this._escape(rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : "");
+    return `
+      <section class="panel power-panel">
+        <div class="panel-header">
+          <div class="panel-title">${isDaily ? "Power Diagram" : `${periodLabel} Power Overview`}</div>
+          <div class="panel-date">${subtitle}</div>
+          <button class="download-btn" type="button" data-download-report>Download</button>
+        </div>
+        ${isDaily ? this._renderDailyPowerChart(reporting) : this._renderPeriodOverviewChart(periodContext)}
+      </section>
     `;
   }
 
@@ -3072,6 +3260,10 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid #d6dbe1;
           box-shadow:none;
         }
+        .legend-solar { background:#fff7da; color:#9a6f00; border:1px solid rgba(240,196,25,0.28); }
+        .legend-load { background:#e7f4ff; color:#1d78bd; border:1px solid rgba(47,155,232,0.24); }
+        .legend-feed { background:#fff0e5; color:#b35c10; border:1px solid rgba(240,138,36,0.24); }
+        .legend-grid { background:#eef2f7; color:#516075; border:1px solid rgba(152,162,168,0.24); }
         .download-btn:hover,
         .legend-chip:hover,
         .history-pill:hover,
@@ -3249,6 +3441,9 @@ class ByteWattReportCard extends HTMLElement {
         .stats-diagram {
           display:grid;
           gap:14px;
+          max-height:460px;
+          overflow:auto;
+          padding-right:4px;
         }
         .stats-row {
           display:grid;
@@ -3278,6 +3473,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .stats-bar-track {
           position:relative;
+          display:flex;
           overflow:hidden;
           height:14px;
           border-radius:999px;
@@ -3286,6 +3482,7 @@ class ByteWattReportCard extends HTMLElement {
         .stats-bar-fill {
           height:100%;
           border-radius:999px;
+          flex:0 0 auto;
         }
         .tone-solar { background:linear-gradient(90deg, var(--bw-solar), #f7da61); }
         .tone-load { background:linear-gradient(90deg, var(--bw-load), #78bdf4); }
@@ -3469,7 +3666,7 @@ class ByteWattReportCard extends HTMLElement {
             <div class="body-grid">
               <div class="stack-grid">
                 ${this._renderRealtimePanel(reporting)}
-                ${this._renderEnergyDiagram(reporting)}
+                ${this._renderEnergyDiagram(reporting, periodContext)}
                 ${this._renderDetailsPanel(reporting)}
               </div>
             </div>
