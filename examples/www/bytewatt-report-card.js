@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "216";
+const BYTEWATT_REPORT_CARD_BUILD = "217";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1710,15 +1710,9 @@ class ByteWattReportCard extends HTMLElement {
         })()
       : selectedCount;
     const missingCount = Math.max(requestedCount - selectedCount, 0);
-    const historyRecords = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
-    const latestRows = historyRecords.slice(-5).reverse();
-    const latestDates = latestRows.map((record) => this._recordDisplayDate(record) || record.record_date || "Unknown");
-    const historyScope = this._historyScopeKey();
-    const historyUrl = this._historyUrl();
-    const historySourceSummary = `configured ${this._historyConfigured() ? "yes" : "no"} | entry ${this._historyEntryId() || "-"} | url ${historyUrl || "-"}`;
     const currentEnsureKey =
       periodContext?.window?.start && periodContext?.window?.end
-        ? `${historyScope}|${period}|${this._formatLocalDate(periodContext.window.start)}|${this._formatLocalDate(periodContext.window.end)}`
+        ? `${this._historyScopeKey()}|${period}|${this._formatLocalDate(periodContext.window.start)}|${this._formatLocalDate(periodContext.window.end)}`
         : "";
     const ensureStatus = currentEnsureKey && this._historyEnsureAttemptKey === currentEnsureKey ? this._historyEnsureStatus : "";
     const status = this._periodStatus(periodContext?.records || [], this._historyLoading && !this._historyData, this._historyLoadError, {
@@ -1763,19 +1757,6 @@ class ByteWattReportCard extends HTMLElement {
             ${periodContext?.window?.start && periodContext?.window?.end ? ` <span>(selected ${selectedCount}/${requestedCount} | missing ${missingCount})</span>` : ""}
             ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
           </div>
-        </div>
-        <div class="archive-inspector">
-          <div class="archive-inspector-head">
-            <div class="archive-inspector-title">Archive Inspector</div>
-            <div class="archive-inspector-meta">Scope ${this._escape(historyScope)} | loaded ${historyRecords.length} | selected ${selectedCount}/${requestedCount}</div>
-          </div>
-          <div class="archive-inspector-meta">${this._escape(historySourceSummary)}</div>
-          ${periodContext?.window?.start && periodContext?.window?.end ? `<div class="archive-inspector-meta">Coverage ${selectedCount}/${requestedCount} | missing ${missingCount}</div>` : ""}
-          ${
-            latestDates.length
-              ? `<div class="archive-inspector-list">${latestDates.map((value) => `<span class="archive-row-chip">${this._escape(value)}</span>`).join("")}</div>`
-              : `<div class="archive-inspector-empty">No history rows loaded for the current scope.</div>`
-          }
         </div>
       </div>
     `;
@@ -1855,7 +1836,6 @@ class ByteWattReportCard extends HTMLElement {
   _renderHeroBanner(reporting) {
     const live = reporting?.live || {};
     const meta = this._selectionMeta();
-    const history = this._selectorState()?.attributes?.history || {};
     const direction = this._batteryDirection(live.battery_power);
     const gridDirection = this._gridDirection(live.grid_power);
     const systemCount = this._systemSummaries().length;
@@ -1868,11 +1848,6 @@ class ByteWattReportCard extends HTMLElement {
           <div class="hero-kicker">At A Glance</div>
           <div class="hero-title">${this._escape(scopeLabel)}</div>
           <div class="hero-subtitle">${this._escape(live.power_source || "Idle")} | ${direction} | ${gridDirection}</div>
-          ${
-            this._historyConfigured()
-              ? `<div class="hero-history">Local archive: ${this._escape(this._historyUrl())}</div>`
-              : ""
-          }
         </div>
         <div class="hero-metrics">
           ${this._heroChip("SOC", this._fmtPercent(live.soc))}
