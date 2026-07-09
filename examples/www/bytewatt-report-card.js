@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "247";
+const BYTEWATT_REPORT_CARD_BUILD = "248";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4632,7 +4632,8 @@ class ByteWattReportCard extends HTMLElement {
             min-width:720px;
           }
           .power-chart {
-            min-width:720px;
+            min-width:0;
+            width:100%;
           }
         }
       </style>
