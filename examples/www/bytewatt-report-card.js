@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "214";
+const BYTEWATT_REPORT_CARD_BUILD = "215";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1695,6 +1695,7 @@ class ByteWattReportCard extends HTMLElement {
     const period = periodContext?.period || this._reportPeriod || "day";
     const anchor = periodContext?.anchor || this._parseLocalDate(this._reportAnchorDate || "") || null;
     const selectedCount = (periodContext?.records || []).length;
+    const showShiftControls = period !== "today";
     const requestedCount = periodContext?.window?.start && periodContext?.window?.end
       ? (() => {
           const start = new Date(periodContext.window.start.getFullYear(), periodContext.window.start.getMonth(), periodContext.window.start.getDate());
@@ -1754,9 +1755,9 @@ class ByteWattReportCard extends HTMLElement {
           </div>
         </div>
         <div class="report-control-row">
-          <button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>
+          ${showShiftControls ? `<button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>` : ""}
           <input class="report-date-input" type="date" data-report-date value="${this._escape(displayDate)}" max="${this._escape(todayValue)}" />
-          <button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>
+          ${showShiftControls ? `<button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>` : ""}
           <div class="report-status ${statusClass}">
             ${this._escape(status)}
             ${periodContext?.window?.start && periodContext?.window?.end ? ` <span>(selected ${selectedCount}/${requestedCount} | missing ${missingCount})</span>` : ""}
