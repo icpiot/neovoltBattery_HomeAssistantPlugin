@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "217";
+const BYTEWATT_REPORT_CARD_BUILD = "218";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1062,17 +1062,17 @@ class ByteWattReportCard extends HTMLElement {
     const requestedCount = Number(context.requested_count ?? selectedCount) || 0;
     const missingCount = Number(context.missing_count ?? Math.max(requestedCount - selectedCount, 0)) || 0;
     const ensureStatus = String(context.ensure_status || "").trim();
-    if (ensureStatus) return ensureStatus;
+    if (ensureStatus) return missingCount > 0 || !selectedCount ? ensureStatus : "";
     if (context.live_fallback) return "Live reporting shown while selected period archive catches up";
     if (!selectedCount) {
       return requestedCount > 0
         ? `No source data for selected period (${requestedCount} day(s) requested)`
-        : "No archive rows loaded for selected period";
+        : "";
     }
     if (requestedCount > 0 && selectedCount < requestedCount) {
       return `Selected period partially available (${selectedCount}/${requestedCount}). No source data for ${missingCount} day(s).`;
     }
-    return `Selected period ready (${selectedCount}/${requestedCount || selectedCount})`;
+    return "";
   }
 
   _buildPeriodReporting(baseReporting) {
@@ -1752,11 +1752,15 @@ class ByteWattReportCard extends HTMLElement {
           ${showShiftControls ? `<button class="report-shift-button" type="button" data-report-shift="-1" aria-label="Previous period">&lt;</button>` : ""}
           <input class="report-date-input" type="date" data-report-date value="${this._escape(displayDate)}" max="${this._escape(todayValue)}" />
           ${showShiftControls ? `<button class="report-shift-button" type="button" data-report-shift="1" aria-label="Next period">&gt;</button>` : ""}
-          <div class="report-status ${statusClass}">
-            ${this._escape(status)}
-            ${periodContext?.window?.start && periodContext?.window?.end ? ` <span>(selected ${selectedCount}/${requestedCount} | missing ${missingCount})</span>` : ""}
-            ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
-          </div>
+          ${
+            status
+              ? `<div class="report-status ${statusClass}">
+                  ${this._escape(status)}
+                  ${periodContext?.window?.start && periodContext?.window?.end ? ` <span>(selected ${selectedCount}/${requestedCount} | missing ${missingCount})</span>` : ""}
+                  ${startLabel && endLabel ? ` <span>(${this._escape(startLabel)} to ${this._escape(endLabel)})</span>` : ""}
+                </div>`
+              : ""
+          }
         </div>
       </div>
     `;
