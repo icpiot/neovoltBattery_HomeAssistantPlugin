@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "233";
+const BYTEWATT_REPORT_CARD_BUILD = "234";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3629,6 +3629,9 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           position:relative;
           padding:16px;
+          margin-inline:4px;
+          max-width:calc(100% - 8px);
+          box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
           background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
