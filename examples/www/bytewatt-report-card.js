@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "224";
+const BYTEWATT_REPORT_CARD_BUILD = "225";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3595,15 +3595,14 @@ class ByteWattReportCard extends HTMLElement {
           align-items:start;
         }
         .power-chart-wrap {
-          overflow-x:auto;
-          overflow-y:hidden;
+          overflow:visible;
           padding-bottom:4px;
           display:grid;
           gap:10px;
         }
         .power-chart {
-          min-width:860px;
           width:100%;
+          min-width:0;
           display:block;
           background:#fff;
           border-radius:18px;
@@ -3623,7 +3622,7 @@ class ByteWattReportCard extends HTMLElement {
           position:absolute;
           z-index:4;
           pointer-events:none;
-          transform:translate(14px, 14px);
+          transform:translate(18px, 18px);
         }
         .chart-hover-title {
           font-size:0.88rem;
@@ -3661,8 +3660,15 @@ class ByteWattReportCard extends HTMLElement {
           gap:10px;
         }
         .series-area {
-          fill-opacity:1;
+          stroke:none;
+          pointer-events:none;
+          opacity:1;
+          fill-opacity:0.16;
         }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.16; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.14; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
         .series-line {
           fill:none;
           stroke-width:2.6;
