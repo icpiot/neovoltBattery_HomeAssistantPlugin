@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "219";
+const BYTEWATT_REPORT_CARD_BUILD = "220";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2349,7 +2349,7 @@ class ByteWattReportCard extends HTMLElement {
         .hero-banner {
           display:grid;
           grid-template-columns: 1.1fr 1fr;
-          gap:16px;
+          gap:12px;
           align-items:center;
           background:
             linear-gradient(135deg, rgba(47,117,216,0.06), rgba(116,178,255,0.02)),
@@ -2533,14 +2533,14 @@ class ByteWattReportCard extends HTMLElement {
         }
         .hero-metrics {
           display:grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap:12px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap:10px;
         }
         .hero-chip {
           background:#f8fafc;
           border:1px solid var(--bw-border);
           border-radius:14px;
-          padding:12px 14px;
+          padding:10px 12px;
           display:grid;
           gap:4px;
         }
@@ -2630,18 +2630,19 @@ class ByteWattReportCard extends HTMLElement {
         }
         .overview-grid {
           display:grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap:14px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap:10px;
         }
         .overview-panel {
           display:grid;
-          gap:14px;
+          gap:10px;
           align-content:start;
+          padding:12px 14px;
         }
         .overview-metrics {
           display:grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap:12px;
+          gap:10px;
         }
         .metric {
           display:grid;
