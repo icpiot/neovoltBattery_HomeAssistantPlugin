@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "218";
+const BYTEWATT_REPORT_CARD_BUILD = "219";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2621,6 +2621,7 @@ class ByteWattReportCard extends HTMLElement {
           letter-spacing:0.04em;
           text-transform:uppercase;
           color:#64748b;
+          white-space:nowrap;
         }
         .aggregate-metric {
           margin-top:6px;
@@ -2654,6 +2655,7 @@ class ByteWattReportCard extends HTMLElement {
           font-size:1.2rem;
           font-weight:800;
           color:#0f172a;
+          white-space:nowrap;
         }
         .summary-tile,
         .live-tile {
@@ -2710,8 +2712,8 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:14px;
         }
-        .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-        .live-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+        .summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+        .live-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
         .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .body-grid {
           display:grid;
