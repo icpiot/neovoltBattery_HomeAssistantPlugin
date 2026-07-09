@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "245";
+const BYTEWATT_REPORT_CARD_BUILD = "246";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4140,23 +4140,27 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-chart-wrap {
           overflow:visible;
-            width:min(100%, calc(100% - 24px));
-            justify-self:center;
-            padding:18px 24px 22px;
-            display:grid;
-            gap:10px;
-            border:1px solid rgba(214, 219, 225, 0.88);
-            border-radius:20px;
+          box-sizing:border-box;
+          width:100%;
+          max-width:100%;
+          justify-self:stretch;
+          padding:18px 24px 22px;
+          display:grid;
+          gap:10px;
+          border:1px solid rgba(214, 219, 225, 0.88);
+          border-radius:20px;
           background:
             linear-gradient(180deg, rgba(47,155,232,0.04) 0%, rgba(255,255,255,0.98) 32%, rgba(240,196,25,0.03) 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
-            width:100%;
-            min-width:0;
-            display:block;
-            background:transparent;
-            border-radius:16px;
+          width:100%;
+          max-width:100%;
+          min-width:0;
+          display:block;
+          background:transparent;
+          border-radius:16px;
+          box-sizing:border-box;
           overflow:visible;
         }
         .chart-hover-card {
@@ -4446,8 +4450,8 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .power-chart-shell {
-            margin-inline:18px;
-            max-width:calc(100% - 36px);
+            margin-inline:0;
+            max-width:100%;
           }
         }
         @media (max-width: 1440px) {
@@ -4515,8 +4519,8 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
           .power-chart-shell {
-            margin-inline:12px;
-            max-width:calc(100% - 24px);
+            margin-inline:0;
+            max-width:100%;
             padding:14px 14px 16px;
           }
           .ring-grid {
@@ -4545,8 +4549,8 @@ class ByteWattReportCard extends HTMLElement {
             padding:14px 10px;
           }
           .power-chart-shell {
-            margin-inline:10px;
-            max-width:calc(100% - 20px);
+            margin-inline:0;
+            max-width:100%;
             padding:12px 12px 14px;
           }
           .ring-grid {
