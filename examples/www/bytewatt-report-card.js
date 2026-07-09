@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "233";
+const BYTEWATT_REPORT_CARD_BUILD = "238";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2228,6 +2228,206 @@ class ByteWattReportCard extends HTMLElement {
     });
   }
 
+  _chartValueIndex(values, mode = "max", startIndex = 0) {
+    const list = Array.isArray(values) ? values : [];
+    if (!list.length) return 0;
+    const from = Math.max(0, Math.min(Number(startIndex) || 0, list.length - 1));
+    let bestIndex = from;
+    let bestValue = Number(list[from]) || 0;
+    for (let index = from; index < list.length; index += 1) {
+      const value = Number(list[index]) || 0;
+      if ((mode === "min" && value < bestValue) || (mode !== "min" && value > bestValue)) {
+        bestValue = value;
+        bestIndex = index;
+      }
+    }
+    return bestIndex;
+  }
+
+  _chartFirstIndexAbove(values, threshold, fromIndex = 0) {
+    const list = Array.isArray(values) ? values : [];
+    for (let index = Math.max(0, fromIndex); index < list.length; index += 1) {
+      if ((Number(list[index]) || 0) > threshold) return index;
+    }
+    return -1;
+  }
+
+  _chartLastIndexAbove(values, threshold, fromIndex = 0) {
+    const list = Array.isArray(values) ? values : [];
+    for (let index = list.length - 1; index >= Math.max(0, fromIndex); index -= 1) {
+      if ((Number(list[index]) || 0) > threshold) return index;
+    }
+    return -1;
+  }
+
+  _chartStoryTimeLabel(label, index, count) {
+    if (typeof label === "string" && /(\d{1,2}:\d{2})/.test(label)) {
+      return label.match(/(\d{1,2}:\d{2})/)?.[1] || label;
+    }
+    const effectiveCount = Math.max(Number(count) || 1, 1);
+    const hours = effectiveCount > 1 ? (index / (effectiveCount - 1)) * 24 : 0;
+    const wholeHours = Math.floor(hours);
+    const minutes = Math.round((hours - wholeHours) * 60);
+    return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding) {
+    const count = Math.max(
+      labels.length,
+      chartValues.solar.length,
+      chartValues.load.length,
+      chartValues.feed.length,
+      chartValues.consumed.length,
+      chartValues.bat.length,
+      1,
+    );
+    const xForIndex = (index) => {
+      if (count <= 1) return padding.left;
+      return padding.left + (index / (count - 1)) * (width - padding.left - padding.right);
+    };
+    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", 0);
+    const batPeakIndex = this._chartValueIndex(chartValues.bat, "max", 0);
+    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", 0);
+    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
+    const gridPeakIndex = this._chartValueIndex(chartValues.feed, "max", 0);
+    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
+    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
+    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
+    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
+    const solarThreshold = Math.max(0.08, solarPeak * 0.2);
+    const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
+    const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
+    const solarBandStart = solarStart >= 0 ? solarStart : Math.max(0, Math.floor(count * 0.3));
+    const solarBandEnd = solarEnd >= 0 ? solarEnd : Math.max(solarBandStart + 1, Math.floor(count * 0.7));
+    const eveningStart = Math.max(0, Math.floor(count * 0.62));
+    const eveningLoadIndex = this._chartValueIndex(chartValues.load, "max", eveningStart);
+    const eveningGridIndex = this._chartValueIndex(chartValues.feed, "max", eveningStart);
+    const eveningConsumedIndex = this._chartValueIndex(chartValues.consumed, "max", eveningStart);
+    const eveningPeakIndex = [eveningLoadIndex, eveningGridIndex, eveningConsumedIndex]
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .sort((a, b) => (Number(chartValues.load[b] ?? 0) + Number(chartValues.feed[b] ?? 0)) - (Number(chartValues.load[a] ?? 0) + Number(chartValues.feed[a] ?? 0)))[0] ?? eveningLoadIndex;
+    const morningPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
+    const batteryEventLabel = this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
+    const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
+    const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
+    const headline = batMin <= 15 && solarPeak > 0.05
+      ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
+      : solarPeak > 0.05
+        ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
+        : "Demand stays active through the day, with battery movement and grid support carrying the load.";
+    const highlights = [
+      {
+        tone: "bat",
+        title: "1. Battery pressure",
+        value: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
+        note: batMin <= 15 ? "The battery hits its low point early and has to recover later." : "The battery eases through the day without dropping to the floor.",
+      },
+      {
+        tone: "solar",
+        title: "2. Solar recovery",
+        value: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
+        note: solarPeak > 0.05 ? "Midday solar creates the strongest charging window." : "Solar stays subdued, so storage has less to work with.",
+      },
+      {
+        tone: "feed",
+        title: "3. Evening pressure",
+        value: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
+        note: "Late demand is where the chart usually tells the clearest story.",
+      },
+    ];
+    const bands = [
+      {
+        tone: "night",
+        label: "Early drawdown",
+        start: 0,
+        end: Math.max(0, solarBandStart),
+      },
+      {
+        tone: "solar",
+        label: "Solar recovery",
+        start: Math.max(0, solarBandStart),
+        end: Math.max(Math.max(0, solarBandStart) + 1, solarBandEnd),
+      },
+      {
+        tone: "evening",
+        label: "Evening demand",
+        start: Math.max(0, eveningStart),
+        end: Math.max(eveningStart + 1, count - 1),
+      },
+    ];
+    const annotations = [
+      {
+        key: "battery",
+        tone: "bat",
+        index: batMinIndex,
+        title: "Battery low",
+        note: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
+        xOffset: 18,
+        yOffset: 26,
+        align: "right",
+        width: 126,
+      },
+      {
+        key: "solar",
+        tone: "solar",
+        index: solarPeakIndex,
+        title: "Solar peak",
+        note: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
+        xOffset: -150,
+        yOffset: -88,
+        align: "left",
+        width: 138,
+      },
+      {
+        key: "evening",
+        tone: "feed",
+        index: eveningPeakIndex,
+        title: "Evening peak",
+        note: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
+        xOffset: -160,
+        yOffset: -86,
+        align: "left",
+        width: 144,
+      },
+    ];
+    return {
+      headline,
+      highlights,
+      bands: bands
+        .filter((band) => Number.isFinite(band.start) && Number.isFinite(band.end) && band.end >= band.start)
+        .map((band) => ({
+          ...band,
+          x: xForIndex(band.start),
+          width: Math.max(16, xForIndex(band.end) - xForIndex(band.start)),
+        })),
+      annotations: annotations
+        .filter((item) => Number.isFinite(item.index) && item.index >= 0)
+        .map((item) => {
+          const x = xForIndex(item.index);
+          const yLookup = item.key === "battery"
+            ? chartValues.bat[item.index]
+            : item.key === "solar"
+              ? chartValues.solar[item.index]
+              : chartValues.load[item.index] ?? chartValues.feed[item.index] ?? chartValues.consumed[item.index] ?? 0;
+          const maxValue = item.key === "battery" ? 100 : Math.max(1, ...chartValues.solar, ...chartValues.load, ...chartValues.feed, ...chartValues.consumed);
+          const normalized = Math.max(Number(yLookup) || 0, 0) / (maxValue > 0 ? maxValue : 1);
+          const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
+          const y = padding.top + (1 - Math.min(normalized, 1)) * usableHeight;
+          return {
+            ...item,
+            x,
+            y,
+          };
+        }),
+      focusIndex: {
+        battery: batMinIndex,
+        solar: solarPeakIndex,
+        evening: eveningPeakIndex,
+      },
+      morningPeakIndex,
+    };
+  }
+
   _formatChartPower(value, unitFactor) {
     const amount = Math.max(Number(value) || 0, 0);
     if (unitFactor === 1000) return `${this._fmtNumber(amount, 2)} kW`;
@@ -2399,13 +2599,14 @@ class ByteWattReportCard extends HTMLElement {
     const batMax = 100;
     const width = 860;
     const height = 334;
-    const padding = { top: 34, right: 24, bottom: 52, left: 60 };
+      const padding = { top: 34, right: 72, bottom: 52, left: 64 };
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
     const viewportWidth = Number(window?.innerWidth) || 1280;
     const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
     const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
+    const story = this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding);
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2417,6 +2618,7 @@ class ByteWattReportCard extends HTMLElement {
       chartMax,
       chartMaxByScale: { power: chartMax, bat: batMax },
       series: seriesMeta,
+      story,
     };
     const paths = seriesMeta
       .map((item) => {
@@ -2442,7 +2644,7 @@ class ByteWattReportCard extends HTMLElement {
     const batLabels = [100, 75, 50, 25, 0]
       .map((value) => {
         const y = padding.top + ((100 - value) / 100) * (height - padding.top - padding.bottom);
-        return `<text class="axis-label axis-label-right" x="${(width - padding.right + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
+          return `<text class="axis-label axis-label-right" x="${(width - padding.right + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
       })
       .join("");
     const axisMidY = padding.top + (height - padding.top - padding.bottom) / 2;
@@ -2451,6 +2653,38 @@ class ByteWattReportCard extends HTMLElement {
         if (index !== 0 && index !== labels.length - 1 && index % labelStep !== 0) return "";
         const x = padding.left + (labels.length > 1 ? (index / (labels.length - 1)) * (width - padding.left - padding.right) : 0);
         return `<text class="axis-label" x="${x.toFixed(1)}" y="${height - 12}" text-anchor="middle">${this._escape(label)}</text>`;
+      })
+      .join("");
+    const bandMarkup = (story.bands || [])
+      .map((band) => {
+        const x = Number(band.x) || padding.left;
+        const bandWidth = Math.max(16, Number(band.width) || 16);
+        return `<rect class="story-band story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`;
+      })
+      .join("");
+    const annotationMarkup = (story.annotations || [])
+      .map((item) => {
+        const boxWidth = Number(item.width) || 138;
+        const boxHeight = 44;
+        const alignLeft = item.align !== "right";
+        const rawX = Number(item.x) || padding.left;
+        const rawY = Number(item.y) || padding.top;
+        const preferredX = alignLeft ? rawX + Number(item.xOffset || 16) : rawX - boxWidth + Number(item.xOffset || -16);
+        const boxX = Math.max(padding.left + 4, Math.min(preferredX, width - padding.right - boxWidth - 4));
+        const boxY = Math.max(padding.top + 4, Math.min(rawY + Number(item.yOffset || 20), height - padding.bottom - boxHeight - 4));
+        const connectorX2 = alignLeft ? boxX : boxX + boxWidth;
+        const connectorY2 = boxY + boxHeight / 2;
+        const connectorX1 = rawX;
+        const connectorY1 = rawY;
+        return `
+          <g class="story-annotation tone-${this._escape(item.tone || "neutral")}">
+            <line class="story-annotation-line" x1="${connectorX1.toFixed(1)}" y1="${connectorY1.toFixed(1)}" x2="${connectorX2.toFixed(1)}" y2="${connectorY2.toFixed(1)}"></line>
+            <circle class="story-annotation-point tone-${this._escape(item.tone || "neutral")}" cx="${connectorX1.toFixed(1)}" cy="${connectorY1.toFixed(1)}" r="4.2"></circle>
+            <rect class="story-annotation-box tone-${this._escape(item.tone || "neutral")}" x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxWidth.toFixed(1)}" height="${boxHeight.toFixed(1)}" rx="10" ry="10"></rect>
+            <text class="story-annotation-title" x="${(boxX + 10).toFixed(1)}" y="${(boxY + 16).toFixed(1)}">${this._escape(item.title || "")}</text>
+            <text class="story-annotation-note" x="${(boxX + 10).toFixed(1)}" y="${(boxY + 31).toFixed(1)}">${this._escape(item.note || "")}</text>
+          </g>
+        `;
       })
       .join("");
     return `
@@ -2462,27 +2696,48 @@ class ByteWattReportCard extends HTMLElement {
           ${this._ring("Feed", this._fmtEnergy(today.feed_in), "feed")}
           ${this._ring("Grid", this._fmtEnergy(today.grid_consumption), "grid")}
         </div>
-        <div class="chart-toolbar">
-          <div class="chart-toggle-row">
-            ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
+          <div class="chart-toolbar">
+            <div class="chart-toggle-row">
+              ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
+            </div>
           </div>
+          <div class="power-story-strip">
+            <div class="power-story-headline">${this._escape(story.headline || "")}</div>
+            <div class="power-story-cards">
+              ${(story.highlights || [])
+                .map(
+                  (item, index) => `
+                    <article class="power-story-card tone-${this._escape(item.tone || "neutral")}">
+                      <div class="power-story-card-head">
+                        <span class="power-story-index">${index + 1}</span>
+                        <span class="power-story-title">${this._escape(item.title || "")}</span>
+                      </div>
+                      <div class="power-story-value">${this._escape(item.value || "")}</div>
+                      <div class="power-story-note">${this._escape(item.note || "")}</div>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </div>
+          </div>
+          <div class="power-chart-wrap">
+            <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
+              <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+              ${bandMarkup}
+              ${gridLines}
+              ${paths}
+              <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
+              <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
+              <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
+                <text class="axis-title axis-title-bat" x="${(width - 30).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 30).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
+              ${batLabels}
+              ${xLabels}
+              ${annotationMarkup}
+            </svg>
+          </div>
+          ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
         </div>
-        <div class="power-chart-wrap">
-          <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
-            <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-            ${gridLines}
-            ${paths}
-            <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
-            <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
-            <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
-            <text class="axis-title axis-title-bat" x="${(width - 20).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 20).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
-            ${batLabels}
-            ${xLabels}
-          </svg>
-        </div>
-        ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
-      </div>
-    `;
+      `;
   }
 
   _renderPeriodOverviewChart(periodContext) {
@@ -3628,7 +3883,10 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding:16px;
+            padding:18px 20px 20px;
+            margin-inline:16px;
+            max-width:calc(100% - 32px);
+          box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
           background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
@@ -3648,23 +3906,145 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           align-items:start;
         }
+        .power-story-strip {
+          display:grid;
+          gap:12px;
+          padding:2px 2px 0;
+        }
+        .power-story-headline {
+          font-size:1rem;
+          font-weight:900;
+          color:#0f172a;
+          line-height:1.45;
+          letter-spacing:0.01em;
+          max-width:76ch;
+        }
+        .power-story-cards {
+          display:grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap:10px;
+        }
+        .power-story-card {
+          background:#fff;
+          border:1px solid var(--bw-border);
+          border-radius:16px;
+          padding:12px 14px 13px;
+          box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
+          display:grid;
+          gap:6px;
+          min-width:0;
+        }
+        .power-story-card-head {
+          display:flex;
+          align-items:center;
+          gap:8px;
+          min-width:0;
+        }
+        .power-story-index {
+          width:22px;
+          height:22px;
+          border-radius:999px;
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          background:#0f172a;
+          color:#fff;
+          font-size:0.72rem;
+          font-weight:900;
+          flex:0 0 auto;
+        }
+        .power-story-title {
+          font-size:0.8rem;
+          font-weight:900;
+          color:#334155;
+          letter-spacing:0.03em;
+          text-transform:uppercase;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
+        }
+        .power-story-value {
+          font-size:0.98rem;
+          font-weight:900;
+          color:#0f172a;
+        }
+        .power-story-note {
+          font-size:0.84rem;
+          color:#56667b;
+          line-height:1.35;
+        }
+        .power-story-card.tone-bat { box-shadow: inset 0 3px 0 0 var(--bw-battery), 0 8px 18px rgba(15, 23, 42, 0.05); }
+        .power-story-card.tone-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar), 0 8px 18px rgba(15, 23, 42, 0.05); }
+        .power-story-card.tone-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed), 0 8px 18px rgba(15, 23, 42, 0.05); }
+        .story-band {
+          pointer-events:none;
+          opacity:0.12;
+        }
+        .story-band-night {
+          fill:#dfe8f2;
+          opacity:0.30;
+        }
+        .story-band-solar {
+          fill:#fff2b8;
+          opacity:0.34;
+        }
+        .story-band-evening {
+          fill:#ffe0c6;
+          opacity:0.28;
+        }
+        .story-annotation {
+          pointer-events:none;
+        }
+        .story-annotation-line {
+          stroke:#64748b;
+          stroke-width:1.2;
+          stroke-dasharray:4 4;
+          opacity:0.9;
+        }
+        .story-annotation-point {
+          fill:#ffffff;
+          stroke-width:3;
+        }
+        .story-annotation-point.tone-bat { stroke:var(--bw-battery); }
+        .story-annotation-point.tone-solar { stroke:var(--bw-solar); }
+        .story-annotation-point.tone-feed { stroke:var(--bw-feed); }
+        .story-annotation-box {
+          fill:rgba(255,255,255,0.96);
+          stroke:#d6dbe1;
+          stroke-width:1;
+        }
+        .story-annotation-box.tone-bat { fill:rgba(240,252,246,0.98); }
+        .story-annotation-box.tone-solar { fill:rgba(255,250,223,0.98); }
+        .story-annotation-box.tone-feed { fill:rgba(255,244,236,0.98); }
+        .story-annotation-title {
+          fill:#0f172a;
+          font-size:11px;
+          font-weight:900;
+        }
+        .story-annotation-note {
+          fill:#56667b;
+          font-size:10px;
+          font-weight:700;
+        }
         .power-chart-wrap {
           overflow:visible;
-          padding:12px 12px 14px;
-          display:grid;
-          gap:10px;
-          border:1px solid rgba(214, 219, 225, 0.88);
-          border-radius:20px;
+            width:min(100%, calc(100% - 24px));
+            justify-self:center;
+            padding:18px 24px 22px;
+            display:grid;
+            gap:10px;
+            border:1px solid rgba(214, 219, 225, 0.88);
+            border-radius:20px;
           background:
             linear-gradient(180deg, rgba(47,155,232,0.04) 0%, rgba(255,255,255,0.98) 32%, rgba(240,196,25,0.03) 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
-          width:100%;
-          min-width:0;
-          display:block;
-          background:transparent;
-          border-radius:16px;
+            width:100%;
+            min-width:0;
+            display:block;
+            background:transparent;
+            border-radius:16px;
           overflow:visible;
         }
         .chart-hover-card {
@@ -4020,6 +4400,12 @@ class ByteWattReportCard extends HTMLElement {
           }
           .chart-toolbar {
             grid-template-columns:1fr;
+          }
+          .power-story-cards {
+            grid-template-columns: 1fr;
+          }
+          .power-story-headline {
+            max-width:none;
           }
         }
         @media (max-width: 700px) {
