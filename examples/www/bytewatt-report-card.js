@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "251";
+const BYTEWATT_REPORT_CARD_BUILD = "252";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2518,10 +2518,9 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
-  _formatChartPower(value, unitFactor) {
+  _formatChartPower(value) {
     const amount = Math.max(Number(value) || 0, 0);
-    if (unitFactor === 1000) return `${this._fmtNumber(amount, 2)} kW`;
-    return `${this._fmtNumber(amount, 0)} W`;
+    return `${this._fmtNumber(amount, 2)} kW`;
   }
 
   _chartHoverCardMarkup(state = {}) {
@@ -2666,7 +2665,7 @@ class ByteWattReportCard extends HTMLElement {
       1,
       ...[...solar, ...load, ...feed, ...consumed].map((value) => Math.max(Number(value) || 0, 0)),
     );
-    const unitFactor = maxSeriesValue > 100 ? 1000 : 1;
+    const unitFactor = maxSeriesValue > 1000 ? 1000 : 1;
     const toChartValue = (value) => Math.max(Number(value) || 0, 0) / unitFactor;
     const chartValues = {
       bat: bat.map((value) => Math.max(Number(value) || 0, 0)),
@@ -2690,7 +2689,7 @@ class ByteWattReportCard extends HTMLElement {
     const width = 860;
     const height = 334;
       const padding = { top: 34, right: 72, bottom: 52, left: 64 };
-    const tickCount = 4;
+    const tickCount = 5;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
     const viewportWidth = Number(window?.innerWidth) || 1280;
@@ -2730,7 +2729,7 @@ class ByteWattReportCard extends HTMLElement {
       const y = padding.top + (index / tickCount) * (height - padding.top - padding.bottom);
       return `
         <line class="grid" x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" />
-        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
+        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, 1)} kW</text>
       `;
     }).join("");
     const batLabels = [100, 75, 50, 25, 0]
@@ -4237,20 +4236,20 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.22;
+          fill-opacity:0.28;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.28; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.24; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.20; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.20; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.24; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.36; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.30; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.24; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.24; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.34; }
         .series-line {
           fill:none;
-          stroke-width:4;
+          stroke-width:4.6;
           stroke-linecap:round;
           stroke-linejoin:round;
           vector-effect:non-scaling-stroke;
-          filter:drop-shadow(0 0 0.75px rgba(255,255,255,0.72));
+          filter:drop-shadow(0 0 2px rgba(15,23,42,0.10));
         }
         .series-marker {
           fill:#fff;
