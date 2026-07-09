@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "223";
+const BYTEWATT_REPORT_CARD_BUILD = "224";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2188,6 +2188,31 @@ class ByteWattReportCard extends HTMLElement {
       .join(" ");
   }
 
+  _chartAreaPath(values, width, height, padding, maxValue) {
+    if (!Array.isArray(values) || !values.length) return "";
+    const usableWidth = Math.max(width - padding.left - padding.right, 1);
+    const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
+    const divisor = maxValue > 0 ? maxValue : 1;
+    const count = Math.max(values.length, 1);
+    const step = count > 1 ? usableWidth / (count - 1) : 0;
+    const points = values.map((value, index) => {
+      const x = padding.left + index * step;
+      const normalized = Math.max(Number(value) || 0, 0) / divisor;
+      const y = padding.top + (1 - normalized) * usableHeight;
+      return { x, y };
+    });
+    const first = points[0];
+    const last = points[points.length - 1];
+    const baseline = height - padding.bottom;
+    return [
+      `M${first.x.toFixed(1)},${baseline.toFixed(1)}`,
+      `L${first.x.toFixed(1)},${first.y.toFixed(1)}`,
+      ...points.slice(1).map((point) => `L${point.x.toFixed(1)},${point.y.toFixed(1)}`),
+      `L${last.x.toFixed(1)},${baseline.toFixed(1)}`,
+      "Z",
+    ].join(" ");
+  }
+
   _chartPoints(values, width, height, padding, maxValue) {
     const usableWidth = Math.max(width - padding.left - padding.right, 1);
     const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
@@ -2386,11 +2411,8 @@ class ByteWattReportCard extends HTMLElement {
         const path = this._chartPath(item.values, width, height, padding, chartMax);
         const active = Boolean(visibility[item.key]);
         return `
+          <path class="series-area tone-${item.tone} ${active ? "" : "series-hidden"}" d="${this._chartAreaPath(item.values, width, height, padding, chartMax)}" style="${active ? "" : "display:none"}" />
           <path class="series-line marker-${item.tone} ${active ? "" : "series-hidden"}" d="${path}" style="${active ? "" : "display:none"}" />
-          ${points
-            .filter((_, index) => index % Math.max(1, Math.ceil(points.length / 12)) === 0)
-            .map((point) => `<circle class="series-marker marker-${item.tone} ${active ? "" : "series-hidden"}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.8" style="${active ? "" : "display:none"}" />`)
-            .join("")}
         `;
       })
       .join("");
@@ -2399,7 +2421,7 @@ class ByteWattReportCard extends HTMLElement {
       const y = padding.top + (index / tickCount) * (height - padding.top - padding.bottom);
       return `
         <line class="grid" x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" />
-        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)}${unitFactor === 1000 ? "kW" : ""}</text>
+        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
       `;
     }).join("");
     const xLabels = labels
@@ -2423,15 +2445,10 @@ class ByteWattReportCard extends HTMLElement {
             ${paths}
             <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
             <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
-            <g class="power-hover-points" data-power-hover-points>
-              ${seriesMeta
-                .map((item) => `<circle class="power-hover-point marker-${item.tone}" data-power-hover-point="${item.key}" cx="${padding.left}" cy="${padding.top}" r="4.6" opacity="0"></circle>`)
-                .join("")}
-            </g>
             ${xLabels}
           </svg>
-          ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
         </div>
+        ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
       </div>
     `;
   }
@@ -2498,8 +2515,8 @@ class ByteWattReportCard extends HTMLElement {
               )
               .join("")
           : `<div class="empty">No chart data available for the selected ${this._escape(periodLabel.toLowerCase())}.</div>`}
-        ${this._chartHoverCardMarkup({ empty: `Hover a ${this._escape(periodLabel.toLowerCase())} row to inspect values.`, floating: true, left: 18, top: 18, visible: false })}
       </div>
+      ${this._chartHoverCardMarkup({ empty: `Hover a ${this._escape(periodLabel.toLowerCase())} row to inspect values.`, floating: true, left: 18, top: 18, visible: false })}
     `;
   }
 
