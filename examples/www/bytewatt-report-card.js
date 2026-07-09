@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "228";
+const BYTEWATT_REPORT_CARD_BUILD = "229";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -71,6 +71,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _defaultChartVisibility() {
     return {
+      bat: true,
       solar: true,
       load: true,
       feed: true,
@@ -2318,7 +2319,9 @@ class ByteWattReportCard extends HTMLElement {
     const hoverRows = visibleSeries.map((item) => ({
       tone: item.tone,
       label: item.label,
-      value: this._formatChartPower(item.values?.[safeIndex] ?? 0, model.unitFactor),
+      value: item.scale === "bat"
+        ? this._fmtPercent(item.values?.[safeIndex] ?? 0)
+        : this._formatChartPower(item.values?.[safeIndex] ?? 0, model.unitFactor),
     }));
     this._setChartHoverCard({
       label: labels[safeIndex] || `Point ${safeIndex + 1}`,
@@ -2338,10 +2341,11 @@ class ByteWattReportCard extends HTMLElement {
       line.setAttribute("x2", cursorX.toFixed(1));
       line.setAttribute("opacity", hoverRows.length ? "1" : "0");
     }
-    const chartMax = Math.max(1, Number(model.chartMax) || 0, ...(series.filter((item) => model.visibility?.[item.key] !== false).flatMap((item) => item.values || [])));
+    const chartMaxByScale = model.chartMaxByScale || {};
     const pointsByKey = {};
     series.forEach((item) => {
-      const points = this._chartPoints(item.values || [], model.width, model.height, model.padding, chartMax);
+      const maxValue = item.scale === "bat" ? (chartMaxByScale.bat || 100) : (chartMaxByScale.power || 1);
+      const points = this._chartPoints(item.values || [], model.width, model.height, model.padding, maxValue);
       pointsByKey[item.key] = points[safeIndex];
     });
     this.shadowRoot?.querySelectorAll("[data-power-hover-point]").forEach((point) => {
@@ -2363,6 +2367,7 @@ class ByteWattReportCard extends HTMLElement {
     const powerDiagram = reporting?.power_diagram || {};
     const series = powerDiagram.series || {};
     const times = Array.isArray(powerDiagram.time) ? powerDiagram.time : [];
+    const bat = Array.isArray(series.bat) ? series.bat : Array.isArray(series.soc) ? series.soc : [];
     const load = Array.isArray(series.load) ? series.load : [];
     const solar = Array.isArray(series.solar) ? series.solar : [];
     const feed = Array.isArray(series.feed_in) ? series.feed_in : [];
@@ -2374,6 +2379,7 @@ class ByteWattReportCard extends HTMLElement {
     const unitFactor = maxSeriesValue > 100 ? 1000 : 1;
     const toChartValue = (value) => Math.max(Number(value) || 0, 0) / unitFactor;
     const chartValues = {
+      bat: bat.map((value) => Math.max(Number(value) || 0, 0)),
       solar: solar.map(toChartValue),
       load: load.map(toChartValue),
       feed: feed.map(toChartValue),
@@ -2381,20 +2387,23 @@ class ByteWattReportCard extends HTMLElement {
     };
     const visibility = this._chartVisibility();
     const seriesMeta = [
+      { key: "bat", label: "BAT SOC", tone: "bat", values: chartValues.bat, scale: "bat" },
       { key: "solar", label: "Solar PV", tone: "solar", values: chartValues.solar },
       { key: "load", label: "House Load", tone: "load", values: chartValues.load },
       { key: "feed", label: "Grid Feed-in", tone: "feed", values: chartValues.feed },
       { key: "consumed", label: "Consumed", tone: "consumed", values: chartValues.consumed },
     ];
-    const activeSeries = seriesMeta.filter((item) => visibility[item.key]);
-    const chartMax = Math.max(1, ...((activeSeries.length ? activeSeries : seriesMeta).flatMap((item) => item.values)));
+    const powerSeries = seriesMeta.filter((item) => item.scale !== "bat");
+    const activePowerSeries = powerSeries.filter((item) => visibility[item.key]);
+    const chartMax = Math.max(1, ...((activePowerSeries.length ? activePowerSeries : powerSeries).flatMap((item) => item.values)));
+    const batMax = 100;
     const width = 860;
     const height = 334;
     const padding = { top: 34, right: 24, bottom: 52, left: 60 };
     const tickCount = 4;
     const tickStep = chartMax / tickCount;
     const labels = times.length ? times : Array.from({ length: chartValues.solar.length || 24 }, (_, index) => `${String(index).padStart(2, "0")}:00`);
-    const labelStep = labels.length <= 24 ? 1 : labels.length <= 48 ? 2 : Math.max(1, Math.floor(labels.length / 16));
+    const labelStep = labels.length <= 24 ? 1 : labels.length <= 48 ? 2 : labels.length <= 96 ? 3 : labels.length <= 192 ? 4 : 6;
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2404,16 +2413,19 @@ class ByteWattReportCard extends HTMLElement {
       unitFactor,
       visibility,
       chartMax,
+      chartMaxByScale: { power: chartMax, bat: batMax },
       series: seriesMeta,
     };
     const paths = seriesMeta
       .map((item) => {
-        const points = this._chartPoints(item.values, width, height, padding, chartMax);
-        const path = this._chartPath(item.values, width, height, padding, chartMax);
+        const scaleMax = item.scale === "bat" ? batMax : chartMax;
+        const points = this._chartPoints(item.values, width, height, padding, scaleMax);
+        const path = this._chartPath(item.values, width, height, padding, scaleMax);
         const active = Boolean(visibility[item.key]);
         return `
-          <path class="series-area tone-${item.tone} ${active ? "" : "series-hidden"}" d="${this._chartAreaPath(item.values, width, height, padding, chartMax)}" style="${active ? "" : "display:none"}" />
+          <path class="series-area tone-${item.tone} ${active ? "" : "series-hidden"}" d="${this._chartAreaPath(item.values, width, height, padding, scaleMax)}" style="${active ? "" : "display:none"}" />
           <path class="series-line marker-${item.tone} ${active ? "" : "series-hidden"}" d="${path}" style="${active ? "" : "display:none"}" />
+          <circle class="power-hover-point marker-${item.tone}" data-power-hover-point="${item.key}" cx="${points[0]?.x?.toFixed?.(1) || 0}" cy="${points[0]?.y?.toFixed?.(1) || 0}" r="4.5" opacity="0"></circle>
         `;
       })
       .join("");
@@ -2425,6 +2437,12 @@ class ByteWattReportCard extends HTMLElement {
         <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
       `;
     }).join("");
+    const batLabels = [100, 75, 50, 25, 0]
+      .map((value) => {
+        const y = padding.top + ((100 - value) / 100) * (height - padding.top - padding.bottom);
+        return `<text class="axis-label axis-label-right" x="${(width - padding.right + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="start">${value}%</text>`;
+      })
+      .join("");
     const axisMidY = padding.top + (height - padding.top - padding.bottom) / 2;
     const xLabels = labels
       .map((label, index) => {
@@ -2436,11 +2454,11 @@ class ByteWattReportCard extends HTMLElement {
     return `
       <div class="power-chart-shell" data-power-chart-shell>
         <div class="ring-grid power-summary-grid">
-          ${this._ring("Today's Generation", this._fmtEnergy(today.solar_generation), "solar")}
-          ${this._ring("Today's Consumption", this._fmtEnergy(today.load_consumption), "load")}
+          ${this._ring("Generation", this._fmtEnergy(today.solar_generation), "solar")}
+          ${this._ring("Consumption", this._fmtEnergy(today.load_consumption), "load")}
           ${this._ring("BAT SOC", this._fmtPercent(reporting?.live?.soc), "bat")}
-          ${this._ring("Today's Feed in", this._fmtEnergy(today.feed_in), "feed")}
-          ${this._ring("Today's Grid Consumption", this._fmtEnergy(today.grid_consumption), "grid")}
+          ${this._ring("Feed-in", this._fmtEnergy(today.feed_in), "feed")}
+          ${this._ring("Grid Used", this._fmtEnergy(today.grid_consumption), "grid")}
         </div>
         <div class="chart-toolbar">
           <div class="chart-toggle-row">
@@ -2456,6 +2474,7 @@ class ByteWattReportCard extends HTMLElement {
             <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
             <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
             <text class="axis-title axis-title-bat" x="${(width - 20).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 20).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
+            ${batLabels}
             ${xLabels}
           </svg>
         </div>
@@ -3549,7 +3568,7 @@ class ByteWattReportCard extends HTMLElement {
         .ring-grid {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap:14px;
+          gap:10px;
           margin-bottom:18px;
         }
         .power-summary-grid {
@@ -3557,10 +3576,11 @@ class ByteWattReportCard extends HTMLElement {
         }
         .ring-card {
           border-radius:20px;
-          padding:16px 14px;
+          padding:12px 10px;
           text-align:center;
           border:2px solid transparent;
           background:#ffffff;
+          min-width:0;
         }
         .ring-solar { border-color:var(--bw-solar); }
         .ring-load { border-color:var(--bw-load); }
@@ -3575,7 +3595,11 @@ class ByteWattReportCard extends HTMLElement {
         .ring-label {
           margin-top:8px;
           color:#64748b;
-          font-size:0.88rem;
+          font-size:0.8rem;
+          line-height:1.1;
+          white-space:nowrap;
+          overflow:hidden;
+          text-overflow:ellipsis;
         }
         .chart {
           width:100%;
@@ -3601,7 +3625,11 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding-bottom:14px;
+          padding:16px;
+          border:1px solid rgba(214, 219, 225, 0.95);
+          border-radius:24px;
+          background:linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
         }
         .chart-toolbar {
           display:grid;
@@ -3614,9 +3642,9 @@ class ByteWattReportCard extends HTMLElement {
           padding:12px 12px 14px;
           display:grid;
           gap:10px;
-          border:1px solid rgba(214, 219, 225, 0.9);
+          border:1px solid rgba(214, 219, 225, 0.88);
           border-radius:20px;
-          background:linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+          background:linear-gradient(180deg, #ffffff 0%, #f9fbfd 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
         }
         .power-chart {
@@ -3683,12 +3711,13 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.02;
+          fill-opacity:0.08;
         }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.025; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.025; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.025; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.025; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.09; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.09; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.08; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.08; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.08; }
         .series-line {
           fill:none;
           stroke-width:3;
@@ -3750,10 +3779,12 @@ class ByteWattReportCard extends HTMLElement {
           background:currentColor;
         }
         .legend-toggle.legend-solar .legend-dot { background:var(--bw-solar); }
+        .legend-toggle.legend-bat .legend-dot { background:var(--bw-battery); }
         .legend-toggle.legend-load .legend-dot { background:var(--bw-load); }
         .legend-toggle.legend-feed .legend-dot { background:var(--bw-feed); }
         .legend-toggle.legend-grid .legend-dot { background:var(--bw-grid); }
         .legend-toggle.legend-consumed .legend-dot { background:var(--bw-consumed); }
+        .legend-toggle.legend-bat.active { background:#e8f9ef; border-color:rgba(47,201,110,0.34); }
         .legend-toggle.legend-solar.active { background:#fff8d8; border-color:rgba(240,196,25,0.42); }
         .legend-toggle.legend-load.active { background:#e8f4ff; border-color:rgba(47,155,232,0.34); }
         .legend-toggle.legend-feed.active { background:#fff0e4; border-color:rgba(240,138,36,0.30); }
@@ -3789,6 +3820,9 @@ class ByteWattReportCard extends HTMLElement {
           paint-order:stroke;
           stroke:#ffffff;
           stroke-width:3px;
+        }
+        .axis-label-right {
+          fill:#4b9c65;
         }
         .legend-row {
           display:flex;
@@ -4118,7 +4152,7 @@ class ByteWattReportCard extends HTMLElement {
         if (!key) return;
         const current = this._chartVisibility();
         const nextVisible = !Boolean(current[key]);
-        const activeKeys = Object.entries(current).filter(([seriesKey, visible]) => visible && ["solar", "load", "feed", "consumed", "grid"].includes(seriesKey));
+        const activeKeys = Object.entries(current).filter(([seriesKey, visible]) => visible && ["bat", "solar", "load", "feed", "consumed", "grid"].includes(seriesKey));
         if (!nextVisible && activeKeys.length <= 1) return;
         this._setChartSeriesVisible(key, nextVisible);
         this.render();
