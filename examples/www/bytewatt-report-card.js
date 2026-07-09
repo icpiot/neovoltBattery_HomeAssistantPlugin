@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "242";
+const BYTEWATT_REPORT_CARD_BUILD = "243";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3152,6 +3152,7 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid var(--bw-border);
           padding:16px 18px;
           box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+          min-width:0;
         }
         .hero-banner {
           display:grid;
@@ -3342,6 +3343,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap:10px;
+          min-width:0;
         }
         .hero-chip {
           background:#f8fafc;
@@ -3445,6 +3447,7 @@ class ByteWattReportCard extends HTMLElement {
           gap:10px;
           align-content:start;
           padding:12px 14px;
+          min-width:0;
         }
         .overview-metrics {
           display:grid;
@@ -3519,6 +3522,7 @@ class ByteWattReportCard extends HTMLElement {
         .stats-grid {
           display:grid;
           gap:14px;
+          min-width:0;
         }
         .summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
         .live-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
@@ -3528,10 +3532,12 @@ class ByteWattReportCard extends HTMLElement {
           grid-template-columns: 0.95fr 1.05fr;
           gap:18px;
           align-items:start;
+          min-width:0;
         }
         .stack-grid {
           display:grid;
           gap:18px;
+          min-width:0;
         }
         .panel {
           background:#fff;
@@ -3539,6 +3545,7 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid var(--bw-border);
           padding:18px;
           box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+          min-width:0;
         }
         .panel-header {
           display:flex;
@@ -3948,6 +3955,7 @@ class ByteWattReportCard extends HTMLElement {
         .power-panel {
           display:grid;
           gap:14px;
+          min-width:0;
         }
         .power-panel {
           width:100%;
@@ -3963,13 +3971,15 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           position:relative;
           padding:18px 24px 20px;
-          margin-inline:24px;
-          max-width:calc(100% - 48px);
+          margin-inline:0;
+          width:100%;
+          max-width:100%;
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
           background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
           box-shadow: 0 14px 32px rgba(47, 155, 232, 0.08), 0 8px 24px rgba(15, 23, 42, 0.05);
+          min-width:0;
         }
         .power-chart-shell::before {
           content:"";
@@ -3984,6 +3994,7 @@ class ByteWattReportCard extends HTMLElement {
           grid-template-columns:minmax(0, 1fr) minmax(240px, 320px);
           gap:12px;
           align-items:start;
+          min-width:0;
         }
         .story-toggle {
           display:inline-flex;
@@ -4522,8 +4533,16 @@ class ByteWattReportCard extends HTMLElement {
           .power-story-card:last-child {
             grid-column:1 / -1;
           }
+          .overview-panel,
+          .hero-banner,
+          .panel {
+            padding:14px;
+          }
         }
         @media (max-width: 560px) {
+          .shell {
+            padding:14px 10px;
+          }
           .power-chart-shell {
             margin-inline:10px;
             max-width:calc(100% - 20px);
