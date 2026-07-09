@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "241";
+const BYTEWATT_REPORT_CARD_BUILD = "238";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -80,15 +80,11 @@ class ByteWattReportCard extends HTMLElement {
     };
   }
 
-  _defaultChartStoryEnabled() {
-    return true;
-  }
-
   _loadChartState() {
     try {
-      if (!this._chartStorageKey || !window.localStorage) return { visibility: this._defaultChartVisibility(), storyEnabled: this._defaultChartStoryEnabled() };
+      if (!this._chartStorageKey || !window.localStorage) return { visibility: this._defaultChartVisibility() };
       const raw = window.localStorage.getItem(this._chartStorageKey);
-      if (!raw) return { visibility: this._defaultChartVisibility(), storyEnabled: this._defaultChartStoryEnabled() };
+      if (!raw) return { visibility: this._defaultChartVisibility() };
       const parsed = JSON.parse(raw);
       const visibility = parsed?.visibility && typeof parsed.visibility === "object" ? parsed.visibility : {};
       return {
@@ -96,10 +92,9 @@ class ByteWattReportCard extends HTMLElement {
           ...this._defaultChartVisibility(),
           ...visibility,
         },
-        storyEnabled: parsed?.storyEnabled === undefined ? this._defaultChartStoryEnabled() : Boolean(parsed.storyEnabled),
       };
     } catch (_err) {
-      return { visibility: this._defaultChartVisibility(), storyEnabled: this._defaultChartStoryEnabled() };
+      return { visibility: this._defaultChartVisibility() };
     }
   }
 
@@ -122,26 +117,7 @@ class ByteWattReportCard extends HTMLElement {
   _setChartSeriesVisible(key, visible) {
     const next = this._chartVisibility();
     next[key] = Boolean(visible);
-    this._chartState = {
-      visibility: next,
-      storyEnabled: this._chartStoryEnabled(),
-    };
-    this._saveChartState();
-  }
-
-  _chartStoryEnabled() {
-    if (this._chartState && Object.prototype.hasOwnProperty.call(this._chartState, "storyEnabled")) {
-      return Boolean(this._chartState.storyEnabled);
-    }
-    return this._defaultChartStoryEnabled();
-  }
-
-  _setChartStoryEnabled(visible) {
-    const next = this._chartVisibility();
-    this._chartState = {
-      visibility: next,
-      storyEnabled: Boolean(visible),
-    };
+    this._chartState = { visibility: next };
     this._saveChartState();
   }
 
@@ -2295,7 +2271,7 @@ class ByteWattReportCard extends HTMLElement {
     return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
-  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = null) {
+  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding) {
     const count = Math.max(
       labels.length,
       chartValues.solar.length,
@@ -2309,102 +2285,54 @@ class ByteWattReportCard extends HTMLElement {
       if (count <= 1) return padding.left;
       return padding.left + (index / (count - 1)) * (width - padding.left - padding.right);
     };
-    let requestedCount = 0;
-    if (periodContext?.window?.start && periodContext?.window?.end) {
-      const startDate = new Date(periodContext.window.start.getFullYear(), periodContext.window.start.getMonth(), periodContext.window.start.getDate());
-      const endDate = new Date(periodContext.window.end.getFullYear(), periodContext.window.end.getMonth(), periodContext.window.end.getDate());
-      requestedCount = Math.max(Math.round((endDate - startDate) / 86400000) + 1, 0);
-    }
-    const selectedCount = Number(Array.isArray(periodContext?.records) ? periodContext.records.length : 0) || 0;
-    const missingCount = Math.max(requestedCount - selectedCount, 0);
-    const batPressureStart = Math.max(0, Math.floor(count * 0.02));
-    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", batPressureStart);
+    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", 0);
     const batPeakIndex = this._chartValueIndex(chartValues.bat, "max", 0);
-    const solarWindowStart = Math.max(0, Math.floor(count * 0.18));
-    const solarThresholdProbe = Math.max(...chartValues.solar, 0);
-    const solarThreshold = Math.max(0.08, solarThresholdProbe * 0.2);
+    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", 0);
+    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
+    const gridPeakIndex = this._chartValueIndex(chartValues.feed, "max", 0);
+    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
+    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
+    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
+    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
+    const solarThreshold = Math.max(0.08, solarPeak * 0.2);
     const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
     const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
     const solarBandStart = solarStart >= 0 ? solarStart : Math.max(0, Math.floor(count * 0.3));
     const solarBandEnd = solarEnd >= 0 ? solarEnd : Math.max(solarBandStart + 1, Math.floor(count * 0.7));
-    const loadThresholdProbe = Math.max(...chartValues.load, 0);
-    const loadThreshold = Math.max(0.08, loadThresholdProbe * 0.2);
-    const loadRiseIndex = this._chartFirstIndexAbove(chartValues.load, loadThreshold, Math.max(0, Math.floor(count * 0.04)));
-    const solarRiseIndex = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, Math.max(0, Math.floor(count * 0.08)));
     const eveningStart = Math.max(0, Math.floor(count * 0.62));
-    const eveningComposite = chartValues.load.map((value, index) => (Number(value) || 0) + (Number(chartValues.feed[index]) || 0) + (Number(chartValues.consumed[index]) || 0));
-    const eveningThresholdProbe = Math.max(...eveningComposite, 0);
-    const eveningThreshold = Math.max(0.08, eveningThresholdProbe * 0.18);
-    const eveningRampIndex = this._chartFirstIndexAbove(eveningComposite, eveningThreshold, Math.max(Math.floor(count * 0.58), eveningStart));
-    const eveningPeakIndex = this._chartValueIndex(eveningComposite, "max", Math.max(eveningStart, Math.floor(count * 0.55)));
-    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", Math.max(solarStart >= 0 ? solarStart : 0, solarWindowStart));
-    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
-    const feedPeakIndex = this._chartValueIndex(chartValues.feed, "max", Math.max(0, Math.floor(count * 0.55)));
-    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
-    const solarRise = Number(chartValues.solar[solarRiseIndex >= 0 ? solarRiseIndex : solarPeakIndex]) || solarPeak;
-    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
-    const loadRise = Number(chartValues.load[loadRiseIndex >= 0 ? loadRiseIndex : loadPeakIndex]) || loadPeak;
-    const feedPeak = Number(chartValues.feed[feedPeakIndex]) || 0;
-    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
-    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
+    const eveningLoadIndex = this._chartValueIndex(chartValues.load, "max", eveningStart);
+    const eveningGridIndex = this._chartValueIndex(chartValues.feed, "max", eveningStart);
+    const eveningConsumedIndex = this._chartValueIndex(chartValues.consumed, "max", eveningStart);
+    const eveningPeakIndex = [eveningLoadIndex, eveningGridIndex, eveningConsumedIndex]
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .sort((a, b) => (Number(chartValues.load[b] ?? 0) + Number(chartValues.feed[b] ?? 0)) - (Number(chartValues.load[a] ?? 0) + Number(chartValues.feed[a] ?? 0)))[0] ?? eveningLoadIndex;
+    const morningPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
     const batteryEventLabel = this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
     const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
-    const headline = missingCount > 0
-      ? `Selected period is missing ${missingCount} day${missingCount === 1 ? "" : "s"}, so the story is built from the stored rows that are available.`
-      : batMin <= 15 && solarPeak > 0.05
+    const headline = batMin <= 15 && solarPeak > 0.05
       ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
       : solarPeak > 0.05
         ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
         : "Demand stays active through the day, with battery movement and grid support carrying the load.";
-    const storyHighlights = [];
-    if (missingCount > 0) {
-      storyHighlights.push({
-        tone: "grid",
-        title: "0. Data gap",
-        value: `${missingCount} day${missingCount === 1 ? "" : "s"} missing`,
-        note: selectedCount > 0
-          ? `Only ${selectedCount}/${requestedCount} day${requestedCount === 1 ? "" : "s"} are stored for this period, so the story is based on the available rows.`
-          : "No rows are stored for this selected period yet.",
-      });
-    }
     const highlights = [
-      ...storyHighlights,
       {
         tone: "bat",
         title: "1. Battery pressure",
         value: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
-        note: batMin <= 15 ? "The battery reaches its caution zone early and has to recover later." : "The battery eases through the day without dropping to the floor.",
-      },
-      {
-        tone: "load",
-        title: "2. Morning ramp",
-        value: `${this._formatChartPower(loadRise, 1000)} at ${this._chartStoryTimeLabel(labels[loadRiseIndex >= 0 ? loadRiseIndex : loadPeakIndex], loadRiseIndex >= 0 ? loadRiseIndex : loadPeakIndex, count)}`,
-        note: "The day starts climbing as household demand comes back online.",
+        note: batMin <= 15 ? "The battery hits its low point early and has to recover later." : "The battery eases through the day without dropping to the floor.",
       },
       {
         tone: "solar",
-        title: "3. Solar lift",
-        value: `${this._formatChartPower(solarRise, 1000)} at ${this._chartStoryTimeLabel(labels[solarRiseIndex >= 0 ? solarRiseIndex : solarPeakIndex], solarRiseIndex >= 0 ? solarRiseIndex : solarPeakIndex, count)}`,
-        note: solarRise > 0.05 ? "Solar starts to contribute and begins pushing the day away from grid reliance." : "Solar stays muted for most of the morning.",
-      },
-      {
-        tone: "solar",
-        title: "4. Solar peak",
+        title: "2. Solar recovery",
         value: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
         note: solarPeak > 0.05 ? "Midday solar creates the strongest charging window." : "Solar stays subdued, so storage has less to work with.",
       },
       {
         tone: "feed",
-        title: "5. Evening ramp",
-        value: `${this._formatChartPower(Number(eveningComposite[eveningRampIndex]) || loadPeak, 1000)} at ${this._chartStoryTimeLabel(labels[eveningRampIndex >= 0 ? eveningRampIndex : eveningPeakIndex], eveningRampIndex >= 0 ? eveningRampIndex : eveningPeakIndex, count)}`,
-        note: "Load, feed-in, and consumed energy all start climbing again later in the day.",
-      },
-      {
-        tone: "feed",
-        title: "6. Evening pressure",
-        value: `${this._formatChartPower(Number(eveningComposite[eveningPeakIndex]) || loadPeak, 1000)} at ${eveningEventLabel}`,
-        note: feedPeak > 0.05 ? "Late demand and grid support are the clearest end-of-day signal." : "Late demand is where the chart usually tells the clearest story.",
+        title: "3. Evening pressure",
+        value: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
+        note: "Late demand is where the chart usually tells the clearest story.",
       },
     ];
     const bands = [
@@ -2496,6 +2424,7 @@ class ByteWattReportCard extends HTMLElement {
         solar: solarPeakIndex,
         evening: eveningPeakIndex,
       },
+      morningPeakIndex,
     };
   }
 
@@ -2633,7 +2562,7 @@ class ByteWattReportCard extends HTMLElement {
     });
   }
 
-  _renderDailyPowerChart(reporting, periodContext = null) {
+  _renderDailyPowerChart(reporting) {
     const today = reporting?.today || {};
     const powerDiagram = reporting?.power_diagram || {};
     const series = powerDiagram.series || {};
@@ -2677,8 +2606,7 @@ class ByteWattReportCard extends HTMLElement {
     const viewportWidth = Number(window?.innerWidth) || 1280;
     const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
     const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
-    const story = this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext);
-    const storyEnabled = this._chartStoryEnabled();
+    const story = this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding);
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2691,7 +2619,6 @@ class ByteWattReportCard extends HTMLElement {
       chartMaxByScale: { power: chartMax, bat: batMax },
       series: seriesMeta,
       story,
-      storyEnabled,
     };
     const paths = seriesMeta
       .map((item) => {
@@ -2773,12 +2700,7 @@ class ByteWattReportCard extends HTMLElement {
             <div class="chart-toggle-row">
               ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
             </div>
-            <label class="story-toggle">
-              <input type="checkbox" data-story-toggle ${storyEnabled ? "checked" : ""}>
-              <span>Story</span>
-            </label>
           </div>
-          ${storyEnabled ? `
           <div class="power-story-strip">
             <div class="power-story-headline">${this._escape(story.headline || "")}</div>
             <div class="power-story-cards">
@@ -2798,11 +2720,10 @@ class ByteWattReportCard extends HTMLElement {
                 .join("")}
             </div>
           </div>
-          ` : ""}
           <div class="power-chart-wrap">
             <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
               <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-              ${storyEnabled ? bandMarkup : ""}
+              ${bandMarkup}
               ${gridLines}
               ${paths}
               <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
@@ -2811,7 +2732,7 @@ class ByteWattReportCard extends HTMLElement {
                 <text class="axis-title axis-title-bat" x="${(width - 30).toFixed(1)}" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(90 ${(width - 30).toFixed(1)} ${axisMidY.toFixed(1)})">BAT</text>
               ${batLabels}
               ${xLabels}
-              ${storyEnabled ? annotationMarkup : ""}
+              ${annotationMarkup}
             </svg>
           </div>
           ${this._chartHoverCardMarkup({ empty: "Hover the chart to inspect values.", floating: true, left: 18, top: 18, visible: false })}
@@ -2903,7 +2824,7 @@ class ByteWattReportCard extends HTMLElement {
           <div class="panel-date">${subtitle}</div>
           <button class="download-btn" type="button" data-download-report>Download</button>
         </div>
-        ${isDaily ? this._renderDailyPowerChart(reporting, periodContext) : this._renderPeriodOverviewChart(periodContext)}
+        ${isDaily ? this._renderDailyPowerChart(reporting) : this._renderPeriodOverviewChart(periodContext)}
       </section>
     `;
   }
@@ -3985,27 +3906,6 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           align-items:start;
         }
-        .story-toggle {
-          display:inline-flex;
-          align-items:center;
-          justify-content:flex-end;
-          gap:8px;
-          justify-self:end;
-          padding:8px 12px;
-          border:1px solid #d6dbe1;
-          border-radius:999px;
-          background:#fff;
-          color:#334155;
-          font-size:0.9rem;
-          font-weight:800;
-          cursor:pointer;
-          user-select:none;
-        }
-        .story-toggle input {
-          width:16px;
-          height:16px;
-          accent-color:var(--bw-load);
-        }
         .power-story-strip {
           display:grid;
           gap:12px;
@@ -4502,24 +4402,10 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns:1fr;
           }
           .power-story-cards {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: 1fr;
           }
           .power-story-headline {
             max-width:none;
-          }
-          .power-story-card:last-child {
-            grid-column:1 / -1;
-          }
-        }
-        @media (max-width: 560px) {
-          .power-story-cards {
-            grid-template-columns: 1fr;
-          }
-          .power-story-card:last-child {
-            grid-column:auto;
-          }
-          .power-story-note {
-            font-size:0.8rem;
           }
         }
         @media (max-width: 700px) {
@@ -4669,10 +4555,6 @@ class ByteWattReportCard extends HTMLElement {
         this._setChartSeriesVisible(key, nextVisible);
         this.render();
       });
-    });
-    this.shadowRoot.querySelector("[data-story-toggle]")?.addEventListener("change", (event) => {
-      this._setChartStoryEnabled(Boolean(event.target?.checked));
-      this.render();
     });
     const chartShell = this.shadowRoot.querySelector("[data-power-chart-shell]");
     const model = this._powerChartModel || {};
