@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "013";
+const BYTEWATT_DEBUG_CARD_BUILD = "014";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -104,6 +104,44 @@ class ByteWattDebugCard extends HTMLElement {
       return JSON.stringify(value, null, 2);
     } catch (_err) {
       return String(value);
+    }
+  }
+
+  async _clearAppCaches() {
+    if (!window.caches?.keys) return;
+    try {
+      const cacheKeys = await window.caches.keys();
+      await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+    } catch (_err) {
+      // If cache storage is unavailable, keep going with the reload.
+    }
+  }
+
+  _reloadWithCacheBust() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("_bw_debug_refresh", String(Date.now()));
+    window.location.replace(url.toString());
+  }
+
+  async _hardRefresh() {
+    if (this._statusKind === "loading") return;
+    this._status = "Clearing reachable caches and reloading...";
+    this._statusKind = "loading";
+    this.render();
+    try {
+      try {
+        window.localStorage?.removeItem(this._localHistoryKey());
+      } catch (_err) {
+        // Ignore localStorage failures and continue.
+      }
+      await this._clearAppCaches();
+      this._status = "Reloading now...";
+      this.render();
+      window.setTimeout(() => this._reloadWithCacheBust(), 150);
+    } catch (err) {
+      this._status = `Hard refresh failed: ${String(err?.message || err)}`;
+      this._statusKind = "error";
+      this.render();
     }
   }
 
@@ -974,6 +1012,9 @@ class ByteWattDebugCard extends HTMLElement {
           gap: 8px;
           margin-bottom: 10px;
         }
+        .header-actions {
+          margin-bottom: 0;
+        }
         .button.secondary {
           color: #334155;
           border-color: rgba(100, 116, 139, 0.22);
@@ -1257,7 +1298,10 @@ class ByteWattDebugCard extends HTMLElement {
               <span>${this._escape(this._config.title)}</span>
               <span class="badge">v${BYTEWATT_DEBUG_CARD_BUILD}</span>
             </div>
-            <button class="button" type="button" id="probe-button">Probe archive</button>
+            <div class="button-row header-actions">
+              <button class="button" type="button" id="probe-button">Probe archive</button>
+              <button class="button secondary" type="button" id="hard-refresh-button">Hard refresh</button>
+            </div>
           </div>
 
           ${this._status ? `<div class="status ${statusClass}">${this._escape(this._status)}</div>` : ""}
@@ -1350,6 +1394,11 @@ class ByteWattDebugCard extends HTMLElement {
     const button = this.shadowRoot.querySelector("#probe-button");
     if (button) {
       button.onclick = () => this._requestArchiveProbe();
+    }
+
+    const hardRefreshButton = this.shadowRoot.querySelector("#hard-refresh-button");
+    if (hardRefreshButton) {
+      hardRefreshButton.onclick = () => this._hardRefresh();
     }
 
     this.shadowRoot.querySelector("[data-select-target]")?.addEventListener("change", async (event) => {
