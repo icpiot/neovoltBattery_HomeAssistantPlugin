@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "239";
+const BYTEWATT_REPORT_CARD_BUILD = "240";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4141,6 +4141,12 @@ class ByteWattReportCard extends HTMLElement {
           stroke-linejoin:round;
           vector-effect:non-scaling-stroke;
         }
+        .series-line.marker-bat { stroke:var(--bw-battery); }
+        .series-line.marker-load { stroke:var(--bw-load); }
+        .series-line.marker-solar { stroke:var(--bw-solar); }
+        .series-line.marker-feed { stroke:var(--bw-feed); }
+        .series-line.marker-grid { stroke:var(--bw-grid); }
+        .series-line.marker-consumed { stroke:var(--bw-consumed); }
         .series-marker {
           fill:#fff;
           stroke-width:2.6;
