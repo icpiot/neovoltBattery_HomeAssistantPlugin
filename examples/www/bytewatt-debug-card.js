@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "014";
+const BYTEWATT_DEBUG_CARD_BUILD = "015";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -1368,7 +1368,8 @@ class ByteWattDebugCard extends HTMLElement {
                 <button class="button secondary" type="button" data-copy="reporting">Copy reporting</button>
                 <button class="button secondary" type="button" data-copy="power-diagram">Copy power diagram</button>
               </div>
-              ${this._summaryLine("Reporting date", reporting.reporting_date || reportingMeta.reporting_date || "-")}
+              ${this._summaryLine("Selected report date", range.displayDate || "-")}
+              ${this._summaryLine("Live reporting date", reporting.reporting_date || reportingMeta.reporting_date || "-")}
               ${this._summaryLine("Label", reporting.label || "-")}
               ${this._summaryLine("Aggregate", reporting.aggregate ? "true" : "false")}
               ${this._summaryLine("Saved at", reportingMeta.saved_at || "-")}
