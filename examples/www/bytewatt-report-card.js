@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "241";
+const BYTEWATT_REPORT_CARD_BUILD = "242";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -169,21 +169,47 @@ class ByteWattReportCard extends HTMLElement {
   _historyScopes() {
     const localScopes = this._readLocalSnapshots()?.scopes;
     const remoteScopes = this._historyData?.scopes;
+    const mergePowerDiagram = (primary = {}, secondary = {}) => ({
+      ...(secondary || {}),
+      ...(primary || {}),
+      meta: {
+        ...(secondary?.meta || {}),
+        ...(primary?.meta || {}),
+      },
+      summary: {
+        ...(secondary?.summary || {}),
+        ...(primary?.summary || {}),
+      },
+      time: Array.isArray(primary?.time) && primary.time.length ? primary.time : Array.isArray(secondary?.time) ? secondary.time : [],
+      series: {
+        ...(secondary?.series || {}),
+        ...(primary?.series || {}),
+      },
+      date: primary?.date || secondary?.date || "",
+    });
     const mergeScopes = (source, target) => {
       const merged = { ...(target || {}) };
       Object.entries(source || {}).forEach(([scopeKey, scopeValue]) => {
         const current = merged[scopeKey] || {};
         const currentRecords = current.records && typeof current.records === "object" ? current.records : {};
         const incomingRecords = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
+        const mergedRecords = { ...currentRecords };
+        Object.entries(incomingRecords).forEach(([recordDate, recordValue]) => {
+          const currentRecord = mergedRecords[recordDate] || {};
+          const currentDiagram = currentRecord?.power_diagram || {};
+          const incomingDiagram = recordValue?.power_diagram || {};
+          mergedRecords[recordDate] = {
+            ...currentRecord,
+            ...recordValue,
+            power_diagram: mergePowerDiagram(incomingDiagram, currentDiagram),
+          };
+        });
         const currentMissing = current.missing_dates && typeof current.missing_dates === "object" ? current.missing_dates : {};
         const incomingMissing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
         merged[scopeKey] = {
           ...current,
           ...scopeValue,
-          records: {
-            ...currentRecords,
-            ...incomingRecords,
-          },
+          records: mergedRecords,
           missing_dates: {
             ...currentMissing,
             ...incomingMissing,
@@ -192,7 +218,7 @@ class ByteWattReportCard extends HTMLElement {
       });
       return merged;
     };
-    return mergeScopes(localScopes, mergeScopes(remoteScopes, {}));
+    return mergeScopes(remoteScopes, mergeScopes(localScopes, {}));
   }
 
   _mergeSnapshotPayload(base, incoming) {
