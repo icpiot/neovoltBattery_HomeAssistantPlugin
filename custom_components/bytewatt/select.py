@@ -32,9 +32,12 @@ def _reporting_payload(
     payload = build_reporting_payload(battery_data, aggregate=aggregate, label=label)
     power_diagram = payload.get("power_diagram") or {}
     payload["power_diagram"] = {
+        **power_diagram,
         "date": power_diagram.get("date") or payload.get("reporting_date") or "",
         "meta": power_diagram.get("meta") or {},
         "summary": power_diagram.get("summary") or {},
+        "time": power_diagram.get("time") or [],
+        "series": power_diagram.get("series") or {},
     }
     meta = payload.setdefault("meta", {})
     meta["history"] = history_hint or {}
