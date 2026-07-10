@@ -253,7 +253,7 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
             "live": _compact_summary(reporting.get("live"), ["soc", "battery_power", "house_consumption", "grid_power", "pv_power", "power_source"]),
             "today": _compact_summary(reporting.get("today"), ["solar_generation", "load_consumption", "feed_in", "grid_consumption", "battery_charge", "battery_discharge"]),
             "totals": _compact_summary(reporting.get("totals"), ["solar_generation", "feed_in", "battery_charge", "battery_discharge", "house_consumption", "grid_consumption"]),
-            "power_diagram": _compact_summary(reporting.get("power_diagram"), ["date", "meta", "summary"]),
+            "power_diagram": _compact_summary(reporting.get("power_diagram"), ["date", "meta", "summary", "time", "series"]),
         }
         battery_policy = self._manager.battery_policy_summary()
         feedin_policy = self._manager.feedin_policy_summary()
