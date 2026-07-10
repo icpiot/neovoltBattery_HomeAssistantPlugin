@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "015";
+const BYTEWATT_DEBUG_CARD_BUILD = "016";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -528,6 +528,49 @@ class ByteWattDebugCard extends HTMLElement {
     const window = this._periodWindow(anchor, period);
     if (!window?.start || !window?.end) return records;
     return this._expandDailyRecords(records, window);
+  }
+
+  _selectedReportSnapshot(reporting) {
+    const snapshot = reporting && typeof reporting === "object" ? JSON.parse(JSON.stringify(reporting)) : {};
+    const range = this._debugRange();
+    const selectedDate = range.displayDate || this._formatLocalDate(range.anchor) || "";
+    const records = this._selectedHistoryRecords();
+    const latestSelectedRecord = records[records.length - 1] || {};
+    const latestPowerDiagram = latestSelectedRecord?.power_diagram && typeof latestSelectedRecord.power_diagram === "object"
+      ? latestSelectedRecord.power_diagram
+      : {};
+    const currentPowerDiagram = snapshot.power_diagram && typeof snapshot.power_diagram === "object"
+      ? snapshot.power_diagram
+      : {};
+    snapshot.reporting_date = selectedDate || snapshot.reporting_date || currentPowerDiagram.date || "";
+    snapshot.meta = {
+      ...(snapshot.meta || {}),
+      reporting_date: snapshot.reporting_date,
+    };
+    snapshot.power_diagram = {
+      ...currentPowerDiagram,
+      ...latestPowerDiagram,
+      date: snapshot.reporting_date || currentPowerDiagram.date || latestPowerDiagram.date || "",
+      meta: {
+        ...(currentPowerDiagram.meta || {}),
+        ...(latestPowerDiagram.meta || {}),
+      },
+      summary: {
+        ...(currentPowerDiagram.summary || {}),
+        ...(latestPowerDiagram.summary || {}),
+      },
+      time: Array.isArray(latestPowerDiagram.time) && latestPowerDiagram.time.length
+        ? latestPowerDiagram.time
+        : Array.isArray(currentPowerDiagram.time)
+          ? currentPowerDiagram.time
+          : [],
+      series: latestPowerDiagram.series && typeof latestPowerDiagram.series === "object" && Object.keys(latestPowerDiagram.series).length
+        ? latestPowerDiagram.series
+        : currentPowerDiagram.series && typeof currentPowerDiagram.series === "object"
+          ? currentPowerDiagram.series
+          : {},
+    };
+    return snapshot;
   }
 
   _expandDailyRecords(records, window) {
@@ -1482,11 +1525,11 @@ class ByteWattDebugCard extends HTMLElement {
           return;
         }
         if (key === "reporting") {
-          this._copyText(this._json(reporting), "Reporting");
+          this._copyText(this._json(this._selectedReportSnapshot(reporting)), "Reporting");
           return;
         }
         if (key === "power-diagram") {
-          this._copyText(this._json(reporting?.power_diagram || {}), "Power diagram");
+          this._copyText(this._json(this._selectedReportSnapshot(reporting)?.power_diagram || {}), "Power diagram");
         }
       };
     });
