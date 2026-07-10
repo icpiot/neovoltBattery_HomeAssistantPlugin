@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "240";
+const BYTEWATT_REPORT_CARD_BUILD = "241";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1206,6 +1206,24 @@ class ByteWattReportCard extends HTMLElement {
     const chartRecords = this._isDailyPeriod(period)
       ? selected
       : this._expandDailyRecords(selected, window);
+    const mergePowerDiagram = (primary = {}, secondary = {}) => ({
+      ...(secondary || {}),
+      ...(primary || {}),
+      meta: {
+        ...(secondary?.meta || {}),
+        ...(primary?.meta || {}),
+      },
+      summary: {
+        ...(secondary?.summary || {}),
+        ...(primary?.summary || {}),
+      },
+      time: Array.isArray(primary?.time) && primary.time.length ? primary.time : Array.isArray(secondary?.time) ? secondary.time : [],
+      series: {
+        ...(secondary?.series || {}),
+        ...(primary?.series || {}),
+      },
+      date: primary?.date || secondary?.date || "",
+    });
     if (!selected.length) {
       const fallbackRecord = this._dailyLiveFallbackRecord(baseReporting, anchor, period);
       if (fallbackRecord) {
@@ -1270,7 +1288,7 @@ class ByteWattReportCard extends HTMLElement {
               period_start: this._formatLocalDate(window.start),
               period_end: this._formatLocalDate(window.end),
             },
-            power_diagram: fallbackRecord?.power_diagram || baseReporting?.power_diagram || {},
+            power_diagram: mergePowerDiagram(fallbackRecord?.power_diagram || {}, baseReporting?.power_diagram || {}),
             summary: fallbackSummary,
           },
           records: fallbackSelected,
@@ -1334,13 +1352,7 @@ class ByteWattReportCard extends HTMLElement {
             period_start: this._formatLocalDate(window.start),
             period_end: this._formatLocalDate(window.end),
           },
-          power_diagram: {
-            ...(baseReporting?.power_diagram || {}),
-            date:
-              this._isDailyPeriod(period)
-                ? this._formatLocalDate(anchor)
-                : `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`,
-          },
+          power_diagram: mergePowerDiagram({}, baseReporting?.power_diagram || {}),
         },
         records: selected,
         chart_records: selected,
@@ -1392,6 +1404,15 @@ class ByteWattReportCard extends HTMLElement {
       ...periodToday,
     };
     const sankey = { ...energyModel };
+    const latestPowerDiagram = latest.power_diagram || {};
+    const basePowerDiagram = baseReporting?.power_diagram || {};
+    const mergedPowerDiagram = mergePowerDiagram(latestPowerDiagram, basePowerDiagram);
+    mergedPowerDiagram.date =
+      latestPowerDiagram?.date ||
+      mergedPowerDiagram.date ||
+      (this._isDailyPeriod(period)
+        ? this._formatLocalDate(anchor)
+        : `${this._formatLocalDate(window.start)} -> ${this._formatLocalDate(window.end)}`);
     return {
       reporting: {
         ...(baseReporting || {}),
@@ -1421,7 +1442,7 @@ class ByteWattReportCard extends HTMLElement {
           period_start: this._formatLocalDate(window.start),
           period_end: this._formatLocalDate(window.end),
         },
-        power_diagram: latest.power_diagram || baseReporting?.power_diagram || {},
+        power_diagram: mergedPowerDiagram,
         summary,
       },
       records: selected,
