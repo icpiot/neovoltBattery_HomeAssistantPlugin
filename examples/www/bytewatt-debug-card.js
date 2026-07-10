@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "012";
+const BYTEWATT_DEBUG_CARD_BUILD = "013";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -1302,6 +1302,7 @@ class ByteWattDebugCard extends HTMLElement {
               <div class="panel-title">Archive Metadata</div>
               <div class="button-row">
                 <button class="button secondary" type="button" data-copy="history">Copy history</button>
+                <button class="button secondary" type="button" data-copy="report-attrs">Copy report attrs</button>
               </div>
               ${this._summaryLine("History configured", Boolean(history.enabled || history.base_url || history.entry_id) ? "yes" : "no")}
               ${this._summaryLine("Entry ID", history.entry_id || "-")}
@@ -1321,6 +1322,7 @@ class ByteWattDebugCard extends HTMLElement {
               <div class="panel-title">Reporting Summary</div>
               <div class="button-row">
                 <button class="button secondary" type="button" data-copy="reporting">Copy reporting</button>
+                <button class="button secondary" type="button" data-copy="power-diagram">Copy power diagram</button>
               </div>
               ${this._summaryLine("Reporting date", reporting.reporting_date || reportingMeta.reporting_date || "-")}
               ${this._summaryLine("Label", reporting.label || "-")}
@@ -1419,8 +1421,22 @@ class ByteWattDebugCard extends HTMLElement {
           this._copyText(this._json(history), "Archive metadata");
           return;
         }
+        if (key === "report-attrs") {
+          this._copyText(this._json({
+            report_target: this._reportTargetId(),
+            report_state: reportTarget?.state,
+            report_last_changed: reportTarget?.last_changed,
+            report_last_updated: reportTarget?.last_updated,
+            report_attributes: reportAttrs,
+          }), "Report attributes");
+          return;
+        }
         if (key === "reporting") {
           this._copyText(this._json(reporting), "Reporting");
+          return;
+        }
+        if (key === "power-diagram") {
+          this._copyText(this._json(reporting?.power_diagram || {}), "Power diagram");
         }
       };
     });
