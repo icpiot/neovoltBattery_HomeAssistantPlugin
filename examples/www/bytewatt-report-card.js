@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "238";
+const BYTEWATT_REPORT_CARD_BUILD = "239";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -254,11 +254,26 @@ class ByteWattReportCard extends HTMLElement {
     scopeKeys.forEach((scopeKey) => {
       const scope = history.scopes[scopeKey] || { records: {} };
       scope.records = scope.records || {};
+      const existing = scope.records[liveRecord.record_date] || {};
+      const existingPowerDiagram = existing?.power_diagram || {};
+      const incomingPowerDiagram = reporting?.power_diagram || {};
+      const mergedPowerDiagram = {
+        ...existingPowerDiagram,
+        ...incomingPowerDiagram,
+      };
+      mergedPowerDiagram.series = incomingPowerDiagram.series || existingPowerDiagram.series || {};
+      mergedPowerDiagram.time = incomingPowerDiagram.time || existingPowerDiagram.time || [];
+      if (!mergedPowerDiagram.date) {
+        mergedPowerDiagram.date = liveRecord.record_date;
+      }
       scope.records[liveRecord.record_date] = {
+        ...existing,
         ...reporting,
         reporting_date: liveRecord.record_date,
         record_date: liveRecord.record_date,
+        power_diagram: mergedPowerDiagram,
         meta: {
+          ...(existing?.meta || {}),
           ...(reporting?.meta || {}),
           reporting_date: liveRecord.record_date,
         },
@@ -1136,9 +1151,18 @@ class ByteWattReportCard extends HTMLElement {
     const liveRecord = this._liveReportingRecord(baseReporting);
     const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
     if (liveRecord?.record_date) {
+      const existing = recordsByDate.get(liveRecord.record_date) || {};
+      const existingPowerDiagram = existing?.power_diagram || {};
+      const incomingPowerDiagram = liveRecord?.power_diagram || {};
       recordsByDate.set(liveRecord.record_date, {
-        ...(recordsByDate.get(liveRecord.record_date) || {}),
+        ...existing,
         ...liveRecord,
+        power_diagram: {
+          ...existingPowerDiagram,
+          ...incomingPowerDiagram,
+          series: incomingPowerDiagram.series || existingPowerDiagram.series || {},
+          time: incomingPowerDiagram.time || existingPowerDiagram.time || [],
+        },
       });
     }
     const records = Array.from(recordsByDate.values());
