@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "242";
+const BYTEWATT_REPORT_CARD_BUILD = "243";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -755,7 +755,10 @@ class ByteWattReportCard extends HTMLElement {
     const scopeInfo = this._historyScopeData();
     const data = scopeInfo.scope?.records || {};
     return Object.entries(data).map(([recordDate, reporting]) => {
-      const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
+      const parsed =
+        this._parseLocalDate(reporting?.reporting_date) ||
+        this._parseLocalDate(reporting?.power_diagram?.date) ||
+        this._parseLocalDate(recordDate);
       const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
       const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
       return {
