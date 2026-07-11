@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "024";
+const BYTEWATT_DEBUG_CARD_BUILD = "025";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -1518,7 +1518,7 @@ class ByteWattDebugCard extends HTMLElement {
 
     const button = this.shadowRoot.querySelector("#probe-button");
     if (button) {
-      button.onclick = () => this._requestArchiveProbe(false);
+      button.onclick = () => this._requestArchiveProbe(true);
     }
 
     const hardRefreshButton = this.shadowRoot.querySelector("#hard-refresh-button");

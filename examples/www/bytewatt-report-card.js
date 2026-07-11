@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "251";
+const BYTEWATT_REPORT_CARD_BUILD = "252";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -747,13 +747,9 @@ class ByteWattReportCard extends HTMLElement {
 
     const availableCount = desiredDates.filter((date) => this._hasExactHistoryRecord(scopeKey, date)).length;
     const knownCount = desiredDates.filter((date) => this._hasKnownHistoryDate(scopeKey, date)).length;
-    const hasAllKnown = knownCount === desiredDates.length;
-    if (hasAllKnown) {
-      this._historyEnsureState = availableCount === desiredDates.length ? "available" : "partial";
-      this._historyEnsureStatus =
-        availableCount === desiredDates.length
-          ? "Selected period already in archive"
-          : `Selected period partially available (${availableCount}/${desiredDates.length})`;
+    if (availableCount === desiredDates.length) {
+      this._historyEnsureState = "available";
+      this._historyEnsureStatus = "Selected period already in archive";
       this.render();
       return;
     }
