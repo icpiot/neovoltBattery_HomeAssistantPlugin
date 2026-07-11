@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "025";
+const BYTEWATT_DEBUG_CARD_BUILD = "026";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -835,6 +835,7 @@ class ByteWattDebugCard extends HTMLElement {
           <div class="button-row">
             <button class="button secondary" type="button" data-copy="selected-date">Copy selected date</button>
             <button class="button secondary" type="button" data-copy="selected-date-power">Copy selected date power</button>
+            <button class="button" type="button" id="force-selected-date-download">Force selected date download</button>
           </div>
           ${this._summaryLine("Selected date", selectedHistory.date || "-")}
           ${this._summaryLine("Scope", selectedHistory.scope_key || "-")}
@@ -1033,6 +1034,43 @@ class ByteWattDebugCard extends HTMLElement {
       }
     } catch (err) {
       this._status = `Archive probe failed: ${String(err?.message || err)}`;
+      this._statusKind = "error";
+    }
+    this.render();
+  }
+
+  async _requestSelectedDateDownload(force = true) {
+    const history = this._history();
+    const selectorAttrs = this._attrs();
+    const reportAttrs = this._reportAttrs();
+    const scopeKey = String(history.current_scope || reportAttrs.current_scope || selectorAttrs.current_scope || "all").trim() || "all";
+    const entryId = String(history.entry_id || reportAttrs.entry_id || selectorAttrs.entry_id || "").trim();
+    const selectedDate = this._selectedHistoryDateKey();
+    if (!selectedDate) {
+      this._status = "No selected date available to download";
+      this._statusKind = "error";
+      this.render();
+      return;
+    }
+    this._status = `Requested ${force ? "forced " : ""}download for ${scopeKey} ${selectedDate}`;
+    this._statusKind = "loading";
+    this.render();
+    try {
+      const payload = {
+        scope_key: scopeKey,
+        start_date: selectedDate,
+        end_date: selectedDate,
+        force: Boolean(force),
+      };
+      if (entryId) payload.entry_id = entryId;
+      await this._hass.callService("bytewatt", "ensure_report_history", payload);
+      this._status = `${force ? "Forced " : ""}download sent for ${scopeKey} ${selectedDate}`;
+      this._statusKind = "success";
+      if (this._historyConfigured()) {
+        await this._reloadHistory();
+      }
+    } catch (err) {
+      this._status = `Selected date download failed: ${String(err?.message || err)}`;
       this._statusKind = "error";
     }
     this.render();
@@ -1524,6 +1562,11 @@ class ByteWattDebugCard extends HTMLElement {
     const hardRefreshButton = this.shadowRoot.querySelector("#hard-refresh-button");
     if (hardRefreshButton) {
       hardRefreshButton.onclick = () => this._hardRefresh();
+    }
+
+    const forceSelectedDateDownloadButton = this.shadowRoot.querySelector("#force-selected-date-download");
+    if (forceSelectedDateDownloadButton) {
+      forceSelectedDateDownloadButton.onclick = () => this._requestSelectedDateDownload(true);
     }
 
     this.shadowRoot.querySelector("[data-select-target]")?.addEventListener("change", async (event) => {
