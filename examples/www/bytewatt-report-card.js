@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "256";
+const BYTEWATT_REPORT_CARD_BUILD = "257";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1315,8 +1315,6 @@ class ByteWattReportCard extends HTMLElement {
     const count = Math.max(...powerSeries.map((series) => series.length), batSeries.length, Array.isArray(labels) ? labels.length : 0, 0);
     if (!count) return "";
     const combinedAt = (index) => powerSeries.reduce((sum, series) => sum + (Number(series[index]) || 0), 0);
-    const batAt = (index) => Number(batSeries[index]) || 0;
-    const windowSize = Math.max(6, Math.floor(count * 0.12));
     const lowThreshold = Math.max(0.12, Math.max(...powerSeries.flatMap((series) => series), 0) * 0.08);
     const labelAt = (index) => {
       const label = labels?.[index];
@@ -1326,36 +1324,57 @@ class ByteWattReportCard extends HTMLElement {
       const minutes = Math.round((hours - wholeHours) * 60);
       return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
     };
-    let best = null;
-    for (let start = 0; start <= Math.max(0, count - windowSize); start += 1) {
-      const end = Math.min(count - 1, start + windowSize - 1);
-      const windowCombined = [];
-      const windowBat = [];
-      for (let index = start; index <= end; index += 1) {
-        windowCombined.push(combinedAt(index));
-        windowBat.push(batAt(index));
-      }
-      const lowPoints = windowCombined.filter((value) => value <= lowThreshold).length;
-      const batSpread = Math.max(...windowBat, 0) - Math.min(...windowBat, 0);
-      const gapScore = lowPoints / windowCombined.length;
-      if (gapScore < 0.7) continue;
-      if (batSpread < 1.5 && Math.max(...windowCombined, 0) > lowThreshold * 1.5) continue;
-      const candidate = {
-        start,
-        end,
-        gapScore,
-        lowPoints,
-        batSpread,
-        lowThreshold,
-      };
-      if (!best || candidate.gapScore > best.gapScore || (candidate.gapScore === best.gapScore && candidate.lowPoints > best.lowPoints)) {
-        best = candidate;
+    const lowIndices = [];
+    for (let index = 0; index < count; index += 1) {
+      if (combinedAt(index) <= lowThreshold) lowIndices.push(index);
+    }
+    if (!lowIndices.length) return "";
+    const gapTolerance = 4;
+    const clusters = [];
+    let cluster = [lowIndices[0]];
+    for (let i = 1; i < lowIndices.length; i += 1) {
+      const current = lowIndices[i];
+      const previous = lowIndices[i - 1];
+      if (current - previous <= gapTolerance) {
+        cluster.push(current);
+      } else {
+        clusters.push(cluster);
+        cluster = [current];
       }
     }
-    if (!best) return "";
-    const startLabel = labelAt(best.start);
-    const endLabel = labelAt(best.end);
-    return `Missing data detected between ${startLabel} and ${endLabel}. The middle of the day is mostly power-sparse, so the story can only explain the SOC trace there.`;
+    clusters.push(cluster);
+    const best = clusters.sort((a, b) => {
+      if (b.length !== a.length) return b.length - a.length;
+      return (b[b.length - 1] - b[0]) - (a[a.length - 1] - a[0]);
+    })[0];
+    if (!best || !best.length) return "";
+    const startIndex = Math.max(0, best[0] - 1);
+    const endIndex = Math.min(count - 1, best[best.length - 1] + 1);
+    const startLabel = labelAt(startIndex);
+    const endLabel = labelAt(endIndex);
+    const duration = Math.max(1, endIndex - startIndex + 1);
+    const tail = duration >= 10
+      ? "The sparse section lasts into the afternoon, so the story only has SOC to describe that stretch."
+      : "The sparse section is long enough that the story should not pretend the missing traces are there.";
+    return `Missing data detected between ${startLabel} and ${endLabel}. ${tail}`;
+  }
+
+  _reportMissingHighlight(reporting, periodContext) {
+    const period = periodContext?.period || this._reportPeriod || "day";
+    const isDaily = this._isDailyPeriod(period);
+    const direct = this._periodMissingComment(periodContext);
+    if (direct) return direct;
+    if (!isDaily) return "";
+    const series = reporting?.power_diagram?.series || {};
+    return this._dailySparseComment(
+      {
+        solar: Array.isArray(series.solar) ? series.solar : [],
+        load: Array.isArray(series.load) ? series.load : [],
+        feed: Array.isArray(series.feed_in) ? series.feed_in : [],
+        consumed: Array.isArray(series.consumed) ? series.consumed : [],
+      },
+      Array.isArray(reporting?.power_diagram?.time) ? reporting.power_diagram.time : [],
+    );
   }
 
   _buildPeriodReporting(baseReporting) {
@@ -3171,6 +3190,7 @@ class ByteWattReportCard extends HTMLElement {
     }
     const periodContext = this._buildPeriodReporting(baseReporting);
     const reporting = periodContext.reporting;
+    const reportMissing = reporting ? this._reportMissingHighlight(reporting, periodContext) : "";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -3324,6 +3344,45 @@ class ByteWattReportCard extends HTMLElement {
           font-size:0.88rem;
           font-weight:700;
           line-height:1.4;
+        }
+        .report-alert {
+          display:grid;
+          gap:6px;
+          padding:14px 16px;
+          border-radius:18px;
+          border:1px solid rgba(240, 138, 36, 0.28);
+          background:linear-gradient(180deg, rgba(255,248,239,1) 0%, rgba(255,241,226,1) 100%);
+          box-shadow:0 12px 26px rgba(240, 138, 36, 0.10);
+        }
+        .report-alert-head {
+          display:flex;
+          align-items:center;
+          gap:10px;
+          flex-wrap:wrap;
+        }
+        .report-alert-badge {
+          display:inline-flex;
+          align-items:center;
+          padding:5px 10px;
+          border-radius:999px;
+          background:#fff;
+          border:1px solid rgba(240, 138, 36, 0.28);
+          color:#b35c10;
+          font-size:0.76rem;
+          font-weight:900;
+          letter-spacing:0.06em;
+          text-transform:uppercase;
+        }
+        .report-alert-title {
+          color:#8c5614;
+          font-size:1rem;
+          font-weight:900;
+        }
+        .report-alert-body {
+          color:#8c5614;
+          font-size:0.92rem;
+          font-weight:700;
+          line-height:1.45;
         }
         .archive-inspector {
           display:grid;
@@ -4883,6 +4942,7 @@ class ByteWattReportCard extends HTMLElement {
           </div>
           ${this._renderSelector()}
           ${this._renderReportControls(periodContext)}
+          ${reportMissing ? `<section class="report-alert"><div class="report-alert-head"><span class="report-alert-badge">Missing data</span><div class="report-alert-title">The selected day has a sparse archive segment</div></div><div class="report-alert-body">${this._escape(reportMissing)}</div></section>` : ""}
           ${
             reporting
               ? `
