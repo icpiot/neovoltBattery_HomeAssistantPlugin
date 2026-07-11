@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "262";
+const BYTEWATT_REPORT_CARD_BUILD = "263";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2941,6 +2941,10 @@ class ByteWattReportCard extends HTMLElement {
     const viewportWidth = Number(window?.innerWidth) || 1280;
     const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
     const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
+    const xForIndex = (index) => {
+      if (labels.length <= 1) return padding.left;
+      return padding.left + (index / (labels.length - 1)) * (width - padding.left - padding.right);
+    };
     const storyEnabled = this._storyModeEnabled();
     const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, this._currentPeriodContext || {}) : null;
     this._powerChartModel = {
