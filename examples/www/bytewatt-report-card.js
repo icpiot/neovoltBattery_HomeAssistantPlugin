@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "254";
+const BYTEWATT_REPORT_CARD_BUILD = "255";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1308,6 +1308,33 @@ class ByteWattReportCard extends HTMLElement {
     return `Archive gap: ${start}${start === end ? "" : ` to ${end}`} is marked missing for ${longest.length} day(s).`;
   }
 
+  _dailySparseComment(chartValues = {}) {
+    const powerKeys = ["solar", "load", "feed", "consumed"];
+    const counts = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].length : 0);
+    const count = Math.max(...counts, 0);
+    if (!count) return "";
+    const powerAtIndex = (index) => powerKeys.reduce((sum, key) => sum + (Number(chartValues?.[key]?.[index]) || 0), 0);
+    const midStart = Math.max(0, Math.floor(count * 0.33));
+    const midEnd = Math.max(midStart, Math.floor(count * 0.67));
+    const edgeSamples = [];
+    const midSamples = [];
+    for (let index = 0; index < count; index += 1) {
+      const total = powerAtIndex(index);
+      if (index < midStart || index > midEnd) edgeSamples.push(total);
+      else midSamples.push(total);
+    }
+    const edgePeak = Math.max(...edgeSamples, 0);
+    const midPeak = Math.max(...midSamples, 0);
+    const midActive = midSamples.filter((value) => value > 0.12).length;
+    if (midPeak <= 0.12 && midActive <= 2) {
+      return "The middle of the day is sparse, so the story only has battery state to work with there.";
+    }
+    if (edgePeak > 0 && midPeak < edgePeak * 0.25 && midActive <= Math.max(2, Math.floor(midSamples.length * 0.1))) {
+      return "The middle of the day has far less power activity than the edges, so the story switches to a partial archive view.";
+    }
+    return "";
+  }
+
   _buildPeriodReporting(baseReporting) {
     this._storeLiveReportingSnapshot(baseReporting);
     const scopeInfo = this._historyScopeData();
@@ -2516,6 +2543,8 @@ class ByteWattReportCard extends HTMLElement {
     const middleActiveSeries = powerSeriesKeys.filter((key) => (chartValues[key] || []).slice(middleStart, middleEnd + 1).some((value) => Number(value) > 0.05));
     const sparsePowerData = activeSeries.length <= 1 || middleActiveSeries.length === 0;
     const archiveGapComment = this._periodMissingComment(periodContext);
+    const sparseComment = this._dailySparseComment(chartValues);
+    const storyAlert = archiveGapComment || sparseComment;
     const solarThreshold = Math.max(0.08, solarPeak * 0.2);
     const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
     const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
@@ -2533,7 +2562,7 @@ class ByteWattReportCard extends HTMLElement {
     const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
     const headline = sparsePowerData
-      ? "This day is only partially told: SOC is present, but the middle of the day is missing the solar, load, and grid traces we need for a full story."
+      ? "This day is only partially told: SOC is present, but the middle of the day is missing enough power activity for a full story."
       : batMin <= 15 && solarPeak > 0.05
         ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
         : solarPeak > 0.05
@@ -2553,7 +2582,7 @@ class ByteWattReportCard extends HTMLElement {
           tone: "gap",
           title: "2. Partial archive",
           value: "SOC only",
-          note: archiveGapComment || "The middle of the day is missing power traces, so the chart can only narrate battery state here.",
+          note: storyAlert || "The middle of the day is missing power traces, so the chart can only narrate battery state here.",
         },
         {
           tone: "feed",
@@ -2670,7 +2699,7 @@ class ByteWattReportCard extends HTMLElement {
         evening: eveningPeakIndex,
       },
       alert: sparsePowerData
-        ? (archiveGapComment || "The middle of the day is missing enough power data to build the normal story.")
+        ? (storyAlert || "The middle of the day is missing enough power data to build the normal story.")
         : "",
       morningPeakIndex,
     };
@@ -3070,7 +3099,12 @@ class ByteWattReportCard extends HTMLElement {
     const rangeEnd = this._formatDisplayDate(periodContext?.window?.end);
     const diagramDate = this._formatDisplayDate(this._parseLocalDate(reporting?.power_diagram?.date || ""));
     const storyEnabled = this._storyModeEnabled();
-    const missingComment = this._periodMissingComment(periodContext);
+    const missingComment = this._periodMissingComment(periodContext) || (isDaily ? this._dailySparseComment(reporting?.power_diagram?.series ? {
+      solar: Array.isArray(reporting?.power_diagram?.series?.solar) ? reporting.power_diagram.series.solar : [],
+      load: Array.isArray(reporting?.power_diagram?.series?.load) ? reporting.power_diagram.series.load : [],
+      feed: Array.isArray(reporting?.power_diagram?.series?.feed_in) ? reporting.power_diagram.series.feed_in : [],
+      consumed: Array.isArray(reporting?.power_diagram?.series?.consumed) ? reporting.power_diagram.series.consumed : [],
+    } : {}) : "");
     const subtitle = isDaily
       ? this._escape(diagramDate || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
       : this._escape(rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : "");
@@ -3637,6 +3671,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:10px;
           align-content:start;
+          min-width:0;
           padding:12px 14px;
         }
         .overview-metrics {
@@ -3647,7 +3682,14 @@ class ByteWattReportCard extends HTMLElement {
         .metric {
           display:grid;
           gap:6px;
+          min-width:0;
           padding-top:2px;
+        }
+        .metric-label {
+          white-space:normal;
+          line-height:1.15;
+          overflow-wrap:anywhere;
+          min-height:2.4em;
         }
         .metric-value,
         .summary-value,
@@ -3656,7 +3698,8 @@ class ByteWattReportCard extends HTMLElement {
           font-size:1.2rem;
           font-weight:800;
           color:#0f172a;
-          white-space:nowrap;
+          white-space:normal;
+          line-height:1.1;
         }
         .summary-tile,
         .live-tile {
