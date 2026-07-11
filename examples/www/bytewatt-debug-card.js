@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "022";
+const BYTEWATT_DEBUG_CARD_BUILD = "023";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -491,6 +491,29 @@ class ByteWattDebugCard extends HTMLElement {
     };
   }
 
+  _selectedHistoryDateKey() {
+    const range = this._debugRange();
+    return range.displayDate || this._formatLocalDate(range.anchor) || "";
+  }
+
+  _selectedHistoryRecordInfo() {
+    const scopeInfo = this._historyScopeData();
+    const scope = scopeInfo.scope || {};
+    const selectedDate = this._selectedHistoryDateKey();
+    const record = selectedDate ? (scope.records?.[selectedDate] || null) : null;
+    const missingMarker = selectedDate ? Boolean(scope.missing_dates?.[selectedDate]) : false;
+    const hasData = this._recordHasPowerDiagramData(record);
+    return {
+      date: selectedDate,
+      scope_key: scopeInfo.key,
+      requested_scope: scopeInfo.requested,
+      record,
+      status: hasData ? "available" : (selectedDate ? (missingMarker ? "missing" : "missing") : "unavailable"),
+      has_data: hasData,
+      missing_marker: missingMarker,
+    };
+  }
+
   _historyRange(records) {
     const dates = (records || [])
       .map((record) => this._parseLocalDate(record?.record_date))
@@ -758,10 +781,18 @@ class ByteWattDebugCard extends HTMLElement {
     const error = this._historyLoadError;
     const periodLabel = { today: "Today", day: "Day", week: "Week", month: "Month", quarter: "Quarter" }[this._debugPeriod] || "Day";
     const periodWindow = this._debugRange().window;
+    const selectedHistory = this._selectedHistoryRecordInfo();
     const formatHistoryDate = (value) => {
       const parsed = this._parseLocalDate(value);
       return parsed ? this._formatDisplayDate(parsed) : String(value || "");
     };
+    const selectedPowerDiagram = this._powerDiagramFromRecord(selectedHistory.record || {});
+    const selectedPowerRows = Array.isArray(selectedPowerDiagram.time) ? selectedPowerDiagram.time.length : 0;
+    const selectedPowerSeries = selectedPowerDiagram.series && typeof selectedPowerDiagram.series === "object"
+      ? Object.entries(selectedPowerDiagram.series)
+          .filter(([, value]) => Array.isArray(value) && value.length > 0)
+          .map(([key, value]) => `${key}:${value.length}`)
+      : [];
     const rowCount = records.length;
     const rows = records
       .slice()
@@ -798,6 +829,32 @@ class ByteWattDebugCard extends HTMLElement {
         <div class="history-controls">
           <span class="history-pill active">Selected period: ${this._escape(periodLabel)}</span>
           <span class="history-pill">Range: ${this._escape(this._formatDisplayDate(periodWindow.start))} to ${this._escape(this._formatDisplayDate(periodWindow.end))}</span>
+        </div>
+        <div class="panel" style="margin-top: 14px;">
+          <div class="panel-title">Selected Date Snapshot</div>
+          <div class="button-row">
+            <button class="button secondary" type="button" data-copy="selected-date">Copy selected date</button>
+            <button class="button secondary" type="button" data-copy="selected-date-power">Copy selected date power</button>
+          </div>
+          ${this._summaryLine("Selected date", selectedHistory.date || "-")}
+          ${this._summaryLine("Scope", selectedHistory.scope_key || "-")}
+          ${this._summaryLine("Status", selectedHistory.status === "available" ? "available" : "missing")}
+          ${this._summaryLine("Chart rows", selectedHistory.has_data ? selectedPowerRows : 0)}
+          ${this._summaryLine("Chart series", selectedHistory.has_data ? (selectedPowerSeries.join(", ") || "-") : "-")}
+          ${
+            selectedHistory.has_data
+              ? `
+                <div class="history-table-head" style="margin-top: 12px;">
+                  <div class="history-table-title">Selected Date Row</div>
+                  <div class="history-table-subtitle">Exact archive row for ${this._escape(formatHistoryDate(selectedHistory.date))}</div>
+                </div>
+                <pre class="json">${this._escape(this._json(selectedHistory.record || {}))}</pre>
+              `
+              : `
+                <div class="empty" style="margin-top: 12px;">No stored chart data exists for this selected date. If you expected a chart here, the archive for ${this._escape(formatHistoryDate(selectedHistory.date))} is missing.</div>
+                <pre class="json">${this._escape(this._json(selectedHistory.record || { missing: true, date: selectedHistory.date || "" }))}</pre>
+              `
+          }
         </div>
         ${
           scopeSummaries.length
@@ -1554,6 +1611,14 @@ class ByteWattDebugCard extends HTMLElement {
         }
         if (key === "power-diagram") {
           this._copyText(this._json(this._selectedReportSnapshot(reporting)?.power_diagram || {}), "Power diagram");
+          return;
+        }
+        if (key === "selected-date") {
+          this._copyText(this._json(this._selectedHistoryRecordInfo()), "Selected date");
+          return;
+        }
+        if (key === "selected-date-power") {
+          this._copyText(this._json(this._powerDiagramFromRecord(this._selectedHistoryRecordInfo().record || {})), "Selected date power");
         }
       };
     });
