@@ -38,7 +38,6 @@ def build_reporting_payload(
             "label": label,
             "reporting_date": reporting_date,
             "saved_at": saved_at,
-            "has_snapshot_data": bool(battery_data),
         },
         "live": {
             "soc": battery_data.get("soc"),
@@ -169,9 +168,6 @@ def _power_diagram_from_reporting(reporting: dict[str, Any]) -> dict[str, Any]:
 
 def _reporting_has_power_diagram_data(reporting: dict[str, Any]) -> bool:
     """Return True when a stored row has chart data worth treating as archived."""
-    meta = reporting.get("meta") or {}
-    if isinstance(meta, dict) and meta.get("has_snapshot_data"):
-        return True
     power_diagram = _power_diagram_from_reporting(reporting)
     if not isinstance(power_diagram, dict) or not power_diagram:
         return False
