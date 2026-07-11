@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "252";
+const BYTEWATT_REPORT_CARD_BUILD = "253";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -10,10 +10,12 @@ class ByteWattReportCard extends HTMLElement {
     };
     this._reportStorageKey = `bytewatt-report:${this._config.entity_prefix}:${this._config.settings_target}`;
     this._chartStorageKey = `bytewatt-chart:${this._config.entity_prefix}:${this._config.settings_target}`;
+    this._storyStorageKey = `bytewatt-story:${this._config.entity_prefix}:${this._config.settings_target}`;
     const saved = this._loadReportState();
     this._reportPeriod = saved.period || this._reportPeriod || "day";
     this._reportAnchorDate = saved.anchor || this._reportAnchorDate || "";
     this._chartState = this._loadChartState();
+    this._storyState = this._loadStoryState();
     this._historyPeriod = this._historyPeriod || "7d";
     this._historyLoading = false;
     this._historyData = this._historyData || null;
@@ -119,6 +121,44 @@ class ByteWattReportCard extends HTMLElement {
     next[key] = Boolean(visible);
     this._chartState = { visibility: next };
     this._saveChartState();
+  }
+
+  _defaultStoryState() {
+    return { enabled: true };
+  }
+
+  _loadStoryState() {
+    try {
+      if (!this._storyStorageKey || !window.localStorage) return this._defaultStoryState();
+      const raw = window.localStorage.getItem(this._storyStorageKey);
+      if (!raw) return this._defaultStoryState();
+      const parsed = JSON.parse(raw);
+      return {
+        ...this._defaultStoryState(),
+        ...(parsed && typeof parsed === "object" ? parsed : {}),
+        enabled: parsed?.enabled !== false,
+      };
+    } catch (_err) {
+      return this._defaultStoryState();
+    }
+  }
+
+  _saveStoryState() {
+    try {
+      if (!this._storyStorageKey || !window.localStorage) return;
+      window.localStorage.setItem(this._storyStorageKey, JSON.stringify(this._storyState || this._defaultStoryState()));
+    } catch (_err) {
+      return;
+    }
+  }
+
+  _storyModeEnabled() {
+    return (this._storyState?.enabled ?? true) !== false;
+  }
+
+  _setStoryModeEnabled(enabled) {
+    this._storyState = { enabled: Boolean(enabled) };
+    this._saveStoryState();
   }
 
   _selectorState() {
@@ -1224,6 +1264,48 @@ class ByteWattReportCard extends HTMLElement {
       return `Selected period partially available (${selectedCount}/${requestedCount}). No source data for ${missingCount} day(s).`;
     }
     return "";
+  }
+
+  _periodMissingComment(periodContext = {}) {
+    const window = periodContext?.window || {};
+    if (!(window.start instanceof Date) || !(window.end instanceof Date)) return "";
+    const scope = this._historyScopeData()?.scope || {};
+    const missingMap = scope?.missing_dates && typeof scope.missing_dates === "object" ? scope.missing_dates : {};
+    const missingDates = new Set(Object.keys(missingMap).filter(Boolean));
+    if (!missingDates.size) return "";
+    const selectedDates = new Set(
+      (periodContext?.records || [])
+        .map((record) => String(record?.record_date || "").trim())
+        .filter(Boolean),
+    );
+    const runs = [];
+    let cursor = new Date(window.start.getFullYear(), window.start.getMonth(), window.start.getDate());
+    let runStart = null;
+    let runEnd = null;
+    const flushRun = () => {
+      if (!runStart || !runEnd) return;
+      const length = Math.max(1, Math.round((runEnd.getTime() - runStart.getTime()) / 86400000) + 1);
+      runs.push({ start: new Date(runStart), end: new Date(runEnd), length });
+      runStart = null;
+      runEnd = null;
+    };
+    while (cursor <= window.end) {
+      const key = this._formatLocalDate(cursor);
+      const isMissing = missingDates.has(key) && !selectedDates.has(key);
+      if (isMissing) {
+        if (!runStart) runStart = new Date(cursor);
+        runEnd = new Date(cursor);
+      } else {
+        flushRun();
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    flushRun();
+    const longest = runs.sort((a, b) => b.length - a.length)[0];
+    if (!longest || longest.length < 2) return "";
+    const start = this._formatDisplayDate(longest.start);
+    const end = this._formatDisplayDate(longest.end);
+    return `Archive gap: ${start}${start === end ? "" : ` to ${end}`} is marked missing for ${longest.length} day(s).`;
   }
 
   _buildPeriodReporting(baseReporting) {
@@ -2739,7 +2821,8 @@ class ByteWattReportCard extends HTMLElement {
     const viewportWidth = Number(window?.innerWidth) || 1280;
     const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
     const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
-    const story = this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding);
+    const storyEnabled = this._storyModeEnabled();
+    const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding) : null;
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2788,28 +2871,31 @@ class ByteWattReportCard extends HTMLElement {
         return `<text class="axis-label" x="${x.toFixed(1)}" y="${height - 12}" text-anchor="middle">${this._escape(label)}</text>`;
       })
       .join("");
-    const bandMarkup = (story.bands || [])
-      .map((band) => {
-        const x = Number(band.x) || padding.left;
-        const bandWidth = Math.max(16, Number(band.width) || 16);
-        return `<rect class="story-band story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`;
-      })
-      .join("");
-    const annotationMarkup = (story.annotations || [])
-      .map((item) => {
-        const boxWidth = Number(item.width) || 138;
-        const boxHeight = 44;
-        const alignLeft = item.align !== "right";
-        const rawX = Number(item.x) || padding.left;
-        const rawY = Number(item.y) || padding.top;
-        const preferredX = alignLeft ? rawX + Number(item.xOffset || 16) : rawX - boxWidth + Number(item.xOffset || -16);
-        const boxX = Math.max(padding.left + 4, Math.min(preferredX, width - padding.right - boxWidth - 4));
-        const boxY = Math.max(padding.top + 4, Math.min(rawY + Number(item.yOffset || 20), height - padding.bottom - boxHeight - 4));
-        const connectorX2 = alignLeft ? boxX : boxX + boxWidth;
-        const connectorY2 = boxY + boxHeight / 2;
-        const connectorX1 = rawX;
-        const connectorY1 = rawY;
-        return `
+    const bandMarkup = story
+      ? (story.bands || [])
+          .map((band) => {
+            const x = Number(band.x) || padding.left;
+            const bandWidth = Math.max(16, Number(band.width) || 16);
+            return `<rect class="story-band story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`;
+          })
+          .join("")
+      : "";
+    const annotationMarkup = story
+      ? (story.annotations || [])
+          .map((item) => {
+            const boxWidth = Number(item.width) || 138;
+            const boxHeight = 44;
+            const alignLeft = item.align !== "right";
+            const rawX = Number(item.x) || padding.left;
+            const rawY = Number(item.y) || padding.top;
+            const preferredX = alignLeft ? rawX + Number(item.xOffset || 16) : rawX - boxWidth + Number(item.xOffset || -16);
+            const boxX = Math.max(padding.left + 4, Math.min(preferredX, width - padding.right - boxWidth - 4));
+            const boxY = Math.max(padding.top + 4, Math.min(rawY + Number(item.yOffset || 20), height - padding.bottom - boxHeight - 4));
+            const connectorX2 = alignLeft ? boxX : boxX + boxWidth;
+            const connectorY2 = boxY + boxHeight / 2;
+            const connectorX1 = rawX;
+            const connectorY1 = rawY;
+            return `
           <g class="story-annotation tone-${this._escape(item.tone || "neutral")}">
             <line class="story-annotation-line" x1="${connectorX1.toFixed(1)}" y1="${connectorY1.toFixed(1)}" x2="${connectorX2.toFixed(1)}" y2="${connectorY2.toFixed(1)}"></line>
             <circle class="story-annotation-point tone-${this._escape(item.tone || "neutral")}" cx="${connectorX1.toFixed(1)}" cy="${connectorY1.toFixed(1)}" r="4.2"></circle>
@@ -2818,8 +2904,9 @@ class ByteWattReportCard extends HTMLElement {
             <text class="story-annotation-note" x="${(boxX + 10).toFixed(1)}" y="${(boxY + 31).toFixed(1)}">${this._escape(item.note || "")}</text>
           </g>
         `;
-      })
-      .join("");
+          })
+          .join("")
+      : "";
     return `
       <div class="power-chart-shell" data-power-chart-shell>
         <div class="ring-grid power-summary-grid">
@@ -2834,7 +2921,7 @@ class ByteWattReportCard extends HTMLElement {
               ${seriesMeta.map((item) => this._chartToggleChip(item.label, item.tone, item.key, Boolean(visibility[item.key]))).join("")}
             </div>
           </div>
-          <div class="power-story-strip">
+          ${story ? `<div class="power-story-strip">
             <div class="power-story-headline">${this._escape(story.headline || "")}</div>
             <div class="power-story-cards">
               ${(story.highlights || [])
@@ -2852,7 +2939,7 @@ class ByteWattReportCard extends HTMLElement {
                 )
                 .join("")}
             </div>
-          </div>
+          </div>` : ""}
           <div class="power-chart-wrap">
             <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
               <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
@@ -2947,6 +3034,8 @@ class ByteWattReportCard extends HTMLElement {
     const rangeStart = this._formatDisplayDate(periodContext?.window?.start);
     const rangeEnd = this._formatDisplayDate(periodContext?.window?.end);
     const diagramDate = this._formatDisplayDate(this._parseLocalDate(reporting?.power_diagram?.date || ""));
+    const storyEnabled = this._storyModeEnabled();
+    const missingComment = this._periodMissingComment(periodContext);
     const subtitle = isDaily
       ? this._escape(diagramDate || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
       : this._escape(rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : "");
@@ -2955,8 +3044,12 @@ class ByteWattReportCard extends HTMLElement {
         <div class="panel-header">
           <div class="panel-title">${isDaily ? "Power Diagram" : `${periodLabel} Power Overview`}</div>
           <div class="panel-date">${subtitle}</div>
-          <button class="download-btn" type="button" data-download-report>Download</button>
+          <div class="panel-actions">
+            <button class="story-toggle-btn ${storyEnabled ? "active" : "inactive"}" type="button" data-story-toggle aria-pressed="${storyEnabled ? "true" : "false"}">${storyEnabled ? "Story mode on" : "Story mode off"}</button>
+            <button class="download-btn" type="button" data-download-report>Download</button>
+          </div>
         </div>
+        ${missingComment ? `<div class="power-gap-note">${this._escape(missingComment)}</div>` : ""}
         ${isDaily ? this._renderDailyPowerChart(reporting) : this._renderPeriodOverviewChart(periodContext)}
       </section>
     `;
@@ -3128,6 +3221,17 @@ class ByteWattReportCard extends HTMLElement {
           background:#fdecec;
           border-color:rgba(198, 82, 82, 0.22);
           color:#a04646;
+        }
+        .report-comment {
+          margin-top:10px;
+          padding:10px 12px;
+          border-radius:14px;
+          border:1px solid rgba(240, 138, 36, 0.24);
+          background:#fff7ee;
+          color:#8c5614;
+          font-size:0.88rem;
+          font-weight:700;
+          line-height:1.4;
         }
         .archive-inspector {
           display:grid;
@@ -3601,6 +3705,13 @@ class ByteWattReportCard extends HTMLElement {
           gap:12px;
           margin-bottom:14px;
         }
+        .panel-actions {
+          display:flex;
+          align-items:center;
+          gap:8px;
+          flex-wrap:wrap;
+          justify-content:flex-end;
+        }
         .panel-title {
           font-size:1.1rem;
           font-weight:800;
@@ -3933,6 +4044,25 @@ class ByteWattReportCard extends HTMLElement {
           border:1px solid #d6dbe1;
           box-shadow:none;
         }
+        .story-toggle-btn {
+          border:1px solid rgba(51, 92, 140, 0.18);
+          border-radius:999px;
+          padding:8px 14px;
+          font-weight:800;
+          cursor:pointer;
+          background:#eef4fb;
+          color:#355377;
+        }
+        .story-toggle-btn.active {
+          background:#e8f7ee;
+          color:#2e7d46;
+          border-color:rgba(74, 167, 98, 0.24);
+        }
+        .story-toggle-btn.inactive {
+          background:#fff4de;
+          color:#9a651d;
+          border-color:rgba(239, 169, 61, 0.28);
+        }
         .legend-solar { background:#fff7da; color:#9a6f00; border:1px solid rgba(240,196,25,0.28); }
         .legend-load { background:#e7f4ff; color:#1d78bd; border:1px solid rgba(47,155,232,0.24); }
         .legend-feed { background:#fff0e5; color:#b35c10; border:1px solid rgba(240,138,36,0.24); }
@@ -4105,6 +4235,17 @@ class ByteWattReportCard extends HTMLElement {
           font-size:0.84rem;
           color:#56667b;
           line-height:1.35;
+        }
+        .power-gap-note {
+          margin:0 0 12px;
+          padding:10px 12px;
+          border-radius:14px;
+          border:1px solid rgba(240, 138, 36, 0.24);
+          background:#fff7ee;
+          color:#8c5614;
+          font-size:0.88rem;
+          font-weight:700;
+          line-height:1.4;
         }
         .power-story-card.tone-bat { box-shadow: inset 0 3px 0 0 var(--bw-battery), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .power-story-card.tone-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar), 0 8px 18px rgba(15, 23, 42, 0.05); }
@@ -4694,6 +4835,10 @@ class ByteWattReportCard extends HTMLElement {
         this._setChartSeriesVisible(key, nextVisible);
         this.render();
       });
+    });
+    this.shadowRoot.querySelector("[data-story-toggle]")?.addEventListener("click", () => {
+      this._setStoryModeEnabled(!this._storyModeEnabled());
+      this.render();
     });
     const chartShell = this.shadowRoot.querySelector("[data-power-chart-shell]");
     const model = this._powerChartModel || {};
