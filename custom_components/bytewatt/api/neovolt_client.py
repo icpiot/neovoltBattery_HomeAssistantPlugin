@@ -94,6 +94,97 @@ def _stat_value(stats_data, key):
         return 0
 
 
+def _is_success_code(result: Optional[Dict[str, Any]]) -> bool:
+    """Return True when an API payload uses a success code we accept."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("code") in (0, 200)
+
+
+def _first_list_value(source: Dict[str, Any], *keys: str) -> list[Any]:
+    """Return the first non-empty list found under the supplied keys."""
+    for key in keys:
+        value = source.get(key)
+        if isinstance(value, list) and len(value) > 0:
+            return value
+    return []
+
+
+def _normalized_power_diagram(
+    source: Dict[str, Any],
+    *,
+    report_date: str,
+    battery_data: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Normalize chart payloads into the archived power_diagram shape."""
+    battery_data = battery_data or {}
+    nested = {}
+    for key in ("Power_Diagram", "power_diagram"):
+        value = source.get(key)
+        if isinstance(value, dict) and value:
+            nested = value
+            break
+
+    series = nested.get("series") if isinstance(nested.get("series"), dict) else {}
+    if not isinstance(series, dict):
+        series = {}
+    source_series = source.get("series") if isinstance(source.get("series"), dict) else {}
+    time_points = nested.get("time") if isinstance(nested.get("time"), list) else []
+
+    if not time_points:
+        time_points = _first_list_value(source, "time", "times", "chartTime", "chart_time")
+
+    def _series_or_fallback(key: str, *fallback_keys: str) -> list[Any]:
+        current = series.get(key)
+        if isinstance(current, list) and len(current) > 0:
+            return current
+        source_series_value = source_series.get(key)
+        if isinstance(source_series_value, list) and len(source_series_value) > 0:
+            return source_series_value
+        return _first_list_value(source, *fallback_keys)
+
+    series = {
+        "bat": _series_or_fallback("bat", "cbat", "bat"),
+        "load": _series_or_fallback("load", "usePower", "homePower", "load"),
+        "solar": _series_or_fallback("solar", "ppv", "solar"),
+        "feed_in": _series_or_fallback("feed_in", "feedIn", "feed_in"),
+        "consumed": _series_or_fallback("consumed", "gridCharge", "consumed"),
+    }
+
+    summary = nested.get("summary") if isinstance(nested.get("summary"), dict) else {}
+    if not isinstance(summary, dict):
+        summary = {}
+    if not summary:
+        summary = {
+            "soc": source.get("soc"),
+            "solar_generation": battery_data.get("PV_Generated_Today"),
+            "load_consumption": battery_data.get("Consumed_Today"),
+            "feed_in": battery_data.get("Feed_In_Today"),
+            "grid_consumption": battery_data.get("Grid_Import_Today"),
+            "battery_charge": battery_data.get("Battery_Charged_Today"),
+            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
+        }
+
+    meta = nested.get("meta") if isinstance(nested.get("meta"), dict) else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if not meta:
+        meta = {
+            "power_source": source.get("powerSource"),
+            "system_time": source.get("systemTime"),
+            "maximum_power": source.get("maximumPower"),
+            "inverter_mode": source.get("inverterMode"),
+        }
+
+    return {
+        "date": nested.get("date") or report_date,
+        "time": time_points,
+        "series": series,
+        "summary": summary,
+        "meta": meta,
+    }
+
+
 def _decode_jwt_payload(token: str) -> Dict[str, Any]:
     """Decode the payload portion of a JWT without verifying the signature."""
     parts = str(token or "").split(".")
@@ -454,7 +545,7 @@ class NeovoltClient:
                                 return battery_data
                             _LOGGER.debug("Today's stats response: %s", today_result)
 
-                            if today_result.get("code") == 200:
+                            if _is_success_code(today_result):
                                 today_data = today_result.get("data", {}) or {}
                                 if today_data:
                                     battery_data["PV_Generated_Today"]    = today_data.get("epvtoday")
@@ -519,7 +610,7 @@ class NeovoltClient:
                                 return battery_data
                             _LOGGER.debug("Today's detailed stats response: %s", today_stats_result)
 
-                            if today_stats_result.get("code") == 200:
+                            if _is_success_code(today_stats_result):
                                 stats_data = today_stats_result.get("data", {}) or {}
                                 # _stat_value coalesces missing / null fields to 0
                                 # so the discharge arithmetic never raises TypeError.
@@ -544,36 +635,12 @@ class NeovoltClient:
                                             total_used - total_gained, 0
                                         )
 
-                                    time_points = stats_data.get("time") or []
-                                    battery_curve = stats_data.get("cbat") or []
-                                    if not battery_curve and time_points:
-                                        battery_curve = [stats_data.get("soc")] * len(time_points)
-
                                     battery_data["Power_Diagram"] = {
-                                        "date": today_stats_date,
-                                        "time": time_points,
-                                        "series": {
-                                            "bat": battery_curve,
-                                            "load": stats_data.get("usePower") or stats_data.get("homePower") or [],
-                                            "solar": stats_data.get("ppv") or [],
-                                            "feed_in": stats_data.get("feedIn") or [],
-                                            "consumed": stats_data.get("gridCharge") or [],
-                                        },
-                                        "summary": {
-                                            "soc": stats_data.get("soc"),
-                                            "solar_generation": stats_data.get("epvtoday"),
-                                            "load_consumption": stats_data.get("eload"),
-                                            "feed_in": stats_data.get("efeedIn"),
-                                            "grid_consumption": stats_data.get("egridCharge"),
-                                            "battery_charge": stats_data.get("echarge"),
-                                            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
-                                        },
-                                        "meta": {
-                                            "power_source": stats_data.get("powerSource"),
-                                            "system_time": stats_data.get("systemTime"),
-                                            "maximum_power": stats_data.get("maximumPower"),
-                                            "inverter_mode": stats_data.get("inverterMode"),
-                                        },
+                                        **_normalized_power_diagram(
+                                            stats_data,
+                                            report_date=today_stats_date,
+                                            battery_data=battery_data,
+                                        )
                                     }
                             elif today_stats_result.get("code") == 6069:
                                 _LOGGER.warning("Session expired (code 6069) during today's detailed stats fetch")
@@ -656,7 +723,7 @@ class NeovoltClient:
 
                     if today_response.status == 200:
                         today_result = await _decode_json_object(today_response, "getSumDataForCustomer(day)")
-                        if today_result and today_result.get("code") == 200:
+                        if _is_success_code(today_result):
                             today_data = today_result.get("data", {}) or {}
                             battery_data["PV_Generated_Today"] = today_data.get("epvtoday")
                             battery_data["Total_Solar_Generation"] = today_data.get("epvtotal")
@@ -735,7 +802,7 @@ class NeovoltClient:
                             )
                         raise ByteWattAuthError("Session expired during daily detail fetch")
 
-                    if today_stats_result.get("code") != 200:
+                    if not _is_success_code(today_stats_result):
                         _LOGGER.debug(
                             "Daily detail fetch returned code %s for %s (%s)",
                             today_stats_result.get("code"),
@@ -768,39 +835,13 @@ class NeovoltClient:
                         total_used = consumed + feed_in + charged
                         battery_data["Battery_Discharged_Today"] = max(total_used - total_gained, 0)
 
-                    time_points = stats_data.get("time") or []
-                    battery_curve = stats_data.get("cbat") or []
-                    if not battery_curve and time_points:
-                        battery_curve = [stats_data.get("soc")] * len(time_points)
-
                     battery_data["soc"] = stats_data.get("soc")
                     battery_data["powerSource"] = stats_data.get("powerSource")
-                    battery_data["Power_Diagram"] = {
-                        "date": report_date,
-                        "time": time_points,
-                        "series": {
-                            "bat": battery_curve,
-                            "load": stats_data.get("usePower") or stats_data.get("homePower") or [],
-                            "solar": stats_data.get("ppv") or [],
-                            "feed_in": stats_data.get("feedIn") or [],
-                            "consumed": stats_data.get("gridCharge") or [],
-                        },
-                        "summary": {
-                            "soc": stats_data.get("soc"),
-                            "solar_generation": battery_data.get("PV_Generated_Today"),
-                            "load_consumption": battery_data.get("Consumed_Today"),
-                            "feed_in": battery_data.get("Feed_In_Today"),
-                            "grid_consumption": battery_data.get("Grid_Import_Today"),
-                            "battery_charge": battery_data.get("Battery_Charged_Today"),
-                            "battery_discharge": battery_data.get("Battery_Discharged_Today"),
-                        },
-                        "meta": {
-                            "power_source": stats_data.get("powerSource"),
-                            "system_time": stats_data.get("systemTime"),
-                            "maximum_power": stats_data.get("maximumPower"),
-                            "inverter_mode": stats_data.get("inverterMode"),
-                        },
-                    }
+                    battery_data["Power_Diagram"] = _normalized_power_diagram(
+                        stats_data,
+                        report_date=report_date,
+                        battery_data=battery_data,
+                    )
                     return battery_data
         except (asyncio.TimeoutError, aiohttp.ClientError, ValueError) as today_stats_error:
             _LOGGER.error("Error fetching daily detail for %s (%s): %s", effective_sys_sn, report_date, today_stats_error)
