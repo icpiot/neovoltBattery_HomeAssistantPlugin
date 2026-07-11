@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "260";
+const BYTEWATT_REPORT_CARD_BUILD = "261";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1309,11 +1309,17 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _dailySparseComment(chartValues = {}, labels = []) {
+    const window = this._dailySparseWindow(chartValues, labels);
+    if (!window) return "";
+    return `Missing data detected between ${window.startLabel} and ${window.endLabel}. ${window.tail}`;
+  }
+
+  _dailySparseWindow(chartValues = {}, labels = []) {
     const powerKeys = ["solar", "load", "feed", "consumed"];
     const powerSeries = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].map((value) => Math.max(Number(value) || 0, 0)) : []);
     const batSeries = Array.isArray(chartValues?.bat) ? chartValues.bat.map((value) => Math.max(Number(value) || 0, 0)) : [];
     const count = Math.max(...powerSeries.map((series) => series.length), batSeries.length, Array.isArray(labels) ? labels.length : 0, 0);
-    if (!count) return "";
+    if (!count) return null;
     const combinedAt = (index) => powerSeries.reduce((sum, series) => sum + (Number(series[index]) || 0), 0);
     const lowThreshold = Math.max(0.12, Math.max(...powerSeries.flatMap((series) => series), 0) * 0.08);
     const labelAt = (index) => {
@@ -1328,7 +1334,7 @@ class ByteWattReportCard extends HTMLElement {
     for (let index = 0; index < count; index += 1) {
       if (combinedAt(index) <= lowThreshold) lowIndices.push(index);
     }
-    if (!lowIndices.length) return "";
+    if (!lowIndices.length) return null;
     const gapTolerance = 4;
     const clusters = [];
     let cluster = [lowIndices[0]];
@@ -1347,7 +1353,7 @@ class ByteWattReportCard extends HTMLElement {
       if (b.length !== a.length) return b.length - a.length;
       return (b[b.length - 1] - b[0]) - (a[a.length - 1] - a[0]);
     })[0];
-    if (!best || !best.length) return "";
+    if (!best || !best.length) return null;
     const startIndex = Math.max(0, best[0] - 1);
     const endIndex = Math.min(count - 1, best[best.length - 1] + 1);
     const startLabel = labelAt(startIndex);
@@ -1356,7 +1362,17 @@ class ByteWattReportCard extends HTMLElement {
     const tail = duration >= 10
       ? "The sparse section lasts into the afternoon, so the story only has SOC to describe that stretch."
       : "The sparse section is long enough that the story should not pretend the missing traces are there.";
-    return `Missing data detected between ${startLabel} and ${endLabel}. ${tail}`;
+    return {
+      startIndex,
+      endIndex,
+      anchorIndex: Math.round((startIndex + endIndex) / 2),
+      startLabel,
+      endLabel,
+      tail,
+      count,
+      labelAt,
+      combinedAt,
+    };
   }
 
   _reportMissingHighlight(reporting, periodContext) {
@@ -2584,6 +2600,7 @@ class ByteWattReportCard extends HTMLElement {
     const middleEnd = Math.max(middleStart + 1, Math.floor(count * 0.67));
     const middleActiveSeries = powerSeriesKeys.filter((key) => (chartValues[key] || []).slice(middleStart, middleEnd + 1).some((value) => Number(value) > 0.05));
     const sparsePowerData = activeSeries.length <= 1 || middleActiveSeries.length === 0;
+    const sparseWindow = this._dailySparseWindow(chartValues, labels);
     const archiveGapComment = this._periodMissingComment(periodContext);
     const sparseComment = this._dailySparseComment(chartValues, labels);
     const storyAlert = archiveGapComment || sparseComment;
@@ -2987,6 +3004,17 @@ class ByteWattReportCard extends HTMLElement {
           })
           .join("")
       : "";
+    const sparseWindow = story ? this._dailySparseWindow(chartValues, labels) : null;
+    const sparseBandMarkup = sparseWindow
+      ? (() => {
+          const startX = xForIndex(sparseWindow.startIndex || 0);
+          const endX = xForIndex(sparseWindow.endIndex || 0);
+          const bandWidth = Math.max(20, endX - startX);
+          return `
+            <rect class="story-band story-band-gap" x="${startX.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>
+          `;
+        })()
+      : "";
     const annotationMarkup = story
       ? (story.annotations || [])
           .map((item) => {
@@ -3014,29 +3042,22 @@ class ByteWattReportCard extends HTMLElement {
           })
           .join("")
       : "";
-    const storyConnectorMarkup = story && story.focusIndex
+    const storyConnectorMarkup = story && sparseWindow
       ? (() => {
-          const anchorIndex = Number.isFinite(story.focusIndex.solar) && story.focusIndex.solar >= 0
-            ? story.focusIndex.solar
-            : Number.isFinite(story.focusIndex.evening) && story.focusIndex.evening >= 0
-              ? story.focusIndex.evening
-              : Number.isFinite(story.focusIndex.battery) && story.focusIndex.battery >= 0
-                ? story.focusIndex.battery
-                : -1;
-          if (anchorIndex < 0) return "";
-          const anchorPoints = this._chartPoints(chartValues.solar, width, height, padding, chartMax);
-          const anchor = anchorPoints[anchorIndex];
-          if (!anchor) return "";
+          const anchorIndex = Math.max(0, Math.min(sparseWindow.anchorIndex || 0, count - 1));
+          const anchorX = xForIndex(anchorIndex);
+          const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
+          const anchorY = padding.top + usableHeight * 0.62;
           const startX = Math.min(width - padding.right - 120, padding.left + 260);
           const startY = Math.max(12, padding.top - 6);
           const midX = startX + 34;
           const midY = startY + 12;
-          const bendX = Math.max(padding.left + 32, anchor.x - 58);
-          const bendY = Math.max(padding.top + 24, anchor.y - 28);
+          const bendX = Math.max(padding.left + 32, anchorX - 58);
+          const bendY = Math.max(padding.top + 24, anchorY - 28);
           return `
             <g class="story-overlay-connector">
-              <path d="M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${midX.toFixed(1)} ${midY.toFixed(1)}, ${bendX.toFixed(1)} ${bendY.toFixed(1)}, ${anchor.x.toFixed(1)} ${anchor.y.toFixed(1)}"></path>
-              <circle cx="${anchor.x.toFixed(1)}" cy="${anchor.y.toFixed(1)}" r="5.4"></circle>
+              <path d="M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${midX.toFixed(1)} ${midY.toFixed(1)}, ${bendX.toFixed(1)} ${bendY.toFixed(1)}, ${anchorX.toFixed(1)} ${anchorY.toFixed(1)}"></path>
+              <circle cx="${anchorX.toFixed(1)}" cy="${anchorY.toFixed(1)}" r="5.4"></circle>
             </g>
           `;
         })()
@@ -3084,6 +3105,7 @@ class ByteWattReportCard extends HTMLElement {
             <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
               <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
               ${bandMarkup}
+              ${sparseBandMarkup}
               ${gridLines}
               ${paths}
               ${storyConnectorMarkup}
@@ -4491,6 +4513,11 @@ class ByteWattReportCard extends HTMLElement {
         .story-band-strong {
           opacity:0.24;
         }
+        .story-band-gap {
+          fill:#fff2da;
+          opacity:0.52;
+          mix-blend-mode:multiply;
+        }
         .story-band-night {
           fill:#dfe8f2;
           opacity:0.38;
@@ -4666,7 +4693,7 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.36;
+          fill-opacity:0.48;
           mix-blend-mode:normal;
         }
         .series-glow {
@@ -4683,11 +4710,11 @@ class ByteWattReportCard extends HTMLElement {
         .series-glow.tone-feed { stroke:#f08a24; }
         .series-glow.tone-consumed { stroke:#d39a63; }
         .series-glow.tone-bat { stroke:#2fc96e; }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.40; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.34; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.28; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.28; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.32; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.52; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.44; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.36; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.36; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.40; }
         .series-line {
           fill:none;
           stroke-width:3.4;
