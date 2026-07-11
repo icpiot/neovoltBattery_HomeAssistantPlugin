@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "259";
+const BYTEWATT_REPORT_CARD_BUILD = "260";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3014,6 +3014,33 @@ class ByteWattReportCard extends HTMLElement {
           })
           .join("")
       : "";
+    const storyConnectorMarkup = story && story.focusIndex
+      ? (() => {
+          const anchorIndex = Number.isFinite(story.focusIndex.solar) && story.focusIndex.solar >= 0
+            ? story.focusIndex.solar
+            : Number.isFinite(story.focusIndex.evening) && story.focusIndex.evening >= 0
+              ? story.focusIndex.evening
+              : Number.isFinite(story.focusIndex.battery) && story.focusIndex.battery >= 0
+                ? story.focusIndex.battery
+                : -1;
+          if (anchorIndex < 0) return "";
+          const anchorPoints = this._chartPoints(chartValues.solar, width, height, padding, chartMax);
+          const anchor = anchorPoints[anchorIndex];
+          if (!anchor) return "";
+          const startX = Math.min(width - padding.right - 120, padding.left + 260);
+          const startY = Math.max(12, padding.top - 6);
+          const midX = startX + 34;
+          const midY = startY + 12;
+          const bendX = Math.max(padding.left + 32, anchor.x - 58);
+          const bendY = Math.max(padding.top + 24, anchor.y - 28);
+          return `
+            <g class="story-overlay-connector">
+              <path d="M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${midX.toFixed(1)} ${midY.toFixed(1)}, ${bendX.toFixed(1)} ${bendY.toFixed(1)}, ${anchor.x.toFixed(1)} ${anchor.y.toFixed(1)}"></path>
+              <circle cx="${anchor.x.toFixed(1)}" cy="${anchor.y.toFixed(1)}" r="5.4"></circle>
+            </g>
+          `;
+        })()
+      : "";
     return `
       <div class="power-chart-shell" data-power-chart-shell>
         <div class="ring-grid power-summary-grid">
@@ -3059,6 +3086,7 @@ class ByteWattReportCard extends HTMLElement {
               ${bandMarkup}
               ${gridLines}
               ${paths}
+              ${storyConnectorMarkup}
               <line class="axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" />
               <line class="power-hover-line" data-power-hover-line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
               <text class="axis-title axis-title-y" x="20" y="${axisMidY.toFixed(1)}" text-anchor="middle" transform="rotate(-90 20 ${axisMidY.toFixed(1)})">POWER</text>
@@ -4559,6 +4587,21 @@ class ByteWattReportCard extends HTMLElement {
           color:#8c5614;
           line-height:1.35;
         }
+        .story-overlay-connector {
+          pointer-events:none;
+        }
+        .story-overlay-connector path {
+          fill:none;
+          stroke:#f08a24;
+          stroke-width:1.8;
+          stroke-dasharray:5 5;
+          opacity:0.9;
+        }
+        .story-overlay-connector circle {
+          fill:#fff7ee;
+          stroke:#f08a24;
+          stroke-width:2;
+        }
         .power-chart {
             width:100%;
             min-width:0;
@@ -4623,8 +4666,8 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.30;
-          mix-blend-mode:multiply;
+          fill-opacity:0.36;
+          mix-blend-mode:normal;
         }
         .series-glow {
           pointer-events:none;
@@ -4640,11 +4683,11 @@ class ByteWattReportCard extends HTMLElement {
         .series-glow.tone-feed { stroke:#f08a24; }
         .series-glow.tone-consumed { stroke:#d39a63; }
         .series-glow.tone-bat { stroke:#2fc96e; }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.28; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.24; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.20; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.20; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.24; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.40; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.34; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.28; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.28; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.32; }
         .series-line {
           fill:none;
           stroke-width:3.4;
