@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "257";
+const BYTEWATT_REPORT_CARD_BUILD = "258";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2749,8 +2749,8 @@ class ByteWattReportCard extends HTMLElement {
 
   _formatChartPower(value, unitFactor) {
     const amount = Math.max(Number(value) || 0, 0);
-    if (unitFactor === 1000) return `${this._fmtNumber(amount, 2)} kW`;
-    return `${this._fmtNumber(amount, 0)} W`;
+    const divisor = Number(unitFactor) > 0 ? Number(unitFactor) : 1;
+    return `${this._fmtNumber(amount / divisor, 2)} kW`;
   }
 
   _chartHoverCardMarkup(state = {}) {
@@ -2947,6 +2947,7 @@ class ByteWattReportCard extends HTMLElement {
         const path = this._chartPath(item.values, width, height, padding, scaleMax);
         const active = Boolean(visibility[item.key]);
         return `
+          <path class="series-glow tone-${item.tone} ${active ? "" : "series-hidden"}" d="${path}" style="${active ? "" : "display:none"}" />
           <path class="series-area tone-${item.tone} ${active ? "" : "series-hidden"}" d="${this._chartAreaPath(item.values, width, height, padding, scaleMax)}" style="${active ? "" : "display:none"}" />
           <path class="series-line marker-${item.tone} ${active ? "" : "series-hidden"}" d="${path}" style="${active ? "" : "display:none"}" />
           <circle class="power-hover-point marker-${item.tone}" data-power-hover-point="${item.key}" cx="${points[0]?.x?.toFixed?.(1) || 0}" cy="${points[0]?.y?.toFixed?.(1) || 0}" r="4.5" opacity="0"></circle>
@@ -2958,7 +2959,7 @@ class ByteWattReportCard extends HTMLElement {
       const y = padding.top + (index / tickCount) * (height - padding.top - padding.bottom);
       return `
         <line class="grid" x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" />
-        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, unitFactor === 1000 ? 1 : 0)} ${unitFactor === 1000 ? "kW" : "W"}</text>
+        <text class="axis-label" x="${padding.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${this._fmtNumber(value, 2)} kW</text>
       `;
     }).join("");
     const batLabels = [100, 75, 50, 25, 0]
@@ -2977,10 +2978,13 @@ class ByteWattReportCard extends HTMLElement {
       .join("");
     const bandMarkup = story
       ? (story.bands || [])
-          .map((band) => {
+          .flatMap((band) => {
             const x = Number(band.x) || padding.left;
             const bandWidth = Math.max(16, Number(band.width) || 16);
-            return `<rect class="story-band story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`;
+            return [
+              `<rect class="story-band story-band-soft story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`,
+              `<rect class="story-band story-band-strong story-band-${this._escape(band.tone || "neutral")}" x="${x.toFixed(1)}" y="${padding.top.toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${(height - padding.top - padding.bottom).toFixed(1)}"></rect>`,
+            ];
           })
           .join("")
       : "";
@@ -4447,19 +4451,25 @@ class ByteWattReportCard extends HTMLElement {
         .power-story-card.tone-gap { box-shadow: inset 0 3px 0 0 var(--bw-grid), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .story-band {
           pointer-events:none;
+          opacity:0.18;
+        }
+        .story-band-soft {
           opacity:0.12;
+        }
+        .story-band-strong {
+          opacity:0.24;
         }
         .story-band-night {
           fill:#dfe8f2;
-          opacity:0.30;
+          opacity:0.38;
         }
         .story-band-solar {
           fill:#fff2b8;
-          opacity:0.34;
+          opacity:0.42;
         }
         .story-band-evening {
           fill:#ffe0c6;
-          opacity:0.28;
+          opacity:0.36;
         }
         .story-annotation {
           pointer-events:none;
@@ -4505,8 +4515,9 @@ class ByteWattReportCard extends HTMLElement {
             border:1px solid rgba(214, 219, 225, 0.88);
             border-radius:20px;
           background:
-            linear-gradient(180deg, rgba(47,155,232,0.04) 0%, rgba(255,255,255,0.98) 32%, rgba(240,196,25,0.03) 100%);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            linear-gradient(180deg, rgba(47,155,232,0.05) 0%, rgba(255,255,255,0.98) 24%, rgba(240,196,25,0.04) 100%),
+            linear-gradient(90deg, rgba(47,201,110,0.06) 0%, rgba(240,196,25,0.04) 28%, rgba(47,155,232,0.03) 62%, rgba(240,138,36,0.05) 100%);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 18px 34px rgba(47, 155, 232, 0.08);
         }
         .power-chart {
             width:100%;
@@ -4572,8 +4583,23 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.16;
+          fill-opacity:0.22;
+          mix-blend-mode:multiply;
         }
+        .series-glow {
+          pointer-events:none;
+          fill:none;
+          stroke-width:10;
+          stroke-linecap:round;
+          stroke-linejoin:round;
+          opacity:0.14;
+          filter:blur(2px);
+        }
+        .series-glow.tone-solar { stroke:#f0c419; }
+        .series-glow.tone-load { stroke:#2f9be8; }
+        .series-glow.tone-feed { stroke:#f08a24; }
+        .series-glow.tone-consumed { stroke:#d39a63; }
+        .series-glow.tone-bat { stroke:#2fc96e; }
         .series-area.tone-solar { fill:#f0c419; fill-opacity:0.20; }
         .series-area.tone-load { fill:#2f9be8; fill-opacity:0.18; }
         .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
@@ -4581,10 +4607,11 @@ class ByteWattReportCard extends HTMLElement {
         .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.18; }
         .series-line {
           fill:none;
-          stroke-width:3;
+          stroke-width:3.4;
           stroke-linecap:round;
           stroke-linejoin:round;
           vector-effect:non-scaling-stroke;
+          filter:drop-shadow(0 1px 1px rgba(15, 23, 42, 0.08));
         }
         .series-line.marker-bat { stroke:var(--bw-battery); }
         .series-line.marker-load { stroke:var(--bw-load); }
