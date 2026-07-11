@@ -399,6 +399,7 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         scope_key: str,
         start_date: str,
         end_date: str,
+        force: bool = False,
     ) -> dict[str, Any]:
         """Ensure history rows exist for the requested inclusive date range."""
         inventory = self.hass.data.get(DOMAIN, {}).get(self.entry_id, {}).get("inverters", [])
@@ -446,7 +447,8 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
                 for record_date in desired_dates
                 if record_date not in known_dates
                 and (
-                    record_date not in missing_markers
+                    force
+                    or record_date not in missing_markers
                     or self._is_retryable_missing_date(missing_markers.get(record_date))
                 )
             ]

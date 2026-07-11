@@ -83,6 +83,7 @@ from .const import (
     ATTR_SLOT_WEEKS,
     ATTR_DURATION_MINUTES,
     ATTR_ENTRY_ID,
+    ATTR_FORCE,
     ATTR_SCOPE_KEY,
     ATTR_START_DATE,
     ATTR_END_DATE,
@@ -757,17 +758,19 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def handle_ensure_report_history(call: ServiceCall) -> None:
         _LOGGER.info(
-            "ByteWatt ensure_report_history called for scope=%s start=%s end=%s entry_id=%s",
+            "ByteWatt ensure_report_history called for scope=%s start=%s end=%s entry_id=%s force=%s",
             call.data.get(ATTR_SCOPE_KEY, "all"),
             call.data.get(ATTR_START_DATE),
             call.data.get(ATTR_END_DATE),
             call.data.get(ATTR_ENTRY_ID),
+            call.data.get(ATTR_FORCE, False),
         )
         coordinator = _coordinator_for(hass, call)
         result = await coordinator.async_ensure_history_range(
             scope_key=call.data.get(ATTR_SCOPE_KEY, "all"),
             start_date=call.data[ATTR_START_DATE],
             end_date=call.data[ATTR_END_DATE],
+            force=bool(call.data.get(ATTR_FORCE, False)),
         )
         _LOGGER.info(
             "ByteWatt history ensured for %s (%s to %s): %s/%s available, %s downloaded",
@@ -946,6 +949,7 @@ def _register_services(hass: HomeAssistant) -> None:
             vol.Required(ATTR_START_DATE): cv.string,
             vol.Required(ATTR_END_DATE): cv.string,
             vol.Optional(ATTR_SCOPE_KEY, default="all"): cv.string,
+            vol.Optional(ATTR_FORCE, default=False): cv.boolean,
             **_entry_id_opt,
         }),
     )

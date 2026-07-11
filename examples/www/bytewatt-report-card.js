@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "248";
+const BYTEWATT_REPORT_CARD_BUILD = "249";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -767,6 +767,7 @@ class ByteWattReportCard extends HTMLElement {
         scope_key: scopeKey,
         start_date: startDate,
         end_date: endDate,
+        force: true,
       };
       const entryId = this._historyEntryId();
       if (entryId) payload.entry_id = entryId;

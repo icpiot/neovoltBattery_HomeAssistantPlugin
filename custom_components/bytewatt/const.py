@@ -53,6 +53,7 @@ ATTR_ENTRY_ID = "entry_id"
 ATTR_SCOPE_KEY = "scope_key"
 ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
+ATTR_FORCE = "force"
 
 # Sensor types
 SENSOR_SOC = "soc"

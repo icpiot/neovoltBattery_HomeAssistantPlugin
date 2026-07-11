@@ -76,6 +76,13 @@ ensure_report_history:
       example: "all"
       selector:
         text:
+    force:
+      name: Force Retry
+      description: Retry even if the date is currently marked missing.
+      required: false
+      example: true
+      selector:
+        boolean:
     entry_id:
       name: Integration ID
       description: Required only if multiple accounts are configured.

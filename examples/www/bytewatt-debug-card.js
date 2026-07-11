@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "019";
+const BYTEWATT_DEBUG_CARD_BUILD = "020";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -125,10 +125,11 @@ class ByteWattDebugCard extends HTMLElement {
 
   async _hardRefresh() {
     if (this._statusKind === "loading") return;
-    this._status = "Clearing reachable caches and reloading...";
+    this._status = "Forcing archive refresh, clearing reachable caches, and reloading...";
     this._statusKind = "loading";
     this.render();
     try {
+      await this._requestArchiveProbe(true);
       try {
         window.localStorage?.removeItem(this._localHistoryKey());
       } catch (_err) {
@@ -947,7 +948,7 @@ class ByteWattDebugCard extends HTMLElement {
     this.render();
   }
 
-  async _requestArchiveProbe() {
+  async _requestArchiveProbe(force = false) {
     const history = this._history();
     const selectorAttrs = this._attrs();
     const reportAttrs = this._reportAttrs();
@@ -956,7 +957,7 @@ class ByteWattDebugCard extends HTMLElement {
     const range = this._debugRange();
     const startDate = this._formatLocalDate(range.window.start);
     const endDate = this._formatLocalDate(range.window.end);
-    this._status = `Requested archive probe for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
+    this._status = `Requested ${force ? "forced " : ""}archive probe for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
     this._statusKind = "loading";
     this.render();
     try {
@@ -964,10 +965,11 @@ class ByteWattDebugCard extends HTMLElement {
         scope_key: scopeKey,
         start_date: startDate,
         end_date: endDate,
+        force: Boolean(force),
       };
       if (entryId) payload.entry_id = entryId;
       await this._hass.callService("bytewatt", "ensure_report_history", payload);
-      this._status = `Archive probe sent for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
+      this._status = `${force ? "Forced " : ""}archive probe sent for ${scopeKey} ${this._debugPeriod} ${startDate} -> ${endDate}`;
       this._statusKind = "success";
       if (this._historyConfigured()) {
         await this._reloadHistory();
@@ -1459,7 +1461,7 @@ class ByteWattDebugCard extends HTMLElement {
 
     const button = this.shadowRoot.querySelector("#probe-button");
     if (button) {
-      button.onclick = () => this._requestArchiveProbe();
+      button.onclick = () => this._requestArchiveProbe(false);
     }
 
     const hardRefreshButton = this.shadowRoot.querySelector("#hard-refresh-button");
