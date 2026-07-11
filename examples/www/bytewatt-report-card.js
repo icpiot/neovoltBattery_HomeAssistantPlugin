@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "253";
+const BYTEWATT_REPORT_CARD_BUILD = "254";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2486,7 +2486,7 @@ class ByteWattReportCard extends HTMLElement {
     return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
-  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding) {
+  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = {}) {
     const count = Math.max(
       labels.length,
       chartValues.solar.length,
@@ -2509,6 +2509,13 @@ class ByteWattReportCard extends HTMLElement {
     const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
     const batMin = Number(chartValues.bat[batMinIndex]) || 0;
     const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
+    const powerSeriesKeys = ["solar", "load", "feed", "consumed"];
+    const activeSeries = powerSeriesKeys.filter((key) => (chartValues[key] || []).some((value) => Number(value) > 0.05));
+    const middleStart = Math.max(0, Math.floor(count * 0.33));
+    const middleEnd = Math.max(middleStart + 1, Math.floor(count * 0.67));
+    const middleActiveSeries = powerSeriesKeys.filter((key) => (chartValues[key] || []).slice(middleStart, middleEnd + 1).some((value) => Number(value) > 0.05));
+    const sparsePowerData = activeSeries.length <= 1 || middleActiveSeries.length === 0;
+    const archiveGapComment = this._periodMissingComment(periodContext);
     const solarThreshold = Math.max(0.08, solarPeak * 0.2);
     const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
     const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
@@ -2525,11 +2532,13 @@ class ByteWattReportCard extends HTMLElement {
     const batteryEventLabel = this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
     const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
-    const headline = batMin <= 15 && solarPeak > 0.05
-      ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
-      : solarPeak > 0.05
-        ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
-        : "Demand stays active through the day, with battery movement and grid support carrying the load.";
+    const headline = sparsePowerData
+      ? "This day is only partially told: SOC is present, but the middle of the day is missing the solar, load, and grid traces we need for a full story."
+      : batMin <= 15 && solarPeak > 0.05
+        ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
+        : solarPeak > 0.05
+          ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
+          : "Demand stays active through the day, with battery movement and grid support carrying the load.";
     const highlights = [
       {
         tone: "bat",
@@ -2537,19 +2546,40 @@ class ByteWattReportCard extends HTMLElement {
         value: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
         note: batMin <= 15 ? "The battery hits its low point early and has to recover later." : "The battery eases through the day without dropping to the floor.",
       },
-      {
-        tone: "solar",
-        title: "2. Solar recovery",
-        value: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
-        note: solarPeak > 0.05 ? "Midday solar creates the strongest charging window." : "Solar stays subdued, so storage has less to work with.",
-      },
-      {
-        tone: "feed",
-        title: "3. Evening pressure",
-        value: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
-        note: "Late demand is where the chart usually tells the clearest story.",
-      },
     ];
+    if (sparsePowerData) {
+      highlights.push(
+        {
+          tone: "gap",
+          title: "2. Partial archive",
+          value: "SOC only",
+          note: archiveGapComment || "The middle of the day is missing power traces, so the chart can only narrate battery state here.",
+        },
+        {
+          tone: "feed",
+          title: "3. Limited trace",
+          value: `${this._fmtPercent(batPeak)} peak SOC`,
+          note: activeSeries.length <= 1
+            ? "There is not enough power-series data to describe solar recovery or evening pressure."
+            : "Only the SOC trace is reliable enough in the missing segment to explain what happened.",
+        },
+      );
+    } else {
+      highlights.push(
+        {
+          tone: "solar",
+          title: "2. Solar recovery",
+          value: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
+          note: solarPeak > 0.05 ? "Midday solar creates the strongest charging window." : "Solar stays subdued, so storage has less to work with.",
+        },
+        {
+          tone: "feed",
+          title: "3. Evening pressure",
+          value: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
+          note: "Late demand is where the chart usually tells the clearest story.",
+        },
+      );
+    }
     const bands = [
       {
         tone: "night",
@@ -2639,6 +2669,9 @@ class ByteWattReportCard extends HTMLElement {
         solar: solarPeakIndex,
         evening: eveningPeakIndex,
       },
+      alert: sparsePowerData
+        ? (archiveGapComment || "The middle of the day is missing enough power data to build the normal story.")
+        : "",
       morningPeakIndex,
     };
   }
@@ -2822,7 +2855,7 @@ class ByteWattReportCard extends HTMLElement {
     const targetLabelCount = viewportWidth < 640 ? 5 : viewportWidth < 900 ? 6 : viewportWidth < 1280 ? 7 : 8;
     const labelStep = Math.max(1, Math.ceil(labels.length / Math.max(1, targetLabelCount)));
     const storyEnabled = this._storyModeEnabled();
-    const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding) : null;
+    const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, this._currentPeriodContext || {}) : null;
     this._powerChartModel = {
       mode: "daily",
       width,
@@ -2923,6 +2956,7 @@ class ByteWattReportCard extends HTMLElement {
           </div>
           ${story ? `<div class="power-story-strip">
             <div class="power-story-headline">${this._escape(story.headline || "")}</div>
+            ${story.alert ? `<div class="power-story-alert">${this._escape(story.alert)}</div>` : ""}
             <div class="power-story-cards">
               ${(story.highlights || [])
                 .map(
@@ -3031,6 +3065,7 @@ class ByteWattReportCard extends HTMLElement {
     const period = periodContext?.period || this._reportPeriod || "day";
     const periodLabel = this._reportPeriodLabel(period);
     const isDaily = this._isDailyPeriod(period);
+    this._currentPeriodContext = periodContext || {};
     const rangeStart = this._formatDisplayDate(periodContext?.window?.start);
     const rangeEnd = this._formatDisplayDate(periodContext?.window?.end);
     const diagramDate = this._formatDisplayDate(this._parseLocalDate(reporting?.power_diagram?.date || ""));
@@ -4236,6 +4271,16 @@ class ByteWattReportCard extends HTMLElement {
           color:#56667b;
           line-height:1.35;
         }
+        .power-story-alert {
+          padding:10px 12px;
+          border-radius:14px;
+          border:1px solid rgba(240, 138, 36, 0.24);
+          background:#fff7ee;
+          color:#8c5614;
+          font-size:0.88rem;
+          font-weight:700;
+          line-height:1.4;
+        }
         .power-gap-note {
           margin:0 0 12px;
           padding:10px 12px;
@@ -4250,6 +4295,7 @@ class ByteWattReportCard extends HTMLElement {
         .power-story-card.tone-bat { box-shadow: inset 0 3px 0 0 var(--bw-battery), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .power-story-card.tone-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .power-story-card.tone-feed { box-shadow: inset 0 3px 0 0 var(--bw-feed), 0 8px 18px rgba(15, 23, 42, 0.05); }
+        .power-story-card.tone-gap { box-shadow: inset 0 3px 0 0 var(--bw-grid), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .story-band {
           pointer-events:none;
           opacity:0.12;
