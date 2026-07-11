@@ -52,6 +52,7 @@ from .utilities.diagnostic_service import DiagnosticService
 _LOGGER = logging.getLogger(__name__)
 
 HISTORY_RANGE_RETRY_PASSES = 3
+HISTORY_MISSING_RETRY_HOURS = 12
 
 # Notification IDs
 NOTIFICATION_RECOVERY = "bytewatt_recovery"
@@ -373,6 +374,20 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             return ("All systems", True, None)
         return (self._scope_label_for_sys_sn(normalized, inventory), False, normalized)
 
+    @staticmethod
+    def _is_retryable_missing_date(missing_info: Any) -> bool:
+        """Return True when a missing marker is old enough to try again."""
+        if not isinstance(missing_info, dict):
+            return True
+        saved_at = str(missing_info.get("saved_at") or "").strip()
+        if not saved_at:
+            return True
+        parsed = dt_util.parse_datetime(saved_at)
+        if parsed is None:
+            return True
+        cutoff = dt_util.utcnow() - timedelta(hours=HISTORY_MISSING_RETRY_HOURS)
+        return parsed <= cutoff
+
     async def async_ensure_history_range(
         self,
         *,
@@ -420,7 +435,16 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
 
         for pass_index in range(HISTORY_RANGE_RETRY_PASSES):
             known_dates = await self._history_store.async_record_dates(scope_key)
-            missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+            missing_markers = await self._history_store.async_missing_dates(scope_key)
+            missing_dates = [
+                record_date
+                for record_date in desired_dates
+                if record_date not in known_dates
+                and (
+                    record_date not in missing_markers
+                    or self._is_retryable_missing_date(missing_markers.get(record_date))
+                )
+            ]
             if not missing_dates:
                 break
 
@@ -554,7 +578,16 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
             last_available = 0
             for _pass_index in range(HISTORY_RANGE_RETRY_PASSES):
                 known_dates = await self._history_store.async_record_dates(scope_key)
-                missing_dates = [record_date for record_date in desired_dates if record_date not in known_dates]
+                missing_markers = await self._history_store.async_missing_dates(scope_key)
+                missing_dates = [
+                    record_date
+                    for record_date in desired_dates
+                    if record_date not in known_dates
+                    and (
+                        record_date not in missing_markers
+                        or self._is_retryable_missing_date(missing_markers.get(record_date))
+                    )
+                ]
                 if not missing_dates:
                     break
 

@@ -230,6 +230,15 @@ class ByteWattReportHistory:
             _LOGGER.warning("Failed to read ByteWatt history dates for %s: %s", scope_key, err)
             return set()
 
+    async def async_missing_dates(self, scope_key: str) -> dict[str, dict[str, Any]]:
+        """Return the known missing-date markers for a scope."""
+        scope_key = _safe_filename(scope_key)
+        try:
+            return await self.hass.async_add_executor_job(self._missing_dates_sync, scope_key)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Failed to read ByteWatt missing dates for %s: %s", scope_key, err)
+            return {}
+
     def _store_snapshot_sync(
         self,
         scope_key: str,
@@ -330,9 +339,24 @@ class ByteWattReportHistory:
         scopes = history.get("scopes") or {}
         scope = scopes.get(scope_key) or {}
         records = scope.get("records") or {}
+        return {str(key) for key in records.keys() if key}
+
+    def _missing_dates_sync(self, scope_key: str) -> dict[str, dict[str, Any]]:
+        if not self.history_file.exists():
+            return {}
+        try:
+            history = json.loads(self.history_file.read_text(encoding="utf-8"))
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Unable to read existing ByteWatt history file: %s", err)
+            return {}
+        scopes = history.get("scopes") or {}
+        scope = scopes.get(scope_key) or {}
         missing = scope.get("missing_dates") or {}
-        missing_keys = missing.keys() if isinstance(missing, dict) else missing
-        return {str(key) for key in records.keys() if key} | {str(key) for key in missing_keys if key}
+        if isinstance(missing, list):
+            return {str(key): {} for key in missing if key}
+        if not isinstance(missing, dict):
+            return {}
+        return {str(key): (value if isinstance(value, dict) else {}) for key, value in missing.items() if key}
 
     def _write_scope_csv(
         self,
