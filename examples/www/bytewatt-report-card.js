@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "244";
+const BYTEWATT_REPORT_CARD_BUILD = "245";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -439,6 +439,14 @@ class ByteWattReportCard extends HTMLElement {
     return this._parseFloat(this._recordValue(record, paths));
   }
 
+  _recordHasPowerDiagramData(record) {
+    const powerDiagram = record?.power_diagram && typeof record.power_diagram === "object" ? record.power_diagram : {};
+    if (!powerDiagram || !Object.keys(powerDiagram).length) return false;
+    if (Array.isArray(powerDiagram.time) && powerDiagram.time.length > 0) return true;
+    const series = powerDiagram.series && typeof powerDiagram.series === "object" ? powerDiagram.series : {};
+    return Object.values(series).some((value) => Array.isArray(value) && value.length > 0);
+  }
+
   _aggregateHistoryRecords(records) {
     const aggregate = {
       count: 0,
@@ -598,13 +606,16 @@ class ByteWattReportCard extends HTMLElement {
   _hasExactHistoryRecord(scopeKey, recordDate) {
     if (!scopeKey || !recordDate) return false;
     const scopes = this._historyScopes();
-    return Boolean(scopes?.[scopeKey]?.records?.[recordDate]);
+    return this._recordHasPowerDiagramData(scopes?.[scopeKey]?.records?.[recordDate]);
   }
 
   _hasKnownHistoryDate(scopeKey, recordDate) {
     if (!scopeKey || !recordDate) return false;
     const scopes = this._historyScopes();
-    return Boolean(scopes?.[scopeKey]?.records?.[recordDate] || scopes?.[scopeKey]?.missing_dates?.[recordDate]);
+    return Boolean(
+      this._recordHasPowerDiagramData(scopes?.[scopeKey]?.records?.[recordDate]) ||
+      scopes?.[scopeKey]?.missing_dates?.[recordDate]
+    );
   }
 
   _resetHistoryEnsureState() {
@@ -754,22 +765,24 @@ class ByteWattReportCard extends HTMLElement {
   _historyRecords() {
     const scopeInfo = this._historyScopeData();
     const data = scopeInfo.scope?.records || {};
-    return Object.entries(data).map(([recordDate, reporting]) => {
-      const parsed =
-        this._parseLocalDate(reporting?.reporting_date) ||
-        this._parseLocalDate(reporting?.power_diagram?.date) ||
-        this._parseLocalDate(recordDate);
-      const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
-      const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
-      return {
-        ...(reporting || {}),
-        record_date: normalizedDate,
-        record_date_display: displayDate,
-        record_date_raw: String(recordDate || ""),
-        history_scope: scopeInfo.key,
-        requested_scope: scopeInfo.requested,
-      };
-    });
+    return Object.entries(data)
+      .filter(([, reporting]) => this._recordHasPowerDiagramData(reporting))
+      .map(([recordDate, reporting]) => {
+        const parsed =
+          this._parseLocalDate(reporting?.reporting_date) ||
+          this._parseLocalDate(reporting?.power_diagram?.date) ||
+          this._parseLocalDate(recordDate);
+        const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
+        const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
+        return {
+          ...(reporting || {}),
+          record_date: normalizedDate,
+          record_date_display: displayDate,
+          record_date_raw: String(recordDate || ""),
+          history_scope: scopeInfo.key,
+          requested_scope: scopeInfo.requested,
+        };
+      });
   }
 
   _liveReportingRecord(reporting) {
@@ -951,7 +964,10 @@ class ByteWattReportCard extends HTMLElement {
       };
       const records = scopeValue?.records && typeof scopeValue.records === "object" ? scopeValue.records : {};
       const missing = scopeValue?.missing_dates && typeof scopeValue.missing_dates === "object" ? scopeValue.missing_dates : {};
-      const recordDates = Object.keys(records).filter(Boolean).sort();
+      const recordDates = Object.entries(records)
+        .filter(([recordDate, reporting]) => Boolean(recordDate) && this._recordHasPowerDiagramData(reporting))
+        .map(([recordDate]) => recordDate)
+        .sort();
       const missingDates = Object.keys(missing).filter(Boolean).sort();
       const knownCount = new Set([...recordDates, ...missingDates]).size;
       const storedCount = recordDates.length;

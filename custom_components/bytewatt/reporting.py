@@ -153,6 +153,24 @@ def _summary_row(
     }
 
 
+def _reporting_has_power_diagram_data(reporting: dict[str, Any]) -> bool:
+    """Return True when a stored row has chart data worth treating as archived."""
+    if not isinstance(reporting, dict):
+        return False
+    power_diagram = reporting.get("power_diagram") or {}
+    if not isinstance(power_diagram, dict) or not power_diagram:
+        return False
+    time_points = power_diagram.get("time") or []
+    if isinstance(time_points, list) and len(time_points) > 0:
+        return True
+    series = power_diagram.get("series") or {}
+    if isinstance(series, dict):
+        for value in series.values():
+            if isinstance(value, list) and len(value) > 0:
+                return True
+    return False
+
+
 class ByteWattReportHistory:
     """Persist one local snapshot per date and scope."""
 
@@ -246,6 +264,13 @@ class ByteWattReportHistory:
         record_date: str,
         reporting: dict[str, Any],
     ) -> None:
+        if not _reporting_has_power_diagram_data(reporting):
+            _LOGGER.debug(
+                "Skipping ByteWatt history snapshot for %s (%s): no chart data",
+                scope_key,
+                record_date,
+            )
+            return
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
         if self.history_file.exists():
@@ -339,7 +364,11 @@ class ByteWattReportHistory:
         scopes = history.get("scopes") or {}
         scope = scopes.get(scope_key) or {}
         records = scope.get("records") or {}
-        return {str(key) for key in records.keys() if key}
+        return {
+            str(key)
+            for key, reporting in records.items()
+            if key and _reporting_has_power_diagram_data(reporting or {})
+        }
 
     def _missing_dates_sync(self, scope_key: str) -> dict[str, dict[str, Any]]:
         if not self.history_file.exists():

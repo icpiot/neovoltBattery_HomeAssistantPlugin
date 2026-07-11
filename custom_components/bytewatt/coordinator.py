@@ -179,16 +179,21 @@ class ByteWattDataUpdateCoordinator(DataUpdateCoordinator):
         return sys_sn
 
     def _snapshot_has_reporting_data(self, snapshot: Optional[Dict[str, Any]]) -> bool:
-        """Return True when a daily snapshot has enough data to archive."""
+        """Return True when a daily snapshot has chart data worth archiving."""
         if not snapshot:
             return False
-        return bool(
-            snapshot.get("Power_Diagram")
-            or snapshot.get("PV_Generated_Today") is not None
-            or snapshot.get("Consumed_Today") is not None
-            or snapshot.get("Feed_In_Today") is not None
-            or snapshot.get("Grid_Import_Today") is not None
-        )
+        power_diagram = snapshot.get("Power_Diagram") or {}
+        if not isinstance(power_diagram, dict) or not power_diagram:
+            return False
+        time_points = power_diagram.get("time") or []
+        if isinstance(time_points, list) and len(time_points) > 0:
+            return True
+        series = power_diagram.get("series") or {}
+        if isinstance(series, dict):
+            for value in series.values():
+                if isinstance(value, list) and len(value) > 0:
+                    return True
+        return False
 
     @staticmethod
     def _sum_snapshot_value(snapshots: List[Dict[str, Any]], key: str) -> float:

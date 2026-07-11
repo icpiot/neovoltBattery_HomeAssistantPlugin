@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "016";
+const BYTEWATT_DEBUG_CARD_BUILD = "017";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -502,22 +502,32 @@ class ByteWattDebugCard extends HTMLElement {
     };
   }
 
+  _recordHasPowerDiagramData(record) {
+    const powerDiagram = record?.power_diagram && typeof record.power_diagram === "object" ? record.power_diagram : {};
+    if (!powerDiagram || !Object.keys(powerDiagram).length) return false;
+    if (Array.isArray(powerDiagram.time) && powerDiagram.time.length > 0) return true;
+    const series = powerDiagram.series && typeof powerDiagram.series === "object" ? powerDiagram.series : {};
+    return Object.values(series).some((value) => Array.isArray(value) && value.length > 0);
+  }
+
   _historyRecords() {
     const scopeInfo = this._historyScopeData();
     const data = scopeInfo.scope?.records || {};
-    return Object.entries(data).map(([recordDate, reporting]) => {
-      const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
-      const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
-      const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
-      return {
-        ...(reporting || {}),
-        record_date: normalizedDate,
-        record_date_display: displayDate,
-        record_date_raw: String(recordDate || ""),
-        history_scope: scopeInfo.key,
-        requested_scope: scopeInfo.requested,
-      };
-    });
+    return Object.entries(data)
+      .filter(([, reporting]) => this._recordHasPowerDiagramData(reporting))
+      .map(([recordDate, reporting]) => {
+        const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
+        const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
+        const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
+        return {
+          ...(reporting || {}),
+          record_date: normalizedDate,
+          record_date_display: displayDate,
+          record_date_raw: String(recordDate || ""),
+          history_scope: scopeInfo.key,
+          requested_scope: scopeInfo.requested,
+        };
+      });
   }
 
   _selectedHistoryRecords() {
