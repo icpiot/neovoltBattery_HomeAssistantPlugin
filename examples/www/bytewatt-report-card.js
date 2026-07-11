@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "255";
+const BYTEWATT_REPORT_CARD_BUILD = "256";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1308,31 +1308,54 @@ class ByteWattReportCard extends HTMLElement {
     return `Archive gap: ${start}${start === end ? "" : ` to ${end}`} is marked missing for ${longest.length} day(s).`;
   }
 
-  _dailySparseComment(chartValues = {}) {
+  _dailySparseComment(chartValues = {}, labels = []) {
     const powerKeys = ["solar", "load", "feed", "consumed"];
-    const counts = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].length : 0);
-    const count = Math.max(...counts, 0);
+    const powerSeries = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].map((value) => Math.max(Number(value) || 0, 0)) : []);
+    const batSeries = Array.isArray(chartValues?.bat) ? chartValues.bat.map((value) => Math.max(Number(value) || 0, 0)) : [];
+    const count = Math.max(...powerSeries.map((series) => series.length), batSeries.length, Array.isArray(labels) ? labels.length : 0, 0);
     if (!count) return "";
-    const powerAtIndex = (index) => powerKeys.reduce((sum, key) => sum + (Number(chartValues?.[key]?.[index]) || 0), 0);
-    const midStart = Math.max(0, Math.floor(count * 0.33));
-    const midEnd = Math.max(midStart, Math.floor(count * 0.67));
-    const edgeSamples = [];
-    const midSamples = [];
-    for (let index = 0; index < count; index += 1) {
-      const total = powerAtIndex(index);
-      if (index < midStart || index > midEnd) edgeSamples.push(total);
-      else midSamples.push(total);
+    const combinedAt = (index) => powerSeries.reduce((sum, series) => sum + (Number(series[index]) || 0), 0);
+    const batAt = (index) => Number(batSeries[index]) || 0;
+    const windowSize = Math.max(6, Math.floor(count * 0.12));
+    const lowThreshold = Math.max(0.12, Math.max(...powerSeries.flatMap((series) => series), 0) * 0.08);
+    const labelAt = (index) => {
+      const label = labels?.[index];
+      if (typeof label === "string" && label.trim()) return label;
+      const hours = count > 1 ? (index / (count - 1)) * 24 : 0;
+      const wholeHours = Math.floor(hours);
+      const minutes = Math.round((hours - wholeHours) * 60);
+      return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    };
+    let best = null;
+    for (let start = 0; start <= Math.max(0, count - windowSize); start += 1) {
+      const end = Math.min(count - 1, start + windowSize - 1);
+      const windowCombined = [];
+      const windowBat = [];
+      for (let index = start; index <= end; index += 1) {
+        windowCombined.push(combinedAt(index));
+        windowBat.push(batAt(index));
+      }
+      const lowPoints = windowCombined.filter((value) => value <= lowThreshold).length;
+      const batSpread = Math.max(...windowBat, 0) - Math.min(...windowBat, 0);
+      const gapScore = lowPoints / windowCombined.length;
+      if (gapScore < 0.7) continue;
+      if (batSpread < 1.5 && Math.max(...windowCombined, 0) > lowThreshold * 1.5) continue;
+      const candidate = {
+        start,
+        end,
+        gapScore,
+        lowPoints,
+        batSpread,
+        lowThreshold,
+      };
+      if (!best || candidate.gapScore > best.gapScore || (candidate.gapScore === best.gapScore && candidate.lowPoints > best.lowPoints)) {
+        best = candidate;
+      }
     }
-    const edgePeak = Math.max(...edgeSamples, 0);
-    const midPeak = Math.max(...midSamples, 0);
-    const midActive = midSamples.filter((value) => value > 0.12).length;
-    if (midPeak <= 0.12 && midActive <= 2) {
-      return "The middle of the day is sparse, so the story only has battery state to work with there.";
-    }
-    if (edgePeak > 0 && midPeak < edgePeak * 0.25 && midActive <= Math.max(2, Math.floor(midSamples.length * 0.1))) {
-      return "The middle of the day has far less power activity than the edges, so the story switches to a partial archive view.";
-    }
-    return "";
+    if (!best) return "";
+    const startLabel = labelAt(best.start);
+    const endLabel = labelAt(best.end);
+    return `Missing data detected between ${startLabel} and ${endLabel}. The middle of the day is mostly power-sparse, so the story can only explain the SOC trace there.`;
   }
 
   _buildPeriodReporting(baseReporting) {
@@ -2543,7 +2566,7 @@ class ByteWattReportCard extends HTMLElement {
     const middleActiveSeries = powerSeriesKeys.filter((key) => (chartValues[key] || []).slice(middleStart, middleEnd + 1).some((value) => Number(value) > 0.05));
     const sparsePowerData = activeSeries.length <= 1 || middleActiveSeries.length === 0;
     const archiveGapComment = this._periodMissingComment(periodContext);
-    const sparseComment = this._dailySparseComment(chartValues);
+    const sparseComment = this._dailySparseComment(chartValues, labels);
     const storyAlert = archiveGapComment || sparseComment;
     const solarThreshold = Math.max(0.08, solarPeak * 0.2);
     const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
@@ -2985,7 +3008,7 @@ class ByteWattReportCard extends HTMLElement {
           </div>
           ${story ? `<div class="power-story-strip">
             <div class="power-story-headline">${this._escape(story.headline || "")}</div>
-            ${story.alert ? `<div class="power-story-alert">${this._escape(story.alert)}</div>` : ""}
+            ${story.alert ? `<div class="power-story-alert"><span class="power-story-alert-label">Missing data detected</span><span class="power-story-alert-text">${this._escape(story.alert)}</span></div>` : ""}
             <div class="power-story-cards">
               ${(story.highlights || [])
                 .map(
@@ -3104,7 +3127,7 @@ class ByteWattReportCard extends HTMLElement {
       load: Array.isArray(reporting?.power_diagram?.series?.load) ? reporting.power_diagram.series.load : [],
       feed: Array.isArray(reporting?.power_diagram?.series?.feed_in) ? reporting.power_diagram.series.feed_in : [],
       consumed: Array.isArray(reporting?.power_diagram?.series?.consumed) ? reporting.power_diagram.series.consumed : [],
-    } : {}) : "");
+    } : {}, reporting?.power_diagram?.time || []) : "");
     const subtitle = isDaily
       ? this._escape(diagramDate || (rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : ""))
       : this._escape(rangeStart && rangeEnd ? `${rangeStart} to ${rangeEnd}` : "");
@@ -4315,6 +4338,8 @@ class ByteWattReportCard extends HTMLElement {
           line-height:1.35;
         }
         .power-story-alert {
+          display:grid;
+          gap:4px;
           padding:10px 12px;
           border-radius:14px;
           border:1px solid rgba(240, 138, 36, 0.24);
@@ -4324,7 +4349,21 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           line-height:1.4;
         }
+        .power-story-alert-label {
+          font-size:0.76rem;
+          font-weight:900;
+          letter-spacing:0.06em;
+          text-transform:uppercase;
+          color:#b35c10;
+        }
+        .power-story-alert-text {
+          font-size:0.88rem;
+          font-weight:700;
+          color:#8c5614;
+        }
         .power-gap-note {
+          display:grid;
+          gap:4px;
           margin:0 0 12px;
           padding:10px 12px;
           border-radius:14px;
@@ -4334,6 +4373,14 @@ class ByteWattReportCard extends HTMLElement {
           font-size:0.88rem;
           font-weight:700;
           line-height:1.4;
+        }
+        .power-gap-note::before {
+          content:"Missing data detected";
+          font-size:0.76rem;
+          font-weight:900;
+          letter-spacing:0.06em;
+          text-transform:uppercase;
+          color:#b35c10;
         }
         .power-story-card.tone-bat { box-shadow: inset 0 3px 0 0 var(--bw-battery), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .power-story-card.tone-solar { box-shadow: inset 0 3px 0 0 var(--bw-solar), 0 8px 18px rgba(15, 23, 42, 0.05); }
