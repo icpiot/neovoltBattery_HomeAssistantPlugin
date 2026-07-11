@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "258";
+const BYTEWATT_REPORT_CARD_BUILD = "259";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2749,8 +2749,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _formatChartPower(value, unitFactor) {
     const amount = Math.max(Number(value) || 0, 0);
-    const divisor = Number(unitFactor) > 0 ? Number(unitFactor) : 1;
-    return `${this._fmtNumber(amount / divisor, 2)} kW`;
+    return `${this._fmtNumber(amount, 2)} kW`;
   }
 
   _chartHoverCardMarkup(state = {}) {
@@ -3050,6 +3049,11 @@ class ByteWattReportCard extends HTMLElement {
             </div>
           </div>` : ""}
           <div class="power-chart-wrap">
+            ${story ? `<div class="power-chart-story-overlay">
+              <div class="power-chart-story-kicker">Story mode</div>
+              <div class="power-chart-story-title">${this._escape(story.headline || "")}</div>
+              ${story.alert ? `<div class="power-chart-story-body">${this._escape(story.alert)}</div>` : ""}
+            </div>` : ""}
             <svg class="power-chart chart" data-power-chart="daily" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily power chart">
               <rect class="power-hover-zone" data-power-hover-zone x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
               ${bandMarkup}
@@ -4506,6 +4510,7 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
         }
         .power-chart-wrap {
+          position:relative;
           overflow:visible;
             width:min(100%, calc(100% - 24px));
             justify-self:center;
@@ -4518,6 +4523,41 @@ class ByteWattReportCard extends HTMLElement {
             linear-gradient(180deg, rgba(47,155,232,0.05) 0%, rgba(255,255,255,0.98) 24%, rgba(240,196,25,0.04) 100%),
             linear-gradient(90deg, rgba(47,201,110,0.06) 0%, rgba(240,196,25,0.04) 28%, rgba(47,155,232,0.03) 62%, rgba(240,138,36,0.05) 100%);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 18px 34px rgba(47, 155, 232, 0.08);
+        }
+        .power-chart-story-overlay {
+          position:absolute;
+          top:14px;
+          left:18px;
+          z-index:3;
+          max-width:min(460px, calc(100% - 36px));
+          display:grid;
+          gap:4px;
+          padding:12px 14px;
+          border-radius:16px;
+          border:1px solid rgba(240, 138, 36, 0.28);
+          background:rgba(255, 247, 238, 0.92);
+          box-shadow:0 12px 24px rgba(240, 138, 36, 0.10);
+          backdrop-filter: blur(6px);
+          pointer-events:none;
+        }
+        .power-chart-story-kicker {
+          font-size:0.76rem;
+          font-weight:900;
+          letter-spacing:0.06em;
+          text-transform:uppercase;
+          color:#b35c10;
+        }
+        .power-chart-story-title {
+          font-size:0.94rem;
+          font-weight:900;
+          color:#8c5614;
+          line-height:1.35;
+        }
+        .power-chart-story-body {
+          font-size:0.84rem;
+          font-weight:700;
+          color:#8c5614;
+          line-height:1.35;
         }
         .power-chart {
             width:100%;
@@ -4583,7 +4623,7 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.22;
+          fill-opacity:0.30;
           mix-blend-mode:multiply;
         }
         .series-glow {
@@ -4600,11 +4640,11 @@ class ByteWattReportCard extends HTMLElement {
         .series-glow.tone-feed { stroke:#f08a24; }
         .series-glow.tone-consumed { stroke:#d39a63; }
         .series-glow.tone-bat { stroke:#2fc96e; }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.20; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.18; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.14; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.14; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.18; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.28; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.24; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.20; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.20; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.24; }
         .series-line {
           fill:none;
           stroke-width:3.4;
