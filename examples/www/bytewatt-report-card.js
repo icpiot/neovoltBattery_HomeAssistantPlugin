@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "245";
+const BYTEWATT_REPORT_CARD_BUILD = "246";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -274,6 +274,7 @@ class ByteWattReportCard extends HTMLElement {
   _storeLiveReportingSnapshot(reporting) {
     const liveRecord = this._liveReportingRecord(reporting);
     if (!liveRecord?.record_date) return null;
+    const liveHasChartData = this._recordHasPowerDiagramData(reporting);
     const history = this._readLocalSnapshots();
     history.scopes = history.scopes || {};
     const scopeKeys = Array.from(new Set([this._historyScopeKey(), "all"].filter(Boolean)));
@@ -281,6 +282,11 @@ class ByteWattReportCard extends HTMLElement {
       const scope = history.scopes[scopeKey] || { records: {} };
       scope.records = scope.records || {};
       const existing = scope.records[liveRecord.record_date] || {};
+      const existingHasChartData = this._recordHasPowerDiagramData(existing);
+      if (!liveHasChartData && existingHasChartData) {
+        history.scopes[scopeKey] = scope;
+        return;
+      }
       const existingPowerDiagram = existing?.power_diagram || {};
       const incomingPowerDiagram = reporting?.power_diagram || {};
       const mergedPowerDiagram = {
@@ -1197,6 +1203,11 @@ class ByteWattReportCard extends HTMLElement {
     const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
     if (liveRecord?.record_date) {
       const existing = recordsByDate.get(liveRecord.record_date) || {};
+      const existingHasChartData = this._recordHasPowerDiagramData(existing);
+      const liveHasChartData = this._recordHasPowerDiagramData(liveRecord);
+      if (!liveHasChartData && existingHasChartData) {
+        // Preserve the archived row when the live snapshot is just a blank status update.
+      } else {
       const existingPowerDiagram = existing?.power_diagram || {};
       const incomingPowerDiagram = liveRecord?.power_diagram || {};
       recordsByDate.set(liveRecord.record_date, {
@@ -1209,6 +1220,7 @@ class ByteWattReportCard extends HTMLElement {
           time: incomingPowerDiagram.time || existingPowerDiagram.time || [],
         },
       });
+      }
     }
     const records = Array.from(recordsByDate.values());
     const sorted = records.slice().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
