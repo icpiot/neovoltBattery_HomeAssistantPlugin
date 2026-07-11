@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "261";
+const BYTEWATT_REPORT_CARD_BUILD = "262";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3005,6 +3005,15 @@ class ByteWattReportCard extends HTMLElement {
           .join("")
       : "";
     const sparseWindow = story ? this._dailySparseWindow(chartValues, labels) : null;
+    const sparseCount = Math.max(
+      labels.length,
+      chartValues.solar.length,
+      chartValues.load.length,
+      chartValues.feed.length,
+      chartValues.consumed.length,
+      chartValues.bat.length,
+      1,
+    );
     const sparseBandMarkup = sparseWindow
       ? (() => {
           const startX = xForIndex(sparseWindow.startIndex || 0);
@@ -3044,7 +3053,7 @@ class ByteWattReportCard extends HTMLElement {
       : "";
     const storyConnectorMarkup = story && sparseWindow
       ? (() => {
-          const anchorIndex = Math.max(0, Math.min(sparseWindow.anchorIndex || 0, count - 1));
+          const anchorIndex = Math.max(0, Math.min(sparseWindow.anchorIndex || 0, sparseCount - 1));
           const anchorX = xForIndex(anchorIndex);
           const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
           const anchorY = padding.top + usableHeight * 0.62;
