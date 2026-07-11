@@ -347,6 +347,22 @@ class ByteWattReportHistory:
         scope["label"] = label
         scope["updated"] = dt_util.utcnow().isoformat()
         records = scope.setdefault("records", {})
+        existing_record = records.get(record_date)
+        if _reporting_has_power_diagram_data(existing_record or {}):
+            missing_dates = scope.setdefault("missing_dates", {})
+            if isinstance(missing_dates, list):
+                missing_dates = {str(item): {"reason": reason} for item in missing_dates if item}
+                scope["missing_dates"] = missing_dates
+            if isinstance(missing_dates, dict) and record_date in missing_dates:
+                missing_dates.pop(record_date, None)
+                history["version"] = 1
+                history["updated"] = dt_util.utcnow().isoformat()
+                self.history_file.write_text(
+                    json.dumps(history, indent=2, ensure_ascii=False, default=_json_default),
+                    encoding="utf-8",
+                )
+            return
+
         records.pop(record_date, None)
         missing_dates = scope.setdefault("missing_dates", {})
         if isinstance(missing_dates, list):
