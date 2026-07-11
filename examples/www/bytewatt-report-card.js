@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "246";
+const BYTEWATT_REPORT_CARD_BUILD = "247";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -166,6 +166,17 @@ class ByteWattReportCard extends HTMLElement {
     return Boolean(history?.enabled || history?.base_url || history?.entry_id);
   }
 
+  _powerDiagramFromRecord(record) {
+    if (!record || typeof record !== "object") return {};
+    const nested = record.power_diagram;
+    if (nested && typeof nested === "object" && !Array.isArray(nested) && Object.keys(nested).length) {
+      return nested;
+    }
+    const bareKeys = ["time", "series", "summary", "date", "meta"];
+    const hasBarePowerDiagram = bareKeys.some((key) => Object.prototype.hasOwnProperty.call(record, key));
+    return hasBarePowerDiagram ? record : {};
+  }
+
   _historyScopes() {
     const localScopes = this._readLocalSnapshots()?.scopes;
     const remoteScopes = this._historyData?.scopes;
@@ -196,8 +207,12 @@ class ByteWattReportCard extends HTMLElement {
         const mergedRecords = { ...currentRecords };
         Object.entries(incomingRecords).forEach(([recordDate, recordValue]) => {
           const currentRecord = mergedRecords[recordDate] || {};
-          const currentDiagram = currentRecord?.power_diagram || {};
-          const incomingDiagram = recordValue?.power_diagram || {};
+          const currentReporting = currentRecord && typeof currentRecord === "object" ? currentRecord : {};
+          const incomingReporting = recordValue && typeof recordValue === "object" ? recordValue : {};
+          const normalizedCurrent = currentReporting.power_diagram || Object.keys(currentReporting).length ? currentReporting : {};
+          const normalizedIncoming = incomingReporting.power_diagram || Object.keys(incomingReporting).length ? incomingReporting : {};
+          const currentDiagram = this._powerDiagramFromRecord(normalizedCurrent);
+          const incomingDiagram = this._powerDiagramFromRecord(normalizedIncoming);
           mergedRecords[recordDate] = {
             ...currentRecord,
             ...recordValue,
@@ -446,11 +461,29 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _recordHasPowerDiagramData(record) {
-    const powerDiagram = record?.power_diagram && typeof record.power_diagram === "object" ? record.power_diagram : {};
+    const powerDiagram = this._powerDiagramFromRecord(record);
     if (!powerDiagram || !Object.keys(powerDiagram).length) return false;
     if (Array.isArray(powerDiagram.time) && powerDiagram.time.length > 0) return true;
     const series = powerDiagram.series && typeof powerDiagram.series === "object" ? powerDiagram.series : {};
     return Object.values(series).some((value) => Array.isArray(value) && value.length > 0);
+  }
+
+  _normalizeReportingRecord(reporting, recordDate = "") {
+    if (!reporting || typeof reporting !== "object") return {};
+    if (reporting.power_diagram && typeof reporting.power_diagram === "object") {
+      return reporting;
+    }
+    const powerDiagram = this._powerDiagramFromRecord(reporting);
+    if (!powerDiagram || !Object.keys(powerDiagram).length) return reporting;
+    const parsed =
+      this._parseLocalDate(reporting?.reporting_date) ||
+      this._parseLocalDate(powerDiagram?.date) ||
+      this._parseLocalDate(recordDate);
+    return {
+      ...reporting,
+      reporting_date: parsed ? this._formatLocalDate(parsed) : String(reporting?.reporting_date || recordDate || powerDiagram?.date || ""),
+      power_diagram: powerDiagram,
+    };
   }
 
   _aggregateHistoryRecords(records) {
@@ -774,14 +807,15 @@ class ByteWattReportCard extends HTMLElement {
     return Object.entries(data)
       .filter(([, reporting]) => this._recordHasPowerDiagramData(reporting))
       .map(([recordDate, reporting]) => {
+        const normalizedReporting = this._normalizeReportingRecord(reporting, recordDate);
         const parsed =
-          this._parseLocalDate(reporting?.reporting_date) ||
-          this._parseLocalDate(reporting?.power_diagram?.date) ||
+          this._parseLocalDate(normalizedReporting?.reporting_date) ||
+          this._parseLocalDate(normalizedReporting?.power_diagram?.date) ||
           this._parseLocalDate(recordDate);
         const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
-        const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
+        const displayDate = parsed ? this._formatDisplayDate(parsed) : String(normalizedReporting?.reporting_date || recordDate || "");
         return {
-          ...(reporting || {}),
+          ...(normalizedReporting || {}),
           record_date: normalizedDate,
           record_date_display: displayDate,
           record_date_raw: String(recordDate || ""),

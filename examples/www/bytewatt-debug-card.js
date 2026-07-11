@@ -1,4 +1,4 @@
-const BYTEWATT_DEBUG_CARD_BUILD = "017";
+const BYTEWATT_DEBUG_CARD_BUILD = "018";
 
 class ByteWattDebugCard extends HTMLElement {
   setConfig(config) {
@@ -503,11 +503,22 @@ class ByteWattDebugCard extends HTMLElement {
   }
 
   _recordHasPowerDiagramData(record) {
-    const powerDiagram = record?.power_diagram && typeof record.power_diagram === "object" ? record.power_diagram : {};
+    const powerDiagram = this._powerDiagramFromRecord(record);
     if (!powerDiagram || !Object.keys(powerDiagram).length) return false;
     if (Array.isArray(powerDiagram.time) && powerDiagram.time.length > 0) return true;
     const series = powerDiagram.series && typeof powerDiagram.series === "object" ? powerDiagram.series : {};
     return Object.values(series).some((value) => Array.isArray(value) && value.length > 0);
+  }
+
+  _powerDiagramFromRecord(record) {
+    if (!record || typeof record !== "object") return {};
+    const nested = record.power_diagram;
+    if (nested && typeof nested === "object" && !Array.isArray(nested) && Object.keys(nested).length) {
+      return nested;
+    }
+    const bareKeys = ["time", "series", "summary", "date", "meta"];
+    const hasBarePowerDiagram = bareKeys.some((key) => Object.prototype.hasOwnProperty.call(record, key));
+    return hasBarePowerDiagram ? record : {};
   }
 
   _historyRecords() {
@@ -516,7 +527,8 @@ class ByteWattDebugCard extends HTMLElement {
     return Object.entries(data)
       .filter(([, reporting]) => this._recordHasPowerDiagramData(reporting))
       .map(([recordDate, reporting]) => {
-        const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(reporting?.power_diagram?.date);
+        const powerDiagram = this._powerDiagramFromRecord(reporting);
+        const parsed = this._parseLocalDate(recordDate) || this._parseLocalDate(reporting?.reporting_date) || this._parseLocalDate(powerDiagram?.date);
         const normalizedDate = parsed ? this._formatLocalDate(parsed) : String(recordDate || "");
         const displayDate = parsed ? this._formatDisplayDate(parsed) : String(reporting?.reporting_date || recordDate || "");
         return {

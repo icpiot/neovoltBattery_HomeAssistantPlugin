@@ -107,7 +107,7 @@ def _summary_row(
     live = reporting.get("live") or {}
     today = reporting.get("today") or {}
     totals = reporting.get("totals") or {}
-    power_diagram = reporting.get("power_diagram") or {}
+    power_diagram = _power_diagram_from_reporting(reporting)
     series = power_diagram.get("series") or {}
 
     return {
@@ -153,11 +153,22 @@ def _summary_row(
     }
 
 
+def _power_diagram_from_reporting(reporting: dict[str, Any]) -> dict[str, Any]:
+    """Return a nested or bare power diagram payload when one exists."""
+    if not isinstance(reporting, dict):
+        return {}
+    power_diagram = reporting.get("power_diagram")
+    if isinstance(power_diagram, dict) and power_diagram:
+        return power_diagram
+    bare_keys = ("time", "series", "summary", "date", "meta")
+    if any(key in reporting for key in bare_keys):
+        return reporting
+    return {}
+
+
 def _reporting_has_power_diagram_data(reporting: dict[str, Any]) -> bool:
     """Return True when a stored row has chart data worth treating as archived."""
-    if not isinstance(reporting, dict):
-        return False
-    power_diagram = reporting.get("power_diagram") or {}
+    power_diagram = _power_diagram_from_reporting(reporting)
     if not isinstance(power_diagram, dict) or not power_diagram:
         return False
     time_points = power_diagram.get("time") or []
