@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "287";
+const BYTEWATT_REPORT_CARD_BUILD = "288";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -205,7 +205,7 @@ class ByteWattReportCard extends HTMLElement {
       const historyEntryId = this._historyEntryId();
       if (today) {
         const ensurePayload = {
-          scope_key: "all",
+          scope_key: this._historyScopeKey() || "all",
           start_date: today,
           end_date: today,
           force: true,
@@ -214,6 +214,8 @@ class ByteWattReportCard extends HTMLElement {
           ensurePayload.entry_id = historyEntryId;
         }
         await this._hass.callService("bytewatt", "ensure_report_history", ensurePayload);
+        this._historySyncRequested = true;
+        await this._reloadHistory();
       }
       await this._hass.callService("homeassistant", "update_entity", {
         entity_id: entityId,
