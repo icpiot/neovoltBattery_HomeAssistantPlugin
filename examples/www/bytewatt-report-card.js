@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "272";
+const BYTEWATT_REPORT_CARD_BUILD = "273";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2702,9 +2702,9 @@ class ByteWattReportCard extends HTMLElement {
         title: "Battery low",
         note: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
         xOffset: 18,
-        yOffset: 26,
+        yOffset: 20,
         align: "right",
-        width: 126,
+        width: 112,
       },
       {
         key: "solar",
@@ -2712,10 +2712,10 @@ class ByteWattReportCard extends HTMLElement {
         index: solarPeakIndex,
         title: "Solar peak",
         note: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
-        xOffset: -150,
-        yOffset: -88,
+        xOffset: -118,
+        yOffset: -72,
         align: "left",
-        width: 138,
+        width: 112,
       },
       {
         key: "evening",
@@ -2723,10 +2723,10 @@ class ByteWattReportCard extends HTMLElement {
         index: eveningPeakIndex,
         title: "Evening peak",
         note: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
-        xOffset: -160,
-        yOffset: -86,
+        xOffset: -118,
+        yOffset: -72,
         align: "left",
-        width: 144,
+        width: 114,
       },
     ];
     return {
@@ -3038,7 +3038,7 @@ class ByteWattReportCard extends HTMLElement {
       ? (story.annotations || [])
           .map((item) => {
             const boxWidth = Number(item.width) || 138;
-            const boxHeight = 44;
+            const boxHeight = 36;
             const alignLeft = item.align !== "right";
             const rawX = Number(item.x) || padding.left;
             const rawY = Number(item.y) || padding.top;
@@ -3054,8 +3054,8 @@ class ByteWattReportCard extends HTMLElement {
             <line class="story-annotation-line" x1="${connectorX1.toFixed(1)}" y1="${connectorY1.toFixed(1)}" x2="${connectorX2.toFixed(1)}" y2="${connectorY2.toFixed(1)}"></line>
             <circle class="story-annotation-point tone-${this._escape(item.tone || "neutral")}" cx="${connectorX1.toFixed(1)}" cy="${connectorY1.toFixed(1)}" r="4.2"></circle>
             <rect class="story-annotation-box tone-${this._escape(item.tone || "neutral")}" x="${boxX.toFixed(1)}" y="${boxY.toFixed(1)}" width="${boxWidth.toFixed(1)}" height="${boxHeight.toFixed(1)}" rx="10" ry="10"></rect>
-            <text class="story-annotation-title" x="${(boxX + 10).toFixed(1)}" y="${(boxY + 16).toFixed(1)}">${this._escape(item.title || "")}</text>
-            <text class="story-annotation-note" x="${(boxX + 10).toFixed(1)}" y="${(boxY + 31).toFixed(1)}">${this._escape(item.note || "")}</text>
+            <text class="story-annotation-title" x="${(boxX + 8).toFixed(1)}" y="${(boxY + 13).toFixed(1)}">${this._escape(item.title || "")}</text>
+            <text class="story-annotation-note" x="${(boxX + 8).toFixed(1)}" y="${(boxY + 25).toFixed(1)}">${this._escape(item.note || "")}</text>
           </g>
         `;
           })
@@ -4611,12 +4611,12 @@ class ByteWattReportCard extends HTMLElement {
         .story-annotation-box.tone-feed { fill:rgba(255,244,236,0.98); }
         .story-annotation-title {
           fill:#0f172a;
-          font-size:11px;
+          font-size:10px;
           font-weight:900;
         }
         .story-annotation-note {
           fill:#56667b;
-          font-size:10px;
+          font-size:9px;
           font-weight:700;
         }
         .power-chart-wrap {
