@@ -51,6 +51,7 @@ from .const import (
     SERVICE_UPDATE_BATTERY_SETTINGS,
     SERVICE_FORCE_RECONNECT,
     SERVICE_HEALTH_CHECK,
+    SERVICE_REFRESH_NOW,
     SERVICE_TOGGLE_DIAGNOSTICS,
     SERVICE_ENSURE_REPORT_HISTORY,
     ATTR_END_DISCHARGE,
@@ -732,6 +733,20 @@ def _register_services(hass: HomeAssistant) -> None:
         except (AttributeError, TypeError) as ex:
             _LOGGER.error("Could not create health check notification: %s", ex)
 
+    async def handle_refresh_now(call: ServiceCall) -> None:
+        target_entry = call.data.get(ATTR_ENTRY_ID)
+        refreshed = 0
+        for entry_id, entry_data in hass.data[DOMAIN].items():
+            if target_entry and entry_id != target_entry:
+                continue
+            coordinator = entry_data.get("coordinator")
+            if not coordinator:
+                continue
+            await coordinator.async_request_refresh()
+            refreshed += 1
+        if not refreshed:
+            _LOGGER.debug("No ByteWatt integrations found to refresh")
+
     async def handle_toggle_diagnostics(call: ServiceCall) -> None:
         enable = call.data.get("enable")
         target_entry = call.data.get(ATTR_ENTRY_ID)
@@ -935,6 +950,11 @@ def _register_services(hass: HomeAssistant) -> None:
     _register(
         SERVICE_HEALTH_CHECK,
         handle_health_check,
+        schema=vol.Schema(_entry_id_opt),
+    )
+    _register(
+        SERVICE_REFRESH_NOW,
+        handle_refresh_now,
         schema=vol.Schema(_entry_id_opt),
     )
     _register(

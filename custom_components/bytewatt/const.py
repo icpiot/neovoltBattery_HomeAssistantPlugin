@@ -39,6 +39,7 @@ SERVICE_SET_CHARGE_CAP = "set_charge_cap"
 SERVICE_UPDATE_BATTERY_SETTINGS = "update_battery_settings"
 SERVICE_FORCE_RECONNECT = "force_reconnect"  # Force client reconnection for troubleshooting
 SERVICE_HEALTH_CHECK = "health_check"  # Check connection health and return diagnostics
+SERVICE_REFRESH_NOW = "refresh_now"  # Refresh live data immediately
 SERVICE_TOGGLE_DIAGNOSTICS = "toggle_diagnostics"  # Toggle diagnostic logging
 SERVICE_ENSURE_REPORT_HISTORY = "ensure_report_history"  # Backfill history rows for a selected range
 

@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "281";
+const BYTEWATT_REPORT_CARD_BUILD = "282";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -29,11 +29,18 @@ class ByteWattReportCard extends HTMLElement {
     this._historyEnsureRunId = this._historyEnsureRunId || 0;
     this._historySyncLoading = this._historySyncLoading || false;
     this._historySyncRequested = this._historySyncRequested || false;
+    this._liveRefreshTimer = this._liveRefreshTimer || null;
+    this._liveRefreshInFlight = this._liveRefreshInFlight || false;
   }
 
   set hass(hass) {
     this._hass = hass;
     this.render();
+    this._syncLiveRefreshTimer();
+  }
+
+  disconnectedCallback() {
+    this._stopLiveRefreshTimer();
   }
 
   getCardSize() {
@@ -42,6 +49,10 @@ class ByteWattReportCard extends HTMLElement {
 
   _stateObj(entityId) {
     return entityId ? this._hass?.states?.[entityId] : null;
+  }
+
+  _refreshEntryId() {
+    return String(this._historyMeta()?.entry_id || "").trim();
   }
 
   _loadReportState() {
@@ -154,6 +165,49 @@ class ByteWattReportCard extends HTMLElement {
 
   _storyModeEnabled() {
     return (this._storyState?.enabled ?? true) !== false;
+  }
+
+  _isLiveTodaySelection() {
+    if (this._reportPeriod === "today") return true;
+    if (!this._isDailyPeriod(this._reportPeriod || "day")) return false;
+    const anchor = this._parseLocalDate(this._reportAnchorDate || "");
+    const today = this._reportTodayDate(this._reporting());
+    if (!(anchor instanceof Date) || !(today instanceof Date)) return false;
+    return this._formatLocalDate(anchor) === this._formatLocalDate(today);
+  }
+
+  _stopLiveRefreshTimer() {
+    if (this._liveRefreshTimer) {
+      clearInterval(this._liveRefreshTimer);
+      this._liveRefreshTimer = null;
+    }
+  }
+
+  _syncLiveRefreshTimer() {
+    const shouldRefresh = Boolean(this._hass) && this._isLiveTodaySelection();
+    if (!shouldRefresh) {
+      this._stopLiveRefreshTimer();
+      return;
+    }
+    if (this._liveRefreshTimer) return;
+    this._liveRefreshTimer = setInterval(() => {
+      this._requestLiveRefresh();
+    }, 10000);
+  }
+
+  async _requestLiveRefresh() {
+    if (!this._hass || this._liveRefreshInFlight) return;
+    this._liveRefreshInFlight = true;
+    try {
+      const payload = {};
+      const entryId = this._refreshEntryId();
+      if (entryId) payload.entry_id = entryId;
+      await this._hass.callService("bytewatt", "refresh_now", payload);
+    } catch (error) {
+      console.warn("ByteWatt live refresh failed:", error);
+    } finally {
+      this._liveRefreshInFlight = false;
+    }
   }
 
   _setStoryModeEnabled(enabled) {
@@ -5331,6 +5385,7 @@ class ByteWattReportCard extends HTMLElement {
       </ha-card>
     `;
     this._bindEvents();
+    this._syncLiveRefreshTimer();
   }
 
   _bindEvents() {
@@ -5364,6 +5419,8 @@ class ByteWattReportCard extends HTMLElement {
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._saveReportState();
         this._resetHistoryEnsureState();
+        this.render();
+        this._syncLiveRefreshTimer();
         this._queueHistorySync();
       });
     });
@@ -5377,6 +5434,8 @@ class ByteWattReportCard extends HTMLElement {
         this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step, sourceToday));
         this._saveReportState();
         this._resetHistoryEnsureState();
+        this.render();
+        this._syncLiveRefreshTimer();
         this._queueHistorySync();
       });
     });
@@ -5385,6 +5444,8 @@ class ByteWattReportCard extends HTMLElement {
       this._reportAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate(), this._reportTodayDate(this._reporting())));
       this._saveReportState();
       this._resetHistoryEnsureState();
+      this.render();
+      this._syncLiveRefreshTimer();
       this._queueHistorySync();
     });
     this.shadowRoot.querySelectorAll("[data-chart-toggle]").forEach((button) => {
