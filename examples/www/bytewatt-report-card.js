@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "279";
+const BYTEWATT_REPORT_CARD_BUILD = "280";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2688,6 +2688,16 @@ class ByteWattReportCard extends HTMLElement {
     return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
+  _isCurrentDayPeriod(periodContext = {}, reporting = null) {
+    const period = periodContext?.period || this._reportPeriod || "day";
+    if (period === "today") return true;
+    if (!this._isDailyPeriod(period)) return false;
+    const windowEnd = periodContext?.window?.end;
+    const today = this._reportTodayDate(reporting || this._reporting());
+    if (!(windowEnd instanceof Date) || !(today instanceof Date)) return false;
+    return this._formatLocalDate(windowEnd) === this._formatLocalDate(today);
+  }
+
   _chartObservedCount(chartValues = {}, labels = [], context = {}) {
     const period = context?.period || this._reportPeriod || "day";
     const count = Math.max(
@@ -2699,7 +2709,7 @@ class ByteWattReportCard extends HTMLElement {
       chartValues.bat?.length || 0,
       1,
     );
-    if (period !== "today") return count;
+    if (!this._isCurrentDayPeriod(context)) return count;
     const series = [
       Array.isArray(chartValues.bat) ? chartValues.bat : [],
       Array.isArray(chartValues.solar) ? chartValues.solar : [],
@@ -2718,6 +2728,7 @@ class ByteWattReportCard extends HTMLElement {
 
   _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = {}) {
     const count = this._chartObservedCount(chartValues, labels, periodContext);
+    const isCurrentDay = this._isCurrentDayPeriod(periodContext, reporting);
     const storyValues = {
       bat: Array.isArray(chartValues.bat) ? chartValues.bat.slice(0, count) : [],
       solar: Array.isArray(chartValues.solar) ? chartValues.solar.slice(0, count) : [],
@@ -2738,6 +2749,7 @@ class ByteWattReportCard extends HTMLElement {
     const loadPeak = Number(storyValues.load[loadPeakIndex]) || 0;
     const batMin = Number(storyValues.bat[batMinIndex]) || 0;
     const batPeak = Number(storyValues.bat[batPeakIndex]) || 0;
+    const liveBattery = Number(reporting?.live?.soc ?? reporting?.today?.soc ?? batPeak ?? batMin) || 0;
     const sparseWindow = this._dailySparseWindow(storyValues, labels.slice(0, count), { reporting, periodContext });
     const sparsePowerData = Boolean(sparseWindow);
     const archiveGapComment = this._periodMissingComment(periodContext);
@@ -2756,7 +2768,8 @@ class ByteWattReportCard extends HTMLElement {
       .filter((value) => Number.isFinite(value) && value >= 0)
       .sort((a, b) => (Number(chartValues.load[b] ?? 0) + Number(chartValues.feed[b] ?? 0)) - (Number(chartValues.load[a] ?? 0) + Number(chartValues.feed[a] ?? 0)))[0] ?? eveningLoadIndex;
     const morningPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
-    const batteryEventLabel = this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
+    const batteryEventIndex = isCurrentDay ? Math.max(0, count - 1) : batMinIndex;
+    const batteryEventLabel = isCurrentDay ? "now" : this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
     const solarEventLabel = this._chartStoryTimeLabel(labels[solarPeakIndex], solarPeakIndex, count);
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
     const headline = sparsePowerData
@@ -2769,9 +2782,13 @@ class ByteWattReportCard extends HTMLElement {
     const highlights = [
       {
         tone: "bat",
-        title: "1. Battery pressure",
-        value: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
-        note: batMin <= 15 ? "The battery hits its low point early and has to recover later." : "The battery eases through the day without dropping to the floor.",
+        title: isCurrentDay ? "1. Battery state" : "1. Battery pressure",
+        value: isCurrentDay ? `${this._fmtPercent(liveBattery)} now` : `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
+        note: isCurrentDay
+          ? "Live SOC is being shown for the current day."
+          : batMin <= 15
+            ? "The battery hits its low point early and has to recover later."
+            : "The battery eases through the day without dropping to the floor.",
       },
     ];
     if (sparsePowerData) {
@@ -2829,9 +2846,9 @@ class ByteWattReportCard extends HTMLElement {
       {
         key: "battery",
         tone: "bat",
-        index: batMinIndex,
-        title: "Battery low",
-        note: `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
+        index: batteryEventIndex,
+        title: isCurrentDay ? "Battery state" : "Battery low",
+        note: isCurrentDay ? `${this._fmtPercent(liveBattery)} now` : `${this._fmtPercent(batMin)} at ${batteryEventLabel}`,
         xOffset: 18,
         yOffset: 20,
         align: "right",
