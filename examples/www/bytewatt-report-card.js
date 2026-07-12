@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "280";
+const BYTEWATT_REPORT_CARD_BUILD = "281";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2699,19 +2699,16 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _chartObservedCount(chartValues = {}, labels = [], context = {}) {
-    const period = context?.period || this._reportPeriod || "day";
     const count = Math.max(
       labels.length,
       chartValues.solar?.length || 0,
       chartValues.load?.length || 0,
       chartValues.feed?.length || 0,
       chartValues.consumed?.length || 0,
-      chartValues.bat?.length || 0,
       1,
     );
     if (!this._isCurrentDayPeriod(context)) return count;
     const series = [
-      Array.isArray(chartValues.bat) ? chartValues.bat : [],
       Array.isArray(chartValues.solar) ? chartValues.solar : [],
       Array.isArray(chartValues.load) ? chartValues.load : [],
       Array.isArray(chartValues.feed) ? chartValues.feed : [],
@@ -2774,11 +2771,13 @@ class ByteWattReportCard extends HTMLElement {
     const eveningEventLabel = this._chartStoryTimeLabel(labels[eveningPeakIndex], eveningPeakIndex, count);
     const headline = sparsePowerData
       ? "This day is only partially told: SOC is present, but the middle of the day is missing enough power activity for a full story."
-      : batMin <= 15 && solarPeak > 0.05
-        ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
-        : solarPeak > 0.05
-          ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
-          : "Demand stays active through the day, with battery movement and grid support carrying the load.";
+      : isCurrentDay
+        ? "Live day view: battery state is shown now, with the strongest solar and demand peaks observed so far."
+        : batMin <= 15 && solarPeak > 0.05
+          ? "Battery starts low, solar restores the middle of the day, and the evening peak leans on grid support."
+          : solarPeak > 0.05
+            ? "Solar lifts the day at midday, then demand shifts back toward storage and grid support late in the day."
+            : "Demand stays active through the day, with battery movement and grid support carrying the load.";
     const highlights = [
       {
         tone: "bat",
@@ -2810,15 +2809,21 @@ class ByteWattReportCard extends HTMLElement {
       highlights.push(
         {
           tone: "solar",
-          title: "2. Solar recovery",
+          title: isCurrentDay ? "2. Solar peak so far" : "2. Solar recovery",
           value: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
-          note: solarPeak > 0.05 ? "Midday solar creates the strongest charging window." : "Solar stays subdued, so storage has less to work with.",
+          note: isCurrentDay
+            ? "This is the strongest solar point observed so far today."
+            : solarPeak > 0.05
+              ? "Midday solar creates the strongest charging window."
+              : "Solar stays subdued, so storage has less to work with.",
         },
         {
           tone: "feed",
-          title: "3. Evening pressure",
+          title: isCurrentDay ? "3. Peak demand so far" : "3. Evening pressure",
           value: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
-          note: "Late demand is where the chart usually tells the clearest story.",
+          note: isCurrentDay
+            ? "This is the strongest demand point observed so far today."
+            : "Late demand is where the chart usually tells the clearest story.",
         },
       );
     }
@@ -2858,7 +2863,7 @@ class ByteWattReportCard extends HTMLElement {
         key: "solar",
         tone: "solar",
         index: solarPeakIndex,
-        title: "Solar peak",
+        title: isCurrentDay ? "Solar peak so far" : "Solar peak",
         note: `${this._formatChartPower(solarPeak, 1000)} at ${solarEventLabel}`,
         xOffset: -118,
         yOffset: -72,
@@ -2869,7 +2874,7 @@ class ByteWattReportCard extends HTMLElement {
         key: "evening",
         tone: "feed",
         index: eveningPeakIndex,
-        title: "Evening peak",
+        title: isCurrentDay ? "Peak demand so far" : "Evening peak",
         note: `${this._formatChartPower(loadPeak, 1000)} at ${eveningEventLabel}`,
         xOffset: -118,
         yOffset: -72,
@@ -4786,9 +4791,9 @@ class ByteWattReportCard extends HTMLElement {
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 18px 34px rgba(47, 155, 232, 0.08);
         }
         .power-chart-story-overlay {
-          position:absolute;
-          top:14px;
-          left:18px;
+          position:relative;
+          top:auto;
+          left:auto;
           z-index:3;
           width:fit-content;
           max-width:min(300px, calc(100% - 36px));
@@ -4801,6 +4806,7 @@ class ByteWattReportCard extends HTMLElement {
           box-shadow:0 12px 24px rgba(240, 138, 36, 0.10);
           backdrop-filter: blur(6px);
           pointer-events:none;
+          margin-bottom:6px;
         }
         .power-chart-story-kicker {
           font-size:0.76rem;
