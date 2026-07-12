@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "292";
+const BYTEWATT_REPORT_CARD_BUILD = "293";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1072,6 +1072,10 @@ class ByteWattReportCard extends HTMLElement {
 
   _reportTodayDate(reporting = null) {
     const source = reporting || this._reporting() || {};
+    const timezoneNow = this._timezoneNow(source);
+    if (timezoneNow) {
+      return new Date(timezoneNow.getFullYear(), timezoneNow.getMonth(), timezoneNow.getDate());
+    }
     return (
       this._parseLocalDate(
         source?.power_diagram?.date ||
@@ -2814,10 +2818,49 @@ class ByteWattReportCard extends HTMLElement {
   _currentDayProgressIndex(labels = []) {
     const count = Array.isArray(labels) ? labels.length : 0;
     if (count <= 1) return 0;
-    const now = new Date();
+    const now = this._timezoneNow(this._reporting()) || new Date();
     const minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
     const ratio = Math.max(0, Math.min(minutes / (24 * 60), 1));
     return Math.min(count - 1, Math.floor(ratio * (count - 1)));
+  }
+
+  _reportTimezone(reporting = null) {
+    const source = reporting || this._reporting() || {};
+    return String(
+      source?.meta?.timezone ||
+      source?.meta?.timezone_code ||
+      source?.history?.timezone ||
+      source?.history?.timezone_code ||
+      ""
+    ).trim();
+  }
+
+  _timezoneNow(reporting = null) {
+    const timeZone = this._reportTimezone(reporting);
+    if (!timeZone) return null;
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      const get = (type) => parts.find((part) => part.type === type)?.value;
+      const year = Number(get("year"));
+      const month = Number(get("month"));
+      const day = Number(get("day"));
+      const hour = Number(get("hour"));
+      const minute = Number(get("minute"));
+      const second = Number(get("second"));
+      if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) return null;
+      return new Date(year, month - 1, day, hour, minute, second);
+    } catch (_err) {
+      return null;
+    }
   }
 
   _chartObservedCount(chartValues = {}, labels = [], context = {}) {
