@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "273";
+const BYTEWATT_REPORT_CARD_BUILD = "274";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4590,9 +4590,9 @@ class ByteWattReportCard extends HTMLElement {
         }
         .story-annotation-line {
           stroke:#64748b;
-          stroke-width:1.2;
-          stroke-dasharray:4 4;
-          opacity:0.9;
+          stroke-width:1.1;
+          stroke-dasharray:3 4;
+          opacity:0.85;
         }
         .story-annotation-point {
           fill:#ffffff;
@@ -4639,11 +4639,12 @@ class ByteWattReportCard extends HTMLElement {
           top:14px;
           left:18px;
           z-index:3;
-          max-width:min(460px, calc(100% - 36px));
+          width:fit-content;
+          max-width:min(300px, calc(100% - 36px));
           display:grid;
-          gap:4px;
-          padding:12px 14px;
-          border-radius:16px;
+          gap:3px;
+          padding:10px 12px;
+          border-radius:12px;
           border:1px solid rgba(240, 138, 36, 0.28);
           background:rgba(255, 247, 238, 0.92);
           box-shadow:0 12px 24px rgba(240, 138, 36, 0.10);
@@ -4658,16 +4659,16 @@ class ByteWattReportCard extends HTMLElement {
           color:#b35c10;
         }
         .power-chart-story-title {
-          font-size:0.94rem;
+          font-size:0.88rem;
           font-weight:900;
           color:#8c5614;
-          line-height:1.35;
+          line-height:1.25;
         }
         .power-chart-story-body {
-          font-size:0.84rem;
+          font-size:0.8rem;
           font-weight:700;
           color:#8c5614;
-          line-height:1.35;
+          line-height:1.25;
         }
         .story-overlay-connector {
           pointer-events:none;
