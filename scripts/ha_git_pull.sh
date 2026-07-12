@@ -1,1 +1,1 @@
-@C:\Users\ieko\Documents\HA\repos\neovoltBattery_HomeAssistantPlugin\scripts\ha_git_pull.sh
+@-
