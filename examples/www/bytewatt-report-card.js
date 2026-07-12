@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "278";
+const BYTEWATT_REPORT_CARD_BUILD = "279";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2688,37 +2688,64 @@ class ByteWattReportCard extends HTMLElement {
     return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
   }
 
-  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = {}) {
+  _chartObservedCount(chartValues = {}, labels = [], context = {}) {
+    const period = context?.period || this._reportPeriod || "day";
     const count = Math.max(
       labels.length,
-      chartValues.solar.length,
-      chartValues.load.length,
-      chartValues.feed.length,
-      chartValues.consumed.length,
-      chartValues.bat.length,
+      chartValues.solar?.length || 0,
+      chartValues.load?.length || 0,
+      chartValues.feed?.length || 0,
+      chartValues.consumed?.length || 0,
+      chartValues.bat?.length || 0,
       1,
     );
+    if (period !== "today") return count;
+    const series = [
+      Array.isArray(chartValues.bat) ? chartValues.bat : [],
+      Array.isArray(chartValues.solar) ? chartValues.solar : [],
+      Array.isArray(chartValues.load) ? chartValues.load : [],
+      Array.isArray(chartValues.feed) ? chartValues.feed : [],
+      Array.isArray(chartValues.consumed) ? chartValues.consumed : [],
+    ];
+    let lastObserved = -1;
+    series.forEach((values) => {
+      values.forEach((value, index) => {
+        if ((Number(value) || 0) > 0) lastObserved = Math.max(lastObserved, index);
+      });
+    });
+    return lastObserved >= 0 ? Math.min(count, lastObserved + 1) : count;
+  }
+
+  _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = {}) {
+    const count = this._chartObservedCount(chartValues, labels, periodContext);
+    const storyValues = {
+      bat: Array.isArray(chartValues.bat) ? chartValues.bat.slice(0, count) : [],
+      solar: Array.isArray(chartValues.solar) ? chartValues.solar.slice(0, count) : [],
+      load: Array.isArray(chartValues.load) ? chartValues.load.slice(0, count) : [],
+      feed: Array.isArray(chartValues.feed) ? chartValues.feed.slice(0, count) : [],
+      consumed: Array.isArray(chartValues.consumed) ? chartValues.consumed.slice(0, count) : [],
+    };
     const xForIndex = (index) => {
       if (count <= 1) return padding.left;
       return padding.left + (index / (count - 1)) * (width - padding.left - padding.right);
     };
-    const batMinIndex = this._chartValueIndex(chartValues.bat, "min", 0);
-    const batPeakIndex = this._chartValueIndex(chartValues.bat, "max", 0);
-    const solarPeakIndex = this._chartValueIndex(chartValues.solar, "max", 0);
-    const loadPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
-    const gridPeakIndex = this._chartValueIndex(chartValues.feed, "max", 0);
-    const solarPeak = Number(chartValues.solar[solarPeakIndex]) || 0;
-    const loadPeak = Number(chartValues.load[loadPeakIndex]) || 0;
-    const batMin = Number(chartValues.bat[batMinIndex]) || 0;
-    const batPeak = Number(chartValues.bat[batPeakIndex]) || 0;
-    const sparseWindow = this._dailySparseWindow(chartValues, labels, { reporting, periodContext });
+    const batMinIndex = this._chartValueIndex(storyValues.bat, "min", 0);
+    const batPeakIndex = this._chartValueIndex(storyValues.bat, "max", 0);
+    const solarPeakIndex = this._chartValueIndex(storyValues.solar, "max", 0);
+    const loadPeakIndex = this._chartValueIndex(storyValues.load, "max", 0);
+    const gridPeakIndex = this._chartValueIndex(storyValues.feed, "max", 0);
+    const solarPeak = Number(storyValues.solar[solarPeakIndex]) || 0;
+    const loadPeak = Number(storyValues.load[loadPeakIndex]) || 0;
+    const batMin = Number(storyValues.bat[batMinIndex]) || 0;
+    const batPeak = Number(storyValues.bat[batPeakIndex]) || 0;
+    const sparseWindow = this._dailySparseWindow(storyValues, labels.slice(0, count), { reporting, periodContext });
     const sparsePowerData = Boolean(sparseWindow);
     const archiveGapComment = this._periodMissingComment(periodContext);
-    const sparseComment = this._dailySparseComment(chartValues, labels, { reporting, periodContext });
+    const sparseComment = this._dailySparseComment(storyValues, labels.slice(0, count), { reporting, periodContext });
     const storyAlert = archiveGapComment || sparseComment;
     const solarThreshold = Math.max(0.08, solarPeak * 0.2);
-    const solarStart = this._chartFirstIndexAbove(chartValues.solar, solarThreshold, 0);
-    const solarEnd = this._chartLastIndexAbove(chartValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
+    const solarStart = this._chartFirstIndexAbove(storyValues.solar, solarThreshold, 0);
+    const solarEnd = this._chartLastIndexAbove(storyValues.solar, solarThreshold, solarStart >= 0 ? solarStart : 0);
     const solarBandStart = solarStart >= 0 ? solarStart : Math.max(0, Math.floor(count * 0.3));
     const solarBandEnd = solarEnd >= 0 ? solarEnd : Math.max(solarBandStart + 1, Math.floor(count * 0.7));
     const eveningStart = Math.max(0, Math.floor(count * 0.62));
@@ -2847,12 +2874,12 @@ class ByteWattReportCard extends HTMLElement {
         .filter((item) => Number.isFinite(item.index) && item.index >= 0)
         .map((item) => {
           const x = xForIndex(item.index);
-          const yLookup = item.key === "battery"
-            ? chartValues.bat[item.index]
+      const yLookup = item.key === "battery"
+            ? storyValues.bat[item.index]
             : item.key === "solar"
-              ? chartValues.solar[item.index]
-              : chartValues.load[item.index] ?? chartValues.feed[item.index] ?? chartValues.consumed[item.index] ?? 0;
-          const maxValue = item.key === "battery" ? 100 : Math.max(1, ...chartValues.solar, ...chartValues.load, ...chartValues.feed, ...chartValues.consumed);
+              ? storyValues.solar[item.index]
+              : storyValues.load[item.index] ?? storyValues.feed[item.index] ?? storyValues.consumed[item.index] ?? 0;
+          const maxValue = item.key === "battery" ? 100 : Math.max(1, ...storyValues.solar, ...storyValues.load, ...storyValues.feed, ...storyValues.consumed);
           const normalized = Math.max(Number(yLookup) || 0, 0) / (maxValue > 0 ? maxValue : 1);
           const usableHeight = Math.max(height - padding.top - padding.bottom, 1);
           const y = padding.top + (1 - Math.min(normalized, 1)) * usableHeight;
