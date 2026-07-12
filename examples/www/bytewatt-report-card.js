@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "289";
+const BYTEWATT_REPORT_CARD_BUILD = "290";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -91,6 +91,26 @@ class ByteWattReportCard extends HTMLElement {
       consumed: true,
       grid: true,
     };
+  }
+
+  _dailyChartRenderKey(reporting) {
+    const powerDiagram = reporting?.power_diagram || {};
+    const series = powerDiagram.series || {};
+    const time = Array.isArray(powerDiagram.time) ? powerDiagram.time : [];
+    const summarize = (values) => {
+      const list = Array.isArray(values) ? values : [];
+      return `${list.length}:${list[0] ?? ""}:${list[list.length - 1] ?? ""}`;
+    };
+    return [
+      powerDiagram.date || "",
+      reporting?.meta?.saved_at || "",
+      time.length,
+      summarize(series.bat),
+      summarize(series.solar),
+      summarize(series.load),
+      summarize(series.feed_in),
+      summarize(series.consumed),
+    ].join("|");
   }
 
   _loadChartState() {
@@ -3180,6 +3200,14 @@ class ByteWattReportCard extends HTMLElement {
       { key: "feed", label: "Grid Feed-in", tone: "feed", values: chartValues.feed },
       { key: "consumed", label: "Consumed", tone: "consumed", values: chartValues.consumed },
     ];
+    const plotSeries = seriesMeta
+      .slice()
+      .sort((left, right) => {
+        const leftArea = (left.values || []).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        const rightArea = (right.values || []).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        if (rightArea !== leftArea) return rightArea - leftArea;
+        return seriesMeta.indexOf(left) - seriesMeta.indexOf(right);
+      });
     const powerSeries = seriesMeta.filter((item) => item.scale !== "bat");
     const activePowerSeries = powerSeries.filter((item) => visibility[item.key]);
     const chartMax = Math.max(1, ...((activePowerSeries.length ? activePowerSeries : powerSeries).flatMap((item) => item.values)));
@@ -3214,7 +3242,7 @@ class ByteWattReportCard extends HTMLElement {
       series: seriesMeta,
       story,
     };
-    const paths = seriesMeta
+    const paths = plotSeries
       .map((item) => {
         const scaleMax = item.scale === "bat" ? batMax : chartMax;
         const points = this._chartPoints(item.values, width, height, padding, scaleMax);
