@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "290";
+const BYTEWATT_REPORT_CARD_BUILD = "292";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -2811,6 +2811,15 @@ class ByteWattReportCard extends HTMLElement {
     return this._formatLocalDate(windowEnd) === this._formatLocalDate(today);
   }
 
+  _currentDayProgressIndex(labels = []) {
+    const count = Array.isArray(labels) ? labels.length : 0;
+    if (count <= 1) return 0;
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const ratio = Math.max(0, Math.min(minutes / (24 * 60), 1));
+    return Math.min(count - 1, Math.floor(ratio * (count - 1)));
+  }
+
   _chartObservedCount(chartValues = {}, labels = [], context = {}) {
     const count = Math.max(
       labels.length,
@@ -2833,7 +2842,10 @@ class ByteWattReportCard extends HTMLElement {
         if ((Number(value) || 0) > 0) lastObserved = Math.max(lastObserved, index);
       });
     });
-    return lastObserved >= 0 ? Math.min(count, lastObserved + 1) : count;
+    const observed = lastObserved >= 0 ? Math.min(count, lastObserved + 1) : count;
+    if (!this._isCurrentDayPeriod(context)) return observed;
+    const currentIndex = this._currentDayProgressIndex(labels);
+    return Math.max(1, Math.min(observed, currentIndex + 1));
   }
 
   _buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, periodContext = {}) {
@@ -2876,7 +2888,7 @@ class ByteWattReportCard extends HTMLElement {
     const eveningConsumedIndex = this._chartValueIndex(chartValues.consumed, "max", eveningStart);
     const eveningPeakIndex = [eveningLoadIndex, eveningGridIndex, eveningConsumedIndex]
       .filter((value) => Number.isFinite(value) && value >= 0)
-      .sort((a, b) => (Number(chartValues.load[b] ?? 0) + Number(chartValues.feed[b] ?? 0)) - (Number(chartValues.load[a] ?? 0) + Number(chartValues.feed[a] ?? 0)))[0] ?? eveningLoadIndex;
+      .sort((a, b) => (Number(storyValues.load[b] ?? 0) + Number(storyValues.feed[b] ?? 0) + Number(storyValues.consumed[b] ?? 0)) - (Number(storyValues.load[a] ?? 0) + Number(storyValues.feed[a] ?? 0) + Number(storyValues.consumed[a] ?? 0)))[0] ?? eveningLoadIndex;
     const morningPeakIndex = this._chartValueIndex(chartValues.load, "max", 0);
     const batteryEventIndex = isCurrentDay ? Math.max(0, count - 1) : batMinIndex;
     const batteryEventLabel = isCurrentDay ? "now" : this._chartStoryTimeLabel(labels[batMinIndex], batMinIndex, count);
@@ -4837,30 +4849,30 @@ class ByteWattReportCard extends HTMLElement {
         .power-story-card.tone-gap { box-shadow: inset 0 3px 0 0 var(--bw-grid), 0 8px 18px rgba(15, 23, 42, 0.05); }
         .story-band {
           pointer-events:none;
-          opacity:0.18;
+          opacity:0.28;
         }
         .story-band-soft {
-          opacity:0.12;
+          opacity:0.18;
         }
         .story-band-strong {
-          opacity:0.24;
+          opacity:0.34;
         }
         .story-band-gap {
           fill:#fff2da;
-          opacity:0.52;
+          opacity:0.66;
           mix-blend-mode:multiply;
         }
         .story-band-night {
           fill:#dfe8f2;
-          opacity:0.38;
+          opacity:0.48;
         }
         .story-band-solar {
           fill:#fff2b8;
-          opacity:0.42;
+          opacity:0.58;
         }
         .story-band-evening {
           fill:#ffe0c6;
-          opacity:0.36;
+          opacity:0.50;
         }
         .story-annotation {
           pointer-events:none;
@@ -5042,7 +5054,7 @@ class ByteWattReportCard extends HTMLElement {
           stroke:none;
           pointer-events:none;
           opacity:1;
-          fill-opacity:0.48;
+          fill-opacity:0.64;
           mix-blend-mode:normal;
         }
         .series-glow {
@@ -5059,11 +5071,11 @@ class ByteWattReportCard extends HTMLElement {
         .series-glow.tone-feed { stroke:#f08a24; }
         .series-glow.tone-consumed { stroke:#d39a63; }
         .series-glow.tone-bat { stroke:#2fc96e; }
-        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.52; }
-        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.44; }
-        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.36; }
-        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.36; }
-        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.40; }
+        .series-area.tone-solar { fill:#f0c419; fill-opacity:0.72; }
+        .series-area.tone-load { fill:#2f9be8; fill-opacity:0.62; }
+        .series-area.tone-feed { fill:#f08a24; fill-opacity:0.50; }
+        .series-area.tone-consumed { fill:#d39a63; fill-opacity:0.50; }
+        .series-area.tone-bat { fill:#2fc96e; fill-opacity:0.68; }
         .series-line {
           fill:none;
           stroke-width:3.4;
