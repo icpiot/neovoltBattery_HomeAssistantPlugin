@@ -148,6 +148,10 @@ class ByteWattSettingsTargetSelect(CoordinatorEntity, SelectEntity):
                 return inverter
         return None
 
+    async def async_update(self) -> None:
+        """Refresh the coordinator when Home Assistant asks for an entity update."""
+        await self.coordinator.async_request_refresh()
+
     @property
     def options(self) -> list[str]:
         labels = list(self._options_map())
