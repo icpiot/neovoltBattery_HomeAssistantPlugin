@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "288";
+const BYTEWATT_REPORT_CARD_BUILD = "289";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3785,13 +3785,13 @@ class ByteWattReportCard extends HTMLElement {
           background:var(--bw-surface-2);
           border-radius:18px;
           border:1px solid var(--bw-border);
-          padding:16px 18px;
+          padding:12px 14px;
           box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
         }
         .hero-banner {
           display:grid;
-          grid-template-columns: 1.1fr 1fr;
-          gap:12px;
+          grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+          gap:10px;
           align-items:center;
           background:
             linear-gradient(135deg, rgba(47,117,216,0.06), rgba(116,178,255,0.02)),
@@ -3799,7 +3799,7 @@ class ByteWattReportCard extends HTMLElement {
         }
         .hero-main {
           display:grid;
-          gap:8px;
+          gap:4px;
         }
         .hero-kicker {
           font-size:0.76rem;
@@ -3809,13 +3809,13 @@ class ByteWattReportCard extends HTMLElement {
           color:#4b5563;
         }
         .hero-title {
-          font-size:1.35rem;
+          font-size:1.2rem;
           font-weight:900;
           color:#0f172a;
         }
         .hero-subtitle {
           color:#475569;
-          font-size:0.96rem;
+          font-size:0.84rem;
           font-weight:700;
         }
         .hero-history {
@@ -4162,9 +4162,9 @@ class ByteWattReportCard extends HTMLElement {
         .live-grid,
         .stats-grid {
           display:grid;
-          gap:14px;
+          gap:8px;
         }
-        .summary-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+        .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
         .live-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
         .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .body-grid {
@@ -4574,7 +4574,7 @@ class ByteWattReportCard extends HTMLElement {
         .ring-grid {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap:6px;
+          gap:4px;
           margin-bottom:6px;
           align-items:stretch;
           justify-items:stretch;
@@ -4584,13 +4584,13 @@ class ByteWattReportCard extends HTMLElement {
         }
         .ring-card {
           border-radius:16px;
-          padding:8px 6px;
+          padding:6px 5px;
           text-align:center;
           border:2px solid transparent;
           background:#ffffff;
           box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
           min-width:0;
-          min-height:70px;
+          min-height:58px;
           width:100%;
           max-width:none;
           display:flex;
@@ -4614,16 +4614,16 @@ class ByteWattReportCard extends HTMLElement {
           justify-items:initial;
         }
         .ring-value {
-          font-size:clamp(0.86rem, 1.4vw, 0.98rem);
+          font-size:clamp(0.8rem, 1.2vw, 0.94rem);
           font-weight:800;
           color:#0f172a;
           line-height:1.02;
           white-space:nowrap;
         }
         .ring-label {
-          margin-top:4px;
+          margin-top:2px;
           color:#64748b;
-          font-size:0.7rem;
+          font-size:0.65rem;
           line-height:1.08;
           white-space:nowrap;
           overflow:hidden;
@@ -4663,7 +4663,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding:10px 18px 14px;
+          padding:8px 14px 12px;
           margin-inline:0;
           max-width:none;
           box-sizing:border-box;
@@ -5247,12 +5247,14 @@ class ByteWattReportCard extends HTMLElement {
             grid-template-columns: 1fr;
           }
           .overview-grid,
-          .summary-grid,
           .live-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+          .summary-grid {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+          }
           .ring-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
           }
           .body-grid {
             grid-template-columns: 1fr;
