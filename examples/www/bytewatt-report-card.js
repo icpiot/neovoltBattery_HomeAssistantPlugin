@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "274";
+const BYTEWATT_REPORT_CARD_BUILD = "275";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -968,11 +968,23 @@ class ByteWattReportCard extends HTMLElement {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }
 
-  _clampDateToToday(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return this._todayLocalDate();
-    const today = this._todayLocalDate();
+  _reportTodayDate(reporting = null) {
+    const source = reporting || this._reporting() || {};
+    return (
+      this._parseLocalDate(
+        source?.power_diagram?.date ||
+          source?.reporting_date ||
+          source?.meta?.reporting_date ||
+          ""
+      ) || this._todayLocalDate()
+    );
+  }
+
+  _clampDateToToday(date, today = null) {
+    const limit = today instanceof Date && !Number.isNaN(today.getTime()) ? today : this._todayLocalDate();
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return limit;
     const current = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    return current > today ? today : current;
+    return current > limit ? limit : current;
   }
 
   _historyRange(records) {
@@ -1079,8 +1091,8 @@ class ByteWattReportCard extends HTMLElement {
   }
 
   _periodWindow(anchor, period = this._reportPeriod) {
-    const safeAnchor = this._clampDateToToday(anchor);
-    const today = this._todayLocalDate();
+    const safeAnchor = this._clampDateToToday(anchor, this._reportTodayDate());
+    const today = this._reportTodayDate();
     const start = new Date(safeAnchor.getFullYear(), safeAnchor.getMonth(), safeAnchor.getDate());
     const end = new Date(start.getTime());
     if (period === "week") {
@@ -1101,7 +1113,7 @@ class ByteWattReportCard extends HTMLElement {
     return { start, end: end > today ? today : end };
   }
 
-  _shiftAnchor(anchor, period, step) {
+  _shiftAnchor(anchor, period, step, today = null) {
     const shifted = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
     if (period === "week") {
       shifted.setDate(shifted.getDate() + step * 7);
@@ -1112,11 +1124,11 @@ class ByteWattReportCard extends HTMLElement {
     } else {
       shifted.setDate(shifted.getDate() + step);
     }
-    return this._clampDateToToday(shifted);
+    return this._clampDateToToday(shifted, today || this._reportTodayDate());
   }
 
-  _clampAnchor(anchor, records) {
-    return this._clampDateToToday(anchor);
+  _clampAnchor(anchor, records, today = null) {
+    return this._clampDateToToday(anchor, today || this._reportTodayDate());
   }
 
   _recordsForPeriod(records, anchor, period = this._reportPeriod) {
@@ -1411,6 +1423,98 @@ class ByteWattReportCard extends HTMLElement {
     const scopeInfo = this._historyScopeData();
     const historyRecords = this._historyRecords();
     const liveRecord = this._liveReportingRecord(baseReporting);
+    const sourceToday = this._reportTodayDate(baseReporting);
+    if (this._reportPeriod === "today") {
+      const todayRecord =
+        this._dailyLiveFallbackRecord(baseReporting, sourceToday, "today") ||
+        liveRecord ||
+        {};
+      const todayRecords = todayRecord && Object.keys(todayRecord).length ? [todayRecord] : [];
+      const todaySummary = this._periodSummary(todayRecords);
+      const todayEnergyModel = this._selectedPeriodEnergyModel(todayRecords, todaySummary);
+      const todayWindow = this._periodWindow(sourceToday, "today");
+      this._reportAnchorDate = this._formatLocalDate(sourceToday);
+      this._saveReportState();
+      return {
+        reporting: {
+          ...(baseReporting || {}),
+          aggregate: false,
+          label: baseReporting?.label || "ByteWatt",
+          meta: {
+            ...(baseReporting?.meta || {}),
+            aggregate: false,
+            label: baseReporting?.label || "ByteWatt",
+            period: "today",
+            period_label: this._reportPeriodLabel("today"),
+            period_start: this._formatLocalDate(todayWindow.start),
+            period_end: this._formatLocalDate(todayWindow.end),
+            saved_at: baseReporting?.meta?.saved_at || "",
+          },
+          live: baseReporting?.live || {},
+          today: {
+            ...(baseReporting?.today || {}),
+            solar_generation: todayEnergyModel.solar_generation,
+            load_consumption: todayEnergyModel.load_consumption,
+            house_consumption: todayEnergyModel.load_consumption,
+            feed_in: todayEnergyModel.feed_in,
+            grid_consumption: todayEnergyModel.grid_consumption,
+            battery_charge: todayEnergyModel.battery_charge,
+            battery_discharge: todayEnergyModel.battery_discharge,
+            pv_power_house: todayEnergyModel.pv_power_house,
+            pv_charging_battery: todayEnergyModel.pv_charging_battery,
+            grid_battery_charge: todayEnergyModel.grid_battery_charge,
+            grid_to_load: todayEnergyModel.grid_to_load,
+            today_income: todayEnergyModel.today_income,
+          },
+          totals: {
+            ...(baseReporting?.today || {}),
+            solar_generation: todayEnergyModel.solar_generation,
+            load_consumption: todayEnergyModel.load_consumption,
+            house_consumption: todayEnergyModel.load_consumption,
+            feed_in: todayEnergyModel.feed_in,
+            grid_consumption: todayEnergyModel.grid_consumption,
+            battery_charge: todayEnergyModel.battery_charge,
+            battery_discharge: todayEnergyModel.battery_discharge,
+            pv_power_house: todayEnergyModel.pv_power_house,
+            pv_charging_battery: todayEnergyModel.pv_charging_battery,
+            grid_battery_charge: todayEnergyModel.grid_battery_charge,
+            grid_to_load: todayEnergyModel.grid_to_load,
+            today_income: todayEnergyModel.today_income,
+          },
+          sankey: todayEnergyModel,
+          sankey_debug: {
+            history_scope: scopeInfo.key,
+            requested_scope: scopeInfo.requested,
+            scope_fallback: scopeInfo.fallback,
+            archive_records_total: historyRecords.length,
+            records_total: todayRecords.length,
+            live_record_date: liveRecord?.record_date || "",
+            available_first: todayWindow.start ? this._formatLocalDate(todayWindow.start) : "",
+            available_latest: todayWindow.end ? this._formatLocalDate(todayWindow.end) : "",
+            rows: todayEnergyModel.rows,
+            counter_rows: 0,
+            source: "live-today",
+            selected_records: todayRecords.length,
+            period: "today",
+            period_start: this._formatLocalDate(todayWindow.start),
+            period_end: this._formatLocalDate(todayWindow.end),
+          },
+          power_diagram: todayRecord?.power_diagram || baseReporting?.power_diagram || {},
+          summary: todaySummary,
+        },
+        records: todayRecords,
+        chart_records: todayRecords,
+        anchor: sourceToday,
+        period: "today",
+        window: todayWindow,
+        availableRange: this._historyRange(todayRecords),
+        records_total: historyRecords.length,
+        history_scope: scopeInfo.key,
+        requested_scope: scopeInfo.requested,
+        summary: todaySummary,
+        live_today: true,
+      };
+    }
     const recordsByDate = new Map(historyRecords.map((record) => [String(record.record_date || ""), record]));
     if (liveRecord?.record_date) {
       const existing = recordsByDate.get(liveRecord.record_date) || {};
@@ -2103,7 +2207,7 @@ class ByteWattReportCard extends HTMLElement {
             : "empty";
     const windowStart = periodContext?.window?.start || anchor;
     const displayDate = this._formatLocalDate(windowStart);
-    const todayValue = this._formatLocalDate(this._todayLocalDate());
+    const todayValue = this._formatLocalDate(this._reportTodayDate());
     const startLabel = periodContext?.window?.start ? this._formatDisplayDate(periodContext.window.start) : "";
     const endLabel = periodContext?.window?.end ? this._formatDisplayDate(periodContext.window.end) : "";
     return `
@@ -5174,6 +5278,7 @@ class ByteWattReportCard extends HTMLElement {
       button.addEventListener("click", async () => {
         const nextPeriod = button.dataset.reportPeriod || "day";
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+        const sourceToday = this._reportTodayDate(this._reporting());
         const liveAnchor =
           this._parseLocalDate(
             this._reporting()?.power_diagram?.date ||
@@ -5186,7 +5291,7 @@ class ByteWattReportCard extends HTMLElement {
           this._parseLocalDate(this._reportAnchorDate) ||
           this._parseLocalDate(this._historyRange(records).latest) ||
           liveAnchor;
-        const nextAnchor = this._clampAnchor(nextPeriod === "today" ? liveAnchor : savedAnchor, records);
+        const nextAnchor = this._clampAnchor(nextPeriod === "today" ? liveAnchor : savedAnchor, records, sourceToday);
         this._reportPeriod = nextPeriod;
         this._reportAnchorDate = this._formatLocalDate(nextAnchor);
         this._saveReportState();
@@ -5198,9 +5303,10 @@ class ByteWattReportCard extends HTMLElement {
       button.addEventListener("click", async () => {
         const step = Number(button.dataset.reportShift || 0) || 0;
         const records = this._historyRecords().sort((a, b) => String(a.record_date).localeCompare(String(b.record_date)));
+        const sourceToday = this._reportTodayDate(this._reporting());
         const fallback = this._parseLocalDate(this._reportAnchorDate) || this._parseLocalDate(this._reporting()?.power_diagram?.date) || null;
-        const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records);
-        this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step));
+        const current = this._clampAnchor(fallback || this._parseLocalDate(this._historyRange(records).latest) || new Date(), records, sourceToday);
+        this._reportAnchorDate = this._formatLocalDate(this._shiftAnchor(current, this._reportPeriod || "day", step, sourceToday));
         this._saveReportState();
         this._resetHistoryEnsureState();
         this._queueHistorySync();
@@ -5208,7 +5314,7 @@ class ByteWattReportCard extends HTMLElement {
     });
     this.shadowRoot.querySelector("[data-report-date]")?.addEventListener("change", async (event) => {
       const picked = this._parseLocalDate(String(event.target.value || "").trim());
-      this._reportAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate()));
+      this._reportAnchorDate = this._formatLocalDate(this._clampDateToToday(picked || this._todayLocalDate(), this._reportTodayDate(this._reporting())));
       this._saveReportState();
       this._resetHistoryEnsureState();
       this._queueHistorySync();
