@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "282";
+const BYTEWATT_REPORT_CARD_BUILD = "283";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -199,10 +199,11 @@ class ByteWattReportCard extends HTMLElement {
     if (!this._hass || this._liveRefreshInFlight) return;
     this._liveRefreshInFlight = true;
     try {
-      const payload = {};
-      const entryId = this._refreshEntryId();
-      if (entryId) payload.entry_id = entryId;
-      await this._hass.callService("bytewatt", "refresh_now", payload);
+      const entityId = String(this._config?.settings_target || "").trim();
+      if (!entityId) return;
+      await this._hass.callService("homeassistant", "update_entity", {
+        entity_id: entityId,
+      });
     } catch (error) {
       console.warn("ByteWatt live refresh failed:", error);
     } finally {
