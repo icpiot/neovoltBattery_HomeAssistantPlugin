@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "270";
+const BYTEWATT_REPORT_CARD_BUILD = "271";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4409,7 +4409,7 @@ class ByteWattReportCard extends HTMLElement {
           max-width:none;
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
-          border-radius:24px;
+          border-radius:0;
           background:linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
           box-shadow: 0 14px 32px rgba(47, 155, 232, 0.08), 0 8px 24px rgba(15, 23, 42, 0.05);
         }
@@ -4418,8 +4418,11 @@ class ByteWattReportCard extends HTMLElement {
           position:absolute;
           inset:0 0 auto 0;
           height:4px;
-          border-radius:24px 24px 0 0;
+          border-radius:0;
           background:linear-gradient(90deg, var(--bw-solar) 0%, var(--bw-load) 28%, var(--bw-battery) 50%, var(--bw-feed) 72%, var(--bw-consumed) 100%);
+        }
+        .power-chart {
+          border-radius:0;
         }
         .chart-toolbar {
           display:grid;
