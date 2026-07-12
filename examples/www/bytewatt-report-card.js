@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "277";
+const BYTEWATT_REPORT_CARD_BUILD = "278";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3056,7 +3056,7 @@ class ByteWattReportCard extends HTMLElement {
       return padding.left + (index / (labels.length - 1)) * (width - padding.left - padding.right);
     };
     const storyEnabled = this._storyModeEnabled();
-    const isTodayView = period === "today";
+    const isTodayView = this._reportPeriod === "today";
     const refreshNote = isTodayView ? "Today updates every 10 seconds" : "";
     const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, this._currentPeriodContext || {}) : null;
     this._powerChartModel = {
