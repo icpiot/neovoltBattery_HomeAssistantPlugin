@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "286";
+const BYTEWATT_REPORT_CARD_BUILD = "287";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -201,6 +201,20 @@ class ByteWattReportCard extends HTMLElement {
     try {
       const entityId = String(this._config?.settings_target || "").trim();
       if (!entityId) return;
+      const today = this._formatLocalDate(this._reportTodayDate(this._reporting()));
+      const historyEntryId = this._historyEntryId();
+      if (today) {
+        const ensurePayload = {
+          scope_key: "all",
+          start_date: today,
+          end_date: today,
+          force: true,
+        };
+        if (historyEntryId) {
+          ensurePayload.entry_id = historyEntryId;
+        }
+        await this._hass.callService("bytewatt", "ensure_report_history", ensurePayload);
+      }
       await this._hass.callService("homeassistant", "update_entity", {
         entity_id: entityId,
       });
@@ -917,6 +931,17 @@ class ByteWattReportCard extends HTMLElement {
       });
   }
 
+  _historyRecordForDate(recordDate, records = null) {
+    const targetDate = this._formatLocalDate(this._parseLocalDate(recordDate) || null) || String(recordDate || "").trim();
+    if (!targetDate) return null;
+    const sourceRecords = Array.isArray(records) ? records : this._historyRecords();
+    const matches = sourceRecords.filter((record) => {
+      const recordKey = String(record?.record_date || "").trim();
+      return recordKey === targetDate && this._recordHasPowerDiagramData(record);
+    });
+    return matches.length ? matches[matches.length - 1] : null;
+  }
+
   _liveReportingRecord(reporting) {
     if (!reporting) return null;
     const parsed =
@@ -1480,16 +1505,21 @@ class ByteWattReportCard extends HTMLElement {
     const liveRecord = this._liveReportingRecord(baseReporting);
     const sourceToday = this._reportTodayDate(baseReporting);
     if (this._reportPeriod === "today") {
+      const cachedTodayRecord = this._historyRecordForDate(this._formatLocalDate(sourceToday), historyRecords);
       const todayRecord =
         this._dailyLiveFallbackRecord(baseReporting, sourceToday, "today") ||
         liveRecord ||
         {};
-      const todayRecords = todayRecord && Object.keys(todayRecord).length ? [todayRecord] : [];
-      const archivedTodayRecord = historyRecords.find((record) => {
-        const recordDate = String(record?.record_date || "").trim();
-        return recordDate && recordDate === this._formatLocalDate(sourceToday) && this._recordHasPowerDiagramData(record);
-      }) || null;
-      const chartSource = [todayRecord, archivedTodayRecord, baseReporting].find((record) => this._recordHasPowerDiagramData(record)) || {};
+      const archivedTodayRecord = cachedTodayRecord || null;
+      const stableTodayRecord = archivedTodayRecord
+        ? {
+            ...archivedTodayRecord,
+            ...(baseReporting || {}),
+            power_diagram: archivedTodayRecord.power_diagram || baseReporting?.power_diagram || {},
+          }
+        : todayRecord;
+      const todayRecords = stableTodayRecord && Object.keys(stableTodayRecord).length ? [stableTodayRecord] : [];
+      const chartSource = [stableTodayRecord, todayRecord, archivedTodayRecord, baseReporting].find((record) => this._recordHasPowerDiagramData(record)) || {};
       const todaySummary = this._periodSummary(todayRecords);
       const todayEnergyModel = this._selectedPeriodEnergyModel(todayRecords, todaySummary);
       const todayWindow = this._periodWindow(sourceToday, "today");
@@ -1560,7 +1590,7 @@ class ByteWattReportCard extends HTMLElement {
             period_end: this._formatLocalDate(todayWindow.end),
           },
           // Prefer a real chart payload over an empty live shell so "Today" keeps its graph.
-          power_diagram: chartSource?.power_diagram || chartSource || todayRecord?.power_diagram || baseReporting?.power_diagram || {},
+          power_diagram: chartSource?.power_diagram || chartSource || stableTodayRecord?.power_diagram || baseReporting?.power_diagram || {},
           summary: todaySummary,
         },
         records: todayRecords,
