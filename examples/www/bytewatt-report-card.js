@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "265";
+const BYTEWATT_REPORT_CARD_BUILD = "266";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4326,8 +4326,8 @@ class ByteWattReportCard extends HTMLElement {
         .ring-grid {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap:6px;
-          margin-bottom:10px;
+          gap:5px;
+          margin-bottom:8px;
           align-items:stretch;
         }
         .power-summary-grid {
@@ -4335,13 +4335,13 @@ class ByteWattReportCard extends HTMLElement {
         }
         .ring-card {
           border-radius:20px;
-          padding:10px 8px;
+          padding:9px 8px;
           text-align:center;
           border:2px solid transparent;
           background:#ffffff;
           box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
           min-width:0;
-          min-height:88px;
+          min-height:82px;
           display:flex;
           flex-direction:column;
           justify-content:center;
@@ -4378,16 +4378,19 @@ class ByteWattReportCard extends HTMLElement {
         .power-panel {
           display:grid;
           gap:8px;
+          width:100%;
+          padding:0;
+          overflow:hidden;
         }
         .power-panel {
           width:100%;
         }
         .power-panel .panel-header {
-          margin-bottom:8px;
+          padding:18px 18px 0;
+          margin-bottom:6px;
         }
         .power-panel .power-gap-note {
-          margin-top:-2px;
-          margin-bottom:6px;
+          margin:0 18px 6px;
         }
         .power-header {
           display:grid;
@@ -4399,7 +4402,7 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-          padding:10px 12px 12px;
+          padding:10px 18px 14px;
           margin-inline:0;
           max-width:none;
           box-sizing:border-box;
