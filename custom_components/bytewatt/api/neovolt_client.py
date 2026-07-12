@@ -651,9 +651,12 @@ class NeovoltClient:
             today_stats_url = f"{self.base_url}/api/report/power/staticsByDay"
             today_stats_date = now.strftime("%Y-%m-%d")
             today_stats_params = {
-                "sysSn": effective_sys_sn,
                 "date": today_stats_date,
             }
+            if effective_sys_sn.lower() == "all" and self.user_id:
+                today_stats_params["userId"] = self.user_id
+            else:
+                today_stats_params["sysSn"] = effective_sys_sn
 
             _LOGGER.debug("Fetching today's detailed stats from: %s with params: %s", today_stats_url, today_stats_params)
             try:
