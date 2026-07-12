@@ -4,6 +4,7 @@ import logging
 import asyncio
 import json
 import aiohttp
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 
@@ -24,6 +25,14 @@ DEFAULT_BASE_URL = "https://monitor.byte-watt.com"
 # the server is misbehaving and we should fail loudly instead of recursing
 # forever and exhausting the stack.
 MAX_RELOGIN_RETRIES = 1
+
+WINDOWS_TIMEZONE_MAP = {
+    "AUS Eastern Standard Time": "Australia/Sydney",
+    "E. Australia Standard Time": "Australia/Brisbane",
+    "W. Australia Standard Time": "Australia/Perth",
+    "Cen. Australia Standard Time": "Australia/Adelaide",
+    "AUS Central Standard Time": "Australia/Darwin",
+}
 
 
 class ByteWattAPIError(Exception):
@@ -223,6 +232,8 @@ class NeovoltClient:
         self.user_id: Optional[str] = None
         self.host_system_id = host_system_id   # systemId of the Host inverter
         self.host_sys_sn = host_sys_sn         # sysSn of the Host inverter
+        self.timezone_code: Optional[str] = None
+        self._timezone: Optional[ZoneInfo] = None
 
     def _aggregate_monitoring_sys_sn(self) -> str:
         """Return the merged monitoring scope used by aggregate sensors.
@@ -232,6 +243,47 @@ class NeovoltClient:
         targeted through host_system_id / host_sys_sn on the settings APIs.
         """
         return "All"
+
+    def _set_timezone_code(self, timezone_code: str | None) -> None:
+        code = str(timezone_code or "").strip()
+        self.timezone_code = code or None
+        self._timezone = None
+        if not code:
+            return
+        timezone_name = WINDOWS_TIMEZONE_MAP.get(code, code)
+        try:
+            self._timezone = ZoneInfo(timezone_name)
+        except Exception:
+            _LOGGER.debug("Unable to resolve timezone code %s (%s)", code, timezone_name)
+            self._timezone = None
+
+    def _current_time(self) -> datetime:
+        if self._timezone is not None:
+            return dt_util.now(self._timezone)
+        return dt_util.now()
+
+    async def _async_fetch_timezone_code(self) -> Optional[str]:
+        """Fetch the configured account timezone code if available."""
+        headers = self._get_auth_headers()
+        for endpoint in (
+            "/api/stable/userInformationSetting/getCustomUserSetting",
+            "/api/stable/userInformationSetting/getOtherRoleUserSetting",
+        ):
+            try:
+                async with asyncio.timeout(DEFAULT_TIMEOUT):
+                    async with self.session.get(url=f"{self.base_url}{endpoint}", headers=headers) as response:
+                        if response.status != 200:
+                            continue
+                        result = await _decode_json_object(response, endpoint.rsplit("/", 1)[-1])
+                        if not _is_success_code(result):
+                            continue
+                        data = result.get("data", {}) or {}
+                        timezone_code = str(data.get("timezonecode") or data.get("timezoneCode") or "").strip()
+                        if timezone_code:
+                            return timezone_code
+            except (asyncio.TimeoutError, aiohttp.ClientError, ValueError):
+                continue
+        return None
     
     async def async_login(self) -> bool:
         """Login to the Neovolt API using encrypted password."""
@@ -309,6 +361,11 @@ class NeovoltClient:
                             if value not in (None, ""):
                                 self.user_id = str(value)
                                 break
+
+                    if not self.timezone_code:
+                        timezone_code = await self._async_fetch_timezone_code()
+                        if timezone_code:
+                            self._set_timezone_code(timezone_code)
 
                     _LOGGER.debug("Successfully logged in to Neovolt API")
                     return True
@@ -402,7 +459,7 @@ class NeovoltClient:
         effective_sys_sn = sys_sn or self._aggregate_monitoring_sys_sn()
         params = {"sysSn": effective_sys_sn, "stationId": station_id or ""}
 
-        current_date = dt_util.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_date = self._current_time().strftime("%Y-%m-%d %H:%M:%S")
         headers = self._get_auth_headers()
         headers.update({
             "Accept": "application/json, text/plain, */*",
@@ -462,7 +519,7 @@ class NeovoltClient:
             # where cumulative totals temporarily show yesterday's values for ~30 minutes
             # after midnight in timezones ahead of the API server (e.g., UTC+9:30)
             # This ensures the API always returns complete data for "today"
-            now = dt_util.now()
+            now = self._current_time()
             end_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
             begin_date = "2020-01-01"
             
@@ -688,7 +745,7 @@ class NeovoltClient:
                 raise ByteWattAuthError("Authentication failed")
 
         effective_sys_sn = sys_sn or self._aggregate_monitoring_sys_sn()
-        current_date = dt_util.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_date = self._current_time().strftime("%Y-%m-%d %H:%M:%S")
         headers = self._get_auth_headers()
         headers.update({
             "Accept": "application/json, text/plain, */*",
