@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "264";
+const BYTEWATT_REPORT_CARD_BUILD = "265";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1330,25 +1330,8 @@ class ByteWattReportCard extends HTMLElement {
     );
     const today = this._todayLocalDate();
     const isToday = reportedDate instanceof Date && !Number.isNaN(reportedDate.getTime()) && this._formatLocalDate(reportedDate) === this._formatLocalDate(today);
+    if (isToday) return null;
     let visibleCount = count;
-    if (isToday) {
-      const now = new Date();
-      const currentMinutes = (now.getHours() * 60) + now.getMinutes() + (now.getSeconds() / 60);
-      let lastVisibleIndex = -1;
-      for (let index = 0; index < count; index += 1) {
-        const label = labels?.[index];
-        if (typeof label !== "string") continue;
-        const match = label.match(/(\d{1,2}):(\d{2})/);
-        if (!match) continue;
-        const labelMinutes = (Number(match[1]) * 60) + Number(match[2]);
-        if (labelMinutes <= currentMinutes + 1) {
-          lastVisibleIndex = index;
-        }
-      }
-      if (lastVisibleIndex >= 0) {
-        visibleCount = lastVisibleIndex + 1;
-      }
-    }
     if (visibleCount < 2) return null;
     const combinedAt = (index) => powerSeries.reduce((sum, series) => sum + (Number(series[index]) || 0), 0);
     const lowThreshold = Math.max(0.12, Math.max(...powerSeries.flatMap((series) => series), 0) * 0.08);
@@ -4343,8 +4326,8 @@ class ByteWattReportCard extends HTMLElement {
         .ring-grid {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap:8px;
-          margin-bottom:18px;
+          gap:6px;
+          margin-bottom:10px;
           align-items:stretch;
         }
         .power-summary-grid {
@@ -4394,17 +4377,17 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-panel {
           display:grid;
-          gap:10px;
+          gap:8px;
         }
         .power-panel {
           width:100%;
         }
         .power-panel .panel-header {
-          margin-bottom:10px;
+          margin-bottom:8px;
         }
         .power-panel .power-gap-note {
           margin-top:-2px;
-          margin-bottom:8px;
+          margin-bottom:6px;
         }
         .power-header {
           display:grid;
@@ -4416,9 +4399,9 @@ class ByteWattReportCard extends HTMLElement {
           display:grid;
           gap:12px;
           position:relative;
-            padding:18px 20px 20px;
-            margin-inline:16px;
-            max-width:calc(100% - 32px);
+          padding:10px 12px 12px;
+          margin-inline:0;
+          max-width:none;
           box-sizing:border-box;
           border:1px solid rgba(214, 219, 225, 0.95);
           border-radius:24px;
@@ -4441,8 +4424,8 @@ class ByteWattReportCard extends HTMLElement {
         }
         .power-story-strip {
           display:grid;
-          gap:12px;
-          padding:2px 2px 0;
+          gap:10px;
+          padding:0;
         }
         .power-story-headline {
           font-size:1rem;
@@ -4455,17 +4438,18 @@ class ByteWattReportCard extends HTMLElement {
         .power-story-cards {
           display:grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap:10px;
+          gap:8px;
         }
         .power-story-card {
           background:#fff;
           border:1px solid var(--bw-border);
           border-radius:16px;
-          padding:12px 14px 13px;
+          padding:10px 12px 11px;
           box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
           display:grid;
           gap:6px;
           min-width:0;
+          min-height:104px;
         }
         .power-story-card-head {
           display:flex;
@@ -4497,12 +4481,13 @@ class ByteWattReportCard extends HTMLElement {
           text-overflow:ellipsis;
         }
         .power-story-value {
-          font-size:0.98rem;
+          font-size:0.94rem;
           font-weight:900;
           color:#0f172a;
+          line-height:1.15;
         }
         .power-story-note {
-          font-size:0.84rem;
+          font-size:0.82rem;
           color:#56667b;
           line-height:1.35;
         }
