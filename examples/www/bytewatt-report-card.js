@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "266";
+const BYTEWATT_REPORT_CARD_BUILD = "267";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1316,64 +1316,62 @@ class ByteWattReportCard extends HTMLElement {
 
   _dailySparseWindow(chartValues = {}, labels = [], context = {}) {
     const powerKeys = ["solar", "load", "feed", "consumed"];
-    const powerSeries = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].map((value) => Math.max(Number(value) || 0, 0)) : []);
-    const batSeries = Array.isArray(chartValues?.bat) ? chartValues.bat.map((value) => Math.max(Number(value) || 0, 0)) : [];
+    const powerSeries = powerKeys.map((key) => Array.isArray(chartValues?.[key]) ? chartValues[key].slice() : []);
+    const batSeries = Array.isArray(chartValues?.bat) ? chartValues.bat.slice() : [];
     const count = Math.max(...powerSeries.map((series) => series.length), batSeries.length, Array.isArray(labels) ? labels.length : 0, 0);
     if (!count) return null;
-    const reportedDate = this._parseLocalDate(
-      context?.reporting?.power_diagram?.date ||
-        context?.reporting?.reporting_date ||
-        context?.reporting?.meta?.reporting_date ||
-        context?.periodContext?.anchor ||
-        context?.periodContext?.window?.start ||
-        "",
-    );
-    const today = this._todayLocalDate();
-    const isToday = reportedDate instanceof Date && !Number.isNaN(reportedDate.getTime()) && this._formatLocalDate(reportedDate) === this._formatLocalDate(today);
-    if (isToday) return null;
-    let visibleCount = count;
-    if (visibleCount < 2) return null;
+    const parsedLabels = labels
+      .map((label, index) => {
+        if (typeof label !== "string") return null;
+        const match = label.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return null;
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+        if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+        return {
+          index,
+          minutes: (hours * 60) + minutes,
+        };
+      })
+      .filter(Boolean);
+    if (parsedLabels.length < 2) return null;
+    const intervals = [];
+    for (let i = 1; i < parsedLabels.length; i += 1) {
+      const delta = parsedLabels[i].minutes - parsedLabels[i - 1].minutes;
+      if (delta > 0) intervals.push(delta);
+    }
+    if (!intervals.length) return null;
+    const sortedIntervals = intervals.slice().sort((a, b) => a - b);
+    const medianInterval = sortedIntervals[Math.floor(sortedIntervals.length / 2)] || sortedIntervals[0] || 0;
+    if (!(medianInterval > 0)) return null;
+    const gapThreshold = Math.max(medianInterval * 1.75, medianInterval + 10);
+    let gapStart = null;
+    let gapEnd = null;
+    for (let i = 1; i < parsedLabels.length; i += 1) {
+      const delta = parsedLabels[i].minutes - parsedLabels[i - 1].minutes;
+      if (delta > gapThreshold) {
+        gapStart = parsedLabels[i - 1].index;
+        gapEnd = parsedLabels[i].index;
+        break;
+      }
+    }
+    if (gapStart == null || gapEnd == null) return null;
     const combinedAt = (index) => powerSeries.reduce((sum, series) => sum + (Number(series[index]) || 0), 0);
-    const lowThreshold = Math.max(0.12, Math.max(...powerSeries.flatMap((series) => series), 0) * 0.08);
     const labelAt = (index) => {
       const label = labels?.[index];
       if (typeof label === "string" && label.trim()) return label;
-      const hours = visibleCount > 1 ? (index / (visibleCount - 1)) * 24 : 0;
+      const hours = count > 1 ? (index / (count - 1)) * 24 : 0;
       const wholeHours = Math.floor(hours);
       const minutes = Math.round((hours - wholeHours) * 60);
       return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
     };
-    const lowIndices = [];
-    for (let index = 0; index < visibleCount; index += 1) {
-      if (combinedAt(index) <= lowThreshold) lowIndices.push(index);
-    }
-    if (!lowIndices.length) return null;
-    const gapTolerance = 4;
-    const clusters = [];
-    let cluster = [lowIndices[0]];
-    for (let i = 1; i < lowIndices.length; i += 1) {
-      const current = lowIndices[i];
-      const previous = lowIndices[i - 1];
-      if (current - previous <= gapTolerance) {
-        cluster.push(current);
-      } else {
-        clusters.push(cluster);
-        cluster = [current];
-      }
-    }
-    clusters.push(cluster);
-    const best = clusters.sort((a, b) => {
-      if (b.length !== a.length) return b.length - a.length;
-      return (b[b.length - 1] - b[0]) - (a[a.length - 1] - a[0]);
-    })[0];
-    if (!best || !best.length) return null;
-    const startIndex = Math.max(0, best[0] - 1);
-    const endIndex = Math.min(visibleCount - 1, best[best.length - 1] + 1);
+    const startIndex = Math.max(0, gapStart);
+    const endIndex = Math.min(count - 1, gapEnd);
     const startLabel = labelAt(startIndex);
     const endLabel = labelAt(endIndex);
     const duration = Math.max(1, endIndex - startIndex + 1);
     const tail = duration >= 10
-      ? "The sparse section lasts into the afternoon, so the story only has SOC to describe that stretch."
+      ? "The sparse section lasts long enough that the story should not pretend the missing traces are there."
       : "The sparse section is long enough that the story should not pretend the missing traces are there.";
     return {
       startIndex,
@@ -1385,6 +1383,7 @@ class ByteWattReportCard extends HTMLElement {
       count,
       labelAt,
       combinedAt,
+      medianInterval,
     };
   }
 
