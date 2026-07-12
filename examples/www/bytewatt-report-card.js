@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "284";
+const BYTEWATT_REPORT_CARD_BUILD = "285";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -1485,6 +1485,11 @@ class ByteWattReportCard extends HTMLElement {
         liveRecord ||
         {};
       const todayRecords = todayRecord && Object.keys(todayRecord).length ? [todayRecord] : [];
+      const archivedTodayRecord = historyRecords.find((record) => {
+        const recordDate = String(record?.record_date || "").trim();
+        return recordDate && recordDate === this._formatLocalDate(sourceToday) && this._recordHasPowerDiagramData(record);
+      }) || null;
+      const chartSource = [todayRecord, archivedTodayRecord, baseReporting].find((record) => this._recordHasPowerDiagramData(record)) || {};
       const todaySummary = this._periodSummary(todayRecords);
       const todayEnergyModel = this._selectedPeriodEnergyModel(todayRecords, todaySummary);
       const todayWindow = this._periodWindow(sourceToday, "today");
@@ -1554,7 +1559,8 @@ class ByteWattReportCard extends HTMLElement {
             period_start: this._formatLocalDate(todayWindow.start),
             period_end: this._formatLocalDate(todayWindow.end),
           },
-          power_diagram: todayRecord?.power_diagram || baseReporting?.power_diagram || {},
+          // Prefer a real chart payload over an empty live shell so "Today" keeps its graph.
+          power_diagram: chartSource?.power_diagram || chartSource || todayRecord?.power_diagram || baseReporting?.power_diagram || {},
           summary: todaySummary,
         },
         records: todayRecords,
