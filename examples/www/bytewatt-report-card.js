@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "271";
+const BYTEWATT_REPORT_CARD_BUILD = "272";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4354,6 +4354,16 @@ class ByteWattReportCard extends HTMLElement {
         .ring-bat { border-color:var(--bw-battery); background:linear-gradient(180deg, rgba(47,201,110,0.10) 0%, #ffffff 58%); }
         .ring-feed { border-color:var(--bw-feed); background:linear-gradient(180deg, rgba(240,138,36,0.10) 0%, #ffffff 58%); }
         .ring-grid { border-color:var(--bw-grid); background:linear-gradient(180deg, rgba(152,162,168,0.08) 0%, #ffffff 58%); }
+        .ring-card.ring-grid {
+          display:flex;
+          flex-direction:column;
+          justify-content:center;
+          align-items:center;
+          grid-template-columns:none;
+          gap:0;
+          margin:0;
+          justify-items:initial;
+        }
         .ring-value {
           font-size:clamp(0.86rem, 1.4vw, 0.98rem);
           font-weight:800;
