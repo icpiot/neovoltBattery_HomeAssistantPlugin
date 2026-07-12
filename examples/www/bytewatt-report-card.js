@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "267";
+const BYTEWATT_REPORT_CARD_BUILD = "268";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -4325,8 +4325,8 @@ class ByteWattReportCard extends HTMLElement {
         .ring-grid {
           display:grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap:5px;
-          margin-bottom:8px;
+          gap:4px;
+          margin-bottom:6px;
           align-items:stretch;
         }
         .power-summary-grid {
@@ -4334,13 +4334,13 @@ class ByteWattReportCard extends HTMLElement {
         }
         .ring-card {
           border-radius:20px;
-          padding:9px 8px;
+          padding:7px 7px;
           text-align:center;
           border:2px solid transparent;
           background:#ffffff;
           box-shadow:0 8px 18px rgba(15, 23, 42, 0.05);
           min-width:0;
-          min-height:82px;
+          min-height:72px;
           display:flex;
           flex-direction:column;
           justify-content:center;
@@ -4352,16 +4352,16 @@ class ByteWattReportCard extends HTMLElement {
         .ring-feed { border-color:var(--bw-feed); background:linear-gradient(180deg, rgba(240,138,36,0.10) 0%, #ffffff 58%); }
         .ring-grid { border-color:var(--bw-grid); background:linear-gradient(180deg, rgba(152,162,168,0.08) 0%, #ffffff 58%); }
         .ring-value {
-          font-size:clamp(0.98rem, 1.8vw, 1.1rem);
+          font-size:clamp(0.88rem, 1.6vw, 1rem);
           font-weight:800;
           color:#0f172a;
-          line-height:1.05;
+          line-height:1.02;
           white-space:nowrap;
         }
         .ring-label {
-          margin-top:6px;
+          margin-top:4px;
           color:#64748b;
-          font-size:0.8rem;
+          font-size:0.72rem;
           line-height:1.1;
           white-space:nowrap;
           overflow:hidden;

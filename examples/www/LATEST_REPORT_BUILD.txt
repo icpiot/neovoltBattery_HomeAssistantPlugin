@@ -1,2 +1,2 @@
 bytewatt-report-card.js
-/local/community/bytewatt-card/bytewatt-report-card.js?v=267
+/local/community/bytewatt-card/bytewatt-report-card.js?v=268
