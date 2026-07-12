@@ -1,4 +1,4 @@
-const BYTEWATT_REPORT_CARD_BUILD = "276";
+const BYTEWATT_REPORT_CARD_BUILD = "277";
 
 class ByteWattReportCard extends HTMLElement {
   setConfig(config) {
@@ -3056,6 +3056,8 @@ class ByteWattReportCard extends HTMLElement {
       return padding.left + (index / (labels.length - 1)) * (width - padding.left - padding.right);
     };
     const storyEnabled = this._storyModeEnabled();
+    const isTodayView = period === "today";
+    const refreshNote = isTodayView ? "Today updates every 10 seconds" : "";
     const story = storyEnabled ? this._buildDailyPowerStory(reporting, labels, chartValues, width, height, padding, this._currentPeriodContext || {}) : null;
     this._powerChartModel = {
       mode: "daily",
@@ -3222,6 +3224,7 @@ class ByteWattReportCard extends HTMLElement {
           <div class="power-chart-wrap">
             ${story ? `<div class="power-chart-story-overlay">
               <div class="power-chart-story-kicker">Story mode</div>
+              ${refreshNote ? `<div class="power-chart-refresh-note">${this._escape(refreshNote)}</div>` : ""}
               <div class="power-chart-story-title">${this._escape(story.headline || "")}</div>
               ${story.alert ? `<div class="power-chart-story-body">${this._escape(story.alert)}</div>` : ""}
             </div>` : ""}
@@ -4773,6 +4776,21 @@ class ByteWattReportCard extends HTMLElement {
           font-weight:700;
           color:#8c5614;
           line-height:1.25;
+        }
+        .power-chart-refresh-note {
+          display:inline-flex;
+          align-self:flex-start;
+          margin:2px 0 0;
+          padding:4px 8px;
+          border-radius:999px;
+          border:1px solid rgba(47, 155, 232, 0.25);
+          background:rgba(47, 155, 232, 0.08);
+          color:#1d4ed8;
+          font-size:0.72rem;
+          font-weight:900;
+          letter-spacing:0.02em;
+          text-transform:uppercase;
+          white-space:nowrap;
         }
         .story-overlay-connector {
           pointer-events:none;
